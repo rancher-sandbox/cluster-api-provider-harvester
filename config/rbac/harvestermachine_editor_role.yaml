@@ -1,0 +1,31 @@
+# permissions for end users to edit harvestermachines.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: harvestermachine-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    app.kubernetes.io/managed-by: kustomize
+  name: harvestermachine-editor-role
+rules:
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvestermachines
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvestermachines/status
+  verbs:
+  - get
