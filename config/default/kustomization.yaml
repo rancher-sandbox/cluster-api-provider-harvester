@@ -70,3 +70,6 @@ vars:
 #    kind: Service
 #    version: v1
 #    name: webhook-service
+
+commonLabels:
+  cluster.x-k8s.io/provider: infrastructure-harvester

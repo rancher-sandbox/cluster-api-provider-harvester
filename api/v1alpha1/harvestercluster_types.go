@@ -18,28 +18,50 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	ClusterFinalizer = "harvester.infrastructure.cluster.x-k8s.io"
+)
 
 // HarvesterClusterSpec defines the desired state of HarvesterCluster
 type HarvesterClusterSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of HarvesterCluster. Edit harvestercluster_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Server is the url to connect to Harvester
+	// +optional
+	Server string `json:"server,omitempty"`
+
+	// IdentitySecret is the name of the Secret containing HarvesterKubeConfig file
+	IdentitySecret SecretKey `json:"identitySecret"`
+
+	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
+	// +optional
+	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+}
+
+type SecretKey struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
 }
 
 // HarvesterClusterStatus defines the observed state of HarvesterCluster
 type HarvesterClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	Ready          bool   `json:"ready"`
+	FailureReason  string `json:"failureReason"`
+	FailureMessage string `json:"failureMessage"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Cluster infrastructure is ready for HarvesterMachine"
+// +kubebuilder:printcolumn:name="Server",type="string",JSONPath=".spec.server",description="Server is the address of the Harvester endpoint"
+// +kubebuilder:printcolumn:name="ControlPlaneEndpoint",type="string",JSONPath=".spec.controlPlaneEndpoint[0]",description="API Endpoint",priority=1
 
 // HarvesterCluster is the Schema for the harvesterclusters API
 type HarvesterCluster struct {
