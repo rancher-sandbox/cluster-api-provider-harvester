@@ -43,8 +43,12 @@ type HarvesterClusterSpec struct {
 }
 
 type SecretKey struct {
+
+	// Namespace is the namespace in which the required Identity Secret should be found
 	Namespace string `json:"namespace"`
-	Name      string `json:"name"`
+
+	// Name is the name of the required Identity Secret
+	Name string `json:"name"`
 }
 
 // HarvesterClusterStatus defines the observed state of HarvesterCluster
@@ -52,9 +56,15 @@ type HarvesterClusterStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Ready          bool   `json:"ready"`
-	FailureReason  string `json:"failureReason"`
-	FailureMessage string `json:"failureMessage"`
+	// Reddy describes if the Harvester Cluster can be considered ready for machine creation
+	Ready bool `json:"ready"`
+
+	// FailureReason is the short name for the reason why a failure might be happening that makes the cluster not ready
+	// +optional
+	FailureReason string `json:"failureReason,omitempty"`
+	// FailureMessage is a full error message dump of the above failureReason
+	// +optional
+	FailureMessage string `json:"failureMessage,omitempty"`
 }
 
 //+kubebuilder:object:root=true

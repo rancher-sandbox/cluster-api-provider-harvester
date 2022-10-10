@@ -69,8 +69,11 @@ spec:
                   file
                 properties:
                   name:
+                    description: Name is the name of the required Identity Secret
                     type: string
                   namespace:
+                    description: Namespace is the namespace in which the required
+                      Identity Secret should be found
                     type: string
                 required:
                 - name
@@ -86,14 +89,18 @@ spec:
             description: HarvesterClusterStatus defines the observed state of HarvesterCluster
             properties:
               failureMessage:
+                description: FailureMessage is a full error message dump of the above
+                  failureReason
                 type: string
               failureReason:
+                description: FailureReason is the short name for the reason why a
+                  failure might be happening that makes the cluster not ready
                 type: string
               ready:
+                description: Reddy describes if the Harvester Cluster can be considered
+                  ready for machine creation
                 type: boolean
             required:
-            - failureMessage
-            - failureReason
             - ready
             type: object
         type: object

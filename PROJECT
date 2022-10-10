@@ -1,7 +1,7 @@
 domain: cluster.x-k8s.io
 layout:
 - go.kubebuilder.io/v3
-projectName: cluster-api-provider-harvester
+projectName: caph
 repo: github.com/belgaied2/cluster-api-provider-harvester
 resources:
 - api:
