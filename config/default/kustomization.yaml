@@ -1,12 +1,12 @@
 # Adds namespace to all resources.
-namespace: caph-system
+namespace: caphv-system
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
 # "wordpress" becomes "alices-wordpress".
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
-namePrefix: caph-
+namePrefix: caphv-
 
 # Labels to add to all resources and selectors.
 #commonLabels:
@@ -29,6 +29,7 @@ patchesStrategicMerge:
 # If you want your controller-manager to expose the /metrics
 # endpoint w/o any authn/z, please comment the following line.
 - manager_auth_proxy_patch.yaml
+- manager_config_patch.yaml
 
 
 
@@ -73,3 +74,6 @@ vars:
 
 commonLabels:
   cluster.x-k8s.io/provider: infrastructure-harvester
+  cluster.x-k8s.io/v1beta1: v1alpha1
+  cluster.x-k8s.io/v1alpha2: v1alpha1
+  cluster.x-k8s.io/v1alpha3: v1alpha1

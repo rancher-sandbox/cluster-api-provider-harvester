@@ -17,28 +17,95 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	// MachineFinalizer allows ReconcileHarvesterMachine to clean up resources associated with HarvesterMachine before
+	// removing it from the apiserver.
+	MachineFinalizer = "harvestermachine.infrastructure.cluster.x-k8s.io"
+)
 
 // HarvesterMachineSpec defines the desired state of HarvesterMachine
 type HarvesterMachineSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// TargetNamespace defines the Harvester namespacee in which the individual machines will be created.
+	// +optional
+	// +kubebuilder:default:=default
+	TargetNamespace string `json:"targetNamespace,omitempty"`
 
-	// Foo is an example field of HarvesterMachine. Edit harvestermachine_types.go to remove/update
-	ProviderID    string `json:"providerID"`
+	// ProviderID will be the ID of the machine used by the controller.
+	// This will be "<harvester vm namespace>-<harvester vm name>"
+	// +optional
+	ProviderID string `json:"providerID,omitempty"`
+
+	// FailureDomain defines the zone or failure domain where this VM should be.
+	// +optional
 	FailureDomain string `json:"failureDomain,omitempty"`
+
+	// CPU is the number of CPU to assign to the VM.
+	CPU int `json:"cpu"`
+
+	// Memory is the memory size to assign to the VM (should be similar to pod.spec.containers.resources.limits)
+	Memory string `json:"memory"`
+
+	// SSHUser is the user that should be used to connect to the VMs using SSH.
+	SSHUser string `json:"sshUser"`
+
+	// Volumes is a list of Volumes to attach to the VM
+	Volumes []Volume `json:"volumes"`
+
+	// Networks is a list of Networks to attach to the VM. Networks are referenced by their names.
+	Networks []string `json:"networks"`
+
+	// NodeAffinity gives the possibility to select preferred nodes for VM scheduling on Harvester. This works exactly like Pods.
+	// +optional
+	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
+
+	// WorkloadAffinity gives the possibility to define affinity rules with other workloads running on Harvester.
+	// +optional
+	WorkloadAffinity *corev1.PodAffinity `json:"workloadAffinity,omitempty"`
 }
+
+type Volume struct {
+	// VolumeType is the type of volume to attach.
+	// Choose between: "storageClass" or "image"
+	VolumeType VolumeType `json:"volumeType"`
+
+	// ImageName is the name of the image to use if the volumeType is "image"
+	// +optional
+	ImageName string `json:"imageName,omitempty"`
+
+	// StorageClass is the name of the storage class to be used if the volumeType is "storageClass"
+	StorageClass string `json:"storageClass,omitempty"`
+
+	// VolumeSize is the desired size of the volume. This satisfies to standard Kubernetes *resource.Quantity syntax.
+	// Examples: 40.5Gi, 30M, etc. are valid
+	// +optional
+	VolumeSize *resource.Quantity `json:"volumeSize,omitempty"`
+
+	// TODO: Implement a control in the admission webhook to check validity of BootOrders across volumes.
+	// No duplicate values + exact sequence corresponding to total number of volumes
+
+	// BootOrder is an integer that determines the order of priority of volumes for booting the VM
+	// If absent, the sequence with which volumes appear in the manifest will be used.
+	// +optional
+	BootOrder int `json:"bootOrder,omitempty"`
+}
+
+// VolumeType is an enum string. It can only take the values: "storageClass" or "image"
+// +kubebuilder:Validation:Enum:=storageClass,image
+type VolumeType string
 
 // HarvesterMachineStatus defines the observed state of HarvesterMachine
 type HarvesterMachineStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	Ready string `json:"ready"`
+
+	Conditions []capiv1beta1.Condition `json:"conditions,omitempty"`
 
 	FailureReason  string                       `json:"failureReason,omitempty"`
 	FailureMessage string                       `json:"failureMessage,omitempty"`
