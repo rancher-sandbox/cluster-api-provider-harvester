@@ -19,3 +19,11 @@
 
 # Go workspace file
 go.work
+
+# compilation targets
+bin/
+out/
+
+# Tilt
+tilt-provider.json
+.tiltbuild/
