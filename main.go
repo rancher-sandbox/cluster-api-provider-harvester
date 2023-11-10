@@ -32,8 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	infrastructurev1alpha1 "github.com/belgaied2/cluster-api-provider-harvester/api/v1alpha1"
-	"github.com/belgaied2/cluster-api-provider-harvester/controllers"
+	infrastructurev1alpha1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -91,17 +91,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup the context to be used for the controllers and manager
+	ctx := ctrl.SetupSignalHandler()
+
 	if err = (&controllers.HarvesterMachineReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HarvesterMachine")
 		os.Exit(1)
 	}
 	if err = (&controllers.HarvesterClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HarvesterCluster")
 		os.Exit(1)
 	}

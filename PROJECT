@@ -2,7 +2,7 @@ domain: cluster.x-k8s.io
 layout:
 - go.kubebuilder.io/v3
 projectName: caph
-repo: github.com/belgaied2/cluster-api-provider-harvester
+repo: github.com/rancher-sandbox/cluster-api-provider-harvester
 resources:
 - api:
     crdVersion: v1
@@ -11,7 +11,7 @@ resources:
   domain: cluster.x-k8s.io
   group: infrastructure
   kind: HarvesterMachine
-  path: github.com/belgaied2/cluster-api-provider-harvester/api/v1alpha1
+  path: github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1
   version: v1alpha1
 - api:
     crdVersion: v1
@@ -20,6 +20,6 @@ resources:
   domain: cluster.x-k8s.io
   group: infrastructure
   kind: HarvesterCluster
-  path: github.com/belgaied2/cluster-api-provider-harvester/api/v1alpha1
+  path: github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1
   version: v1alpha1
 version: "3"

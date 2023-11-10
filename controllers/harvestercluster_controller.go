@@ -46,13 +46,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	infrav1 "github.com/belgaied2/cluster-api-provider-harvester/api/v1alpha1"
 	"github.com/pkg/errors"
+	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
-	configSecretDataKey       = "kubeconfig"
 	harvesterNamespace        = "harvester-system"
 	harvesterDeploymentName   = "harvester"
 	availableConditionType    = "Available"
@@ -75,18 +75,9 @@ type HarvesterClusterReconciler struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status;machinesets;machines;machines/status;machinepools;machinepools/status,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status;machinesets;machines;machines/status;machinepools;machinepools/status,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the HarvesterCluster object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
 func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling HarvesterCluster", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
@@ -122,6 +113,12 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 	}
 
+	// Add finalizer first if not exist to avoid the race condition between init and delete
+	if !controllerutil.ContainsFinalizer(&cluster, infrav1.ClusterFinalizer) {
+		controllerutil.AddFinalizer(&cluster, infrav1.ClusterFinalizer)
+		return ctrl.Result{}, nil
+	}
+
 	hvRESTConfig := &rest.Config{}
 
 	if hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, &cluster); err != nil {
@@ -141,7 +138,7 @@ const (
 )
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *HarvesterClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *HarvesterClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &infrav1.HarvesterCluster{}, secretIdField, func(obj client.Object) []string {
 
@@ -218,15 +215,10 @@ func isHarvesterAvailable(conditions []appsv1.DeploymentCondition) bool {
 func (r *HarvesterClusterReconciler) ReconcileNormal(ctx context.Context, cluster *infrav1.HarvesterCluster, hvRESTConfig *rest.Config) (res ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
 	logger = logger.WithValues("cluster-name", cluster.Name, "cluster-namespace", cluster.Namespace)
+	ctx = ctrl.LoggerInto(ctx, logger)
 
 	// Initializing return values
 	res = ctrl.Result{}
-
-	// Add finalizer first if not exist to avoid the race condition between init and delete
-	if !controllerutil.ContainsFinalizer(cluster, infrav1.ClusterFinalizer) {
-		controllerutil.AddFinalizer(cluster, infrav1.ClusterFinalizer)
-		return ctrl.Result{}, nil
-	}
 
 	ownedCPHarvesterMachines, err := r.getOwnedCPHarversterMachines(ctx, cluster)
 	if err != nil {
@@ -264,10 +256,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(ctx context.Context, cluste
 func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Context, cluster *infrav1.HarvesterCluster) (*rest.Config, error) {
 	logger := log.FromContext(ctx)
 
-	secret := &apiv1.Secret{}
-	secretKey := client.ObjectKey(cluster.Spec.IdentitySecret)
-
-	err := r.Get(ctx, secretKey, secret, &client.GetOptions{})
+	secret, err := locutil.GetSecretFromHarvesterCluster(ctx, cluster, r.Client)
 	if (err != nil || secret == &apiv1.Secret{}) {
 
 		cluster.Status = infrav1.HarvesterClusterStatus{
@@ -276,14 +265,14 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 			Ready:          false,
 		}
 
-		if err := r.Status().Update(ctx, cluster, &client.UpdateOptions{}); err != nil {
+		if err := r.Status().Update(ctx, cluster); err != nil {
 			return &rest.Config{}, errors.Wrapf(err, "failed to update status")
 		}
 
 		return &rest.Config{}, errors.Wrapf(err, "unable to find the IdentitySecret for Harvester %s", ctx)
 	}
 
-	kubeconfig := secret.Data[configSecretDataKey]
+	kubeconfig := secret.Data[locutil.ConfigSecretDataKey]
 
 	var config *clientcmdapi.Config
 	if config, err = clientcmd.Load(kubeconfig); err != nil {
@@ -293,20 +282,12 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 			Ready:          false,
 		}
 
-		if err := r.Status().Update(ctx, cluster, &client.UpdateOptions{}); err != nil {
+		if err := r.Status().Update(ctx, cluster); err != nil {
 			return &rest.Config{}, errors.Wrapf(err, "failed to update status")
 		}
 
 		return &rest.Config{}, errors.Wrapf(err, "unable to Load a valid Harvester config from the referenced Secret %s", ctx)
 	}
-
-	//	secretVersion := secret.ResourceVersion
-	//logger.Info("Secret ResourceVersion is:" + secretVersion)
-
-	//if cluster.Annotations == nil {
-	//cluster.Annotations = make(map[string]string)
-	//}
-	//cluster.Annotations["harvester.secret.version"] = secretVersion
 
 	logger.Info("Setting Server value from Kubeconfig if needed..")
 	configCluster := config.Clusters[config.CurrentContext]

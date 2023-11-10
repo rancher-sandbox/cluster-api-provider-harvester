@@ -1,14 +1,24 @@
 package util
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
 	"net/http"
 
+	hvclientset "github.com/harvester/harvester/pkg/generated/clientset/versioned"
 	"github.com/pkg/errors"
+	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	ConfigSecretDataKey = "kubeconfig"
 )
 
 func Healthcheck(config *clientcmdapi.Config) (bool, error) {
@@ -64,4 +74,22 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	}
 
 	return false, fmt.Errorf("healthcheck did not respond with 'ok' string")
+}
+
+func GetSecretFromHarvesterCluster(ctx context.Context, cluster *infrav1.HarvesterCluster, cl client.Client) (*corev1.Secret, error) {
+	secret := &corev1.Secret{}
+	secretKey := client.ObjectKey(cluster.Spec.IdentitySecret)
+
+	err := cl.Get(ctx, secretKey, secret, &client.GetOptions{})
+	return secret, err
+}
+
+func GetHarvesterClientFromSecret(secret *corev1.Secret) (*hvclientset.Clientset, error) {
+	hvRESTConfig, err := clientcmd.RESTConfigFromKubeConfig(secret.Data[ConfigSecretDataKey])
+	if err != nil {
+		return &hvclientset.Clientset{}, err
+	}
+
+	return hvclientset.NewForConfig(hvRESTConfig)
+
 }
