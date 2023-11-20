@@ -44,7 +44,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/pkg/errors"
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
@@ -157,14 +156,14 @@ func (r *HarvesterClusterReconciler) SetupWithManager(ctx context.Context, mgr c
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.HarvesterCluster{}).
 		Watches(
-			&source.Kind{Type: &apiv1.Secret{}},
+			&apiv1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForSecret),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
 		Complete(r)
 }
 
-func (r *HarvesterClusterReconciler) findObjectsForSecret(secret client.Object) []reconcile.Request {
+func (r *HarvesterClusterReconciler) findObjectsForSecret(ctx context.Context, secret client.Object) []reconcile.Request {
 	attachedClusters := &infrav1.HarvesterClusterList{}
 	listOps := &client.ListOptions{
 		FieldSelector: fields.OneTermEqualSelector(secretIdField, secret.GetName()),

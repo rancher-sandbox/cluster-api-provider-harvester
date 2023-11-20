@@ -8,9 +8,9 @@ import (
 	"io"
 	"net/http"
 
-	hvclientset "github.com/harvester/harvester/pkg/generated/clientset/versioned"
 	"github.com/pkg/errors"
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	hvclientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
