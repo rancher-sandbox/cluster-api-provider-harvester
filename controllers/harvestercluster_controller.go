@@ -118,7 +118,7 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	hvRESTConfig := &rest.Config{}
+	var hvRESTConfig *rest.Config
 
 	if hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, &cluster); err != nil {
 		return ctrl.Result{RequeueAfter: 3 * time.Minute}, err

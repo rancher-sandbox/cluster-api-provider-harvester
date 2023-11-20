@@ -29,6 +29,8 @@ metadata:
   name: ${CLUSTER_NAME}-hv
   namespace: ${CLUSTER_NAMESPACE}
 spec:
+  loadBalancerConfig:
+    ipamType: dhcp
   server: 
   identitySecret: 
     namespace: ${CLUSTER_NAMESPACE}
