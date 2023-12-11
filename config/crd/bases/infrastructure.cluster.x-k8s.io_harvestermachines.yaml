@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.2
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.13.0
   name: harvestermachines.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -253,6 +252,10 @@ spec:
                 description: ProviderID will be the ID of the machine used by the
                   controller. This will be "<harvester vm namespace>-<harvester vm
                   name>"
+                type: string
+              sshKeyPair:
+                description: SSHKeyPair is the name of the SSH key pair to use for
+                  SSH access to the VM (this keyPair should be created in Harvester)
                 type: string
               sshUser:
                 description: SSHUser is the user that should be used to connect to
@@ -594,6 +597,7 @@ spec:
             - cpu
             - memory
             - networks
+            - sshKeyPair
             - sshUser
             - volumes
             type: object
@@ -666,10 +670,8 @@ spec:
               failureReason:
                 type: string
               ready:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
-                type: string
+                description: Ready is true when the provider resource is ready.
+                type: boolean
             required:
             - ready
             type: object

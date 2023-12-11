@@ -54,6 +54,9 @@ type HarvesterMachineSpec struct {
 	// SSHUser is the user that should be used to connect to the VMs using SSH.
 	SSHUser string `json:"sshUser"`
 
+	//SSHKeyPair is the name of the SSH key pair to use for SSH access to the VM (this keyPair should be created in Harvester)
+	SSHKeyPair string `json:"sshKeyPair"`
+
 	// Volumes is a list of Volumes to attach to the VM
 	Volumes []Volume `json:"volumes"`
 
@@ -101,9 +104,8 @@ type VolumeType string
 
 // HarvesterMachineStatus defines the observed state of HarvesterMachine
 type HarvesterMachineStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	Ready string `json:"ready"`
+	// Ready is true when the provider resource is ready.
+	Ready bool `json:"ready"`
 
 	Conditions []capiv1beta1.Condition `json:"conditions,omitempty"`
 

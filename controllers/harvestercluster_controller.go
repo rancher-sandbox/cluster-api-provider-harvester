@@ -92,9 +92,13 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		logger.Error(err, "Error happened when getting harvestercluster", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
 		return ctrl.Result{}, err
 	}
+	patchHelper, err := patch.NewHelper(&cluster, r.Client)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	defer func() {
-		if err := r.Patch(ctx, &cluster); err != nil {
+		if err := patchHelper.Patch(ctx, &cluster); err != nil {
 			clusterString := cluster.Namespace + "/" + cluster.Name
 			logger.Error(err, "unable to patch", "cluster", clusterString)
 		}
@@ -107,9 +111,8 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if clusterOwner == nil {
-		err = fmt.Errorf("ClusterOwner is nil")
-		logger.Error(err, "ClusterOwner is nil")
-		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+		logger.Info("ClusterOwner not yet set, waiting for CAPI to set it")
+		return ctrl.Result{}, nil
 	}
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
@@ -118,17 +121,12 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
-	var hvRESTConfig *rest.Config
-
-	if hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, &cluster); err != nil {
-		return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
-	}
 	// Handling DeletionTimestamp to decide if it is a Deletion or a Normal reconcile
-	if cluster.DeletionTimestamp.IsZero() {
-		return r.ReconcileDelete(ctx, &cluster, hvRESTConfig)
+	if !cluster.DeletionTimestamp.IsZero() {
+		return r.ReconcileDelete(ctx, &cluster)
 	}
 
-	return r.ReconcileNormal(ctx, &cluster, hvRESTConfig)
+	return r.ReconcileNormal(ctx, &cluster)
 
 }
 
@@ -187,18 +185,6 @@ func (r *HarvesterClusterReconciler) findObjectsForSecret(ctx context.Context, s
 	return requests
 }
 
-func (r *HarvesterClusterReconciler) Patch(ctx context.Context, cluster *infrav1.HarvesterCluster) error {
-	patchHelper, err := patch.NewHelper(cluster, r.Client)
-	if err != nil {
-		return err
-	}
-
-	if err := patchHelper.Patch(ctx, cluster); err != nil {
-		return errors.Wrapf(err, "couldn't patch harvester cluster %q", cluster.Name)
-	}
-	return nil
-}
-
 // isHarvesterAvailable is a function that parses all conditions for the Available type and Status == True.
 // The function return a bool true if the AvailableCondition has a status true, and false in all other cases
 func isHarvesterAvailable(conditions []appsv1.DeploymentCondition) bool {
@@ -211,14 +197,16 @@ func isHarvesterAvailable(conditions []appsv1.DeploymentCondition) bool {
 }
 
 // ReconcileNormal is the reconciliation function when not deleting the HarvesterCluster instance
-func (r *HarvesterClusterReconciler) ReconcileNormal(ctx context.Context, cluster *infrav1.HarvesterCluster, hvRESTConfig *rest.Config) (res ctrl.Result, err error) {
+func (r *HarvesterClusterReconciler) ReconcileNormal(ctx context.Context, cluster *infrav1.HarvesterCluster) (res ctrl.Result, err error) {
 	logger := log.FromContext(ctx)
-	logger = logger.WithValues("cluster-name", cluster.Name, "cluster-namespace", cluster.Namespace)
-	ctx = ctrl.LoggerInto(ctx, logger)
 
+	var hvRESTConfig *rest.Config
+
+	if hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, cluster); err != nil {
+		return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
+	}
 	// Initializing return values
 	res = ctrl.Result{}
-
 	ownedCPHarvesterMachines, err := r.getOwnedCPHarversterMachines(ctx, cluster)
 	if err != nil {
 		logger.Error(err, "could not get ownerCPMachines")
@@ -228,6 +216,14 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(ctx context.Context, cluste
 	if len(ownedCPHarvesterMachines) == 0 {
 		logger.Info("no ControlPlane Machines exist yet for cluster, skipping Load Balancer creation and Requeing ...")
 		res = ctrl.Result{RequeueAfter: 1 * time.Minute}
+		cluster.Spec.ControlPlaneEndpoint = v1beta1.APIEndpoint{
+			Host: "127.0.0.1",
+			Port: 6443,
+		}
+		cluster.Status = infrav1.HarvesterClusterStatus{
+			Ready: true,
+		}
+		return
 	}
 
 	lbIP, err := createLoadBalancerIfNotExists(cluster, hvRESTConfig, ownedCPHarvesterMachines)
@@ -255,7 +251,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(ctx context.Context, cluste
 func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Context, cluster *infrav1.HarvesterCluster) (*rest.Config, error) {
 	logger := log.FromContext(ctx)
 
-	secret, err := locutil.GetSecretFromHarvesterCluster(ctx, cluster, r.Client)
+	secret, err := locutil.GetSecretForHarvesterConfig(ctx, cluster, r.Client)
 	if (err != nil || secret == &apiv1.Secret{}) {
 
 		cluster.Status = infrav1.HarvesterClusterStatus{
@@ -296,6 +292,7 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if cluster.Spec.Server == "" || cluster.Spec.Server != configServer {
 		cluster.Spec.Server = configServer
 	}
+	logger.Info("Value for Server is now set to " + cluster.Spec.Server)
 
 	hvRESTConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
@@ -320,6 +317,7 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 		logger.Error(err, "harvester cluster is unavailable")
 		return &rest.Config{}, err
 	}
+
 	return hvRESTConfig, nil
 }
 
@@ -434,38 +432,47 @@ func (r *HarvesterClusterReconciler) getOwnedCPHarversterMachines(ctx context.Co
 }
 
 // ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it
-func (r *HarvesterClusterReconciler) ReconcileDelete(ctx context.Context, cluster *infrav1.HarvesterCluster, hvRESTConfig *rest.Config) (ctrl.Result, error) {
+func (r *HarvesterClusterReconciler) ReconcileDelete(ctx context.Context, cluster *infrav1.HarvesterCluster) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	lbClient, err := lbclient.NewForConfig(hvRESTConfig)
-	if err != nil {
-		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
-	}
+	logger.Info("Deleting Harvester Cluster ...", "cluster-name", cluster.Name, "cluster-namespace", cluster.Namespace)
 
 	ownedCPHarvesterMachines, err := r.getOwnedCPHarversterMachines(ctx, cluster)
 	if err != nil {
 		return ctrl.Result{RequeueAfter: 10 * time.Minute}, errors.Wrapf(err, "unable to determine target namespace of load balancers and IP Pools because no ControlPlane machines were found")
 	}
 
-	targetVMNamespace := ownedCPHarvesterMachines[0].Spec.TargetNamespace
+	if len(ownedCPHarvesterMachines) != 0 {
+		var hvRESTConfig *rest.Config
 
-	err = lbClient.LoadbalancerV1beta1().LoadBalancers(targetVMNamespace).Delete(context.TODO(), cluster.Namespace+"-"+cluster.Name+"-lb", v1.DeleteOptions{})
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "unable to delete Load Balancer in Harvester")
+		if hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, cluster); err != nil {
 			return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
 		}
-		logger.Info("no Load Balancer to be deleted, skipping ...")
-	}
-
-	err = lbClient.LoadbalancerV1beta1().IPPools().Delete(context.TODO(), cluster.Namespace+"-"+cluster.Name+"-ip-pool", v1.DeleteOptions{})
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "unable to delete generated IP Pool in Harvester")
-			return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
+		lbClient, err := lbclient.NewForConfig(hvRESTConfig)
+		if err != nil {
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 		}
-		logger.Info("no IP Pool to be deleted, skipping ...")
+		targetVMNamespace := ownedCPHarvesterMachines[0].Spec.TargetNamespace
+
+		err = lbClient.LoadbalancerV1beta1().LoadBalancers(targetVMNamespace).Delete(context.TODO(), cluster.Namespace+"-"+cluster.Name+"-lb", v1.DeleteOptions{})
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				logger.Error(err, "unable to delete Load Balancer in Harvester")
+				return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
+			}
+			logger.Info("no Load Balancer to be deleted, skipping ...")
+		}
+
+		err = lbClient.LoadbalancerV1beta1().IPPools().Delete(context.TODO(), cluster.Namespace+"-"+cluster.Name+"-ip-pool", v1.DeleteOptions{})
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				logger.Error(err, "unable to delete generated IP Pool in Harvester")
+				return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
+			}
+			logger.Info("no IP Pool to be deleted, skipping ...")
+		}
 	}
 
+	logger.Info("Removing finalizer from HarvesterCluster ...", "cluster-name", cluster.Name, "cluster-namespace", cluster.Namespace)
 	controllerutil.RemoveFinalizer(cluster, infrav1.ClusterFinalizer)
 
 	return ctrl.Result{}, nil

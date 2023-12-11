@@ -37,6 +37,7 @@ import (
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
 type Interface interface {
@@ -71,6 +72,15 @@ type Clientset struct {
 	snapshotV1          *snapshotv1.SnapshotV1Client
 	storageV1           *storagev1.StorageV1Client
 	upgradeV1           *upgradev1.UpgradeV1Client
+	corev1							*corev1.CoreV1Client
+}
+
+// CoreV1 retrieves the CoreV1Client
+func (c *Clientset) CoreV1() corev1.CoreV1Interface {
+	if c == nil {
+		return nil
+	}
+	return c.corev1
 }
 
 // CatalogV1 retrieves the CatalogV1Client
@@ -230,6 +240,12 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+
+	cs.corev1, err = corev1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
 	return &cs, nil
 }
 
@@ -258,6 +274,7 @@ func New(c rest.Interface) *Clientset {
 	cs.snapshotV1 = snapshotv1.New(c)
 	cs.storageV1 = storagev1.New(c)
 	cs.upgradeV1 = upgradev1.New(c)
+	cs.corev1 = corev1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

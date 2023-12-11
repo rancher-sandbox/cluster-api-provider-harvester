@@ -14,10 +14,10 @@ spec:
       cidrBlocks:
       - 192.168.0.0/16
     serviceDomain: cluster.local
-  #controlPlaneRef:
-  #  apiVersion: controlplane.cluster.x-k8s.io/v1beta1
-  #  kind: KubeadmControlPlane
-  #  name: ${CLUSTER_NAME}-control-plane
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: KubeadmControlPlane
+    name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
     kind: HarvesterCluster
@@ -50,7 +50,8 @@ metadata:
   namespace: ${CLUSTER_NAMESPACE}
   name: ${CLUSTER_NAME}-control-plane
 spec:
-  kubeadmConfigSpec: {}
+  kubeadmConfigSpec: 
+    initConfiguration: {}
   machineTemplate:
     infrastructureRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
@@ -76,6 +77,6 @@ spec:
       - untagged
       volumes:
       - volumeType: image 
-        imageName: jammy-server-cloudimg-amd64.img
+        imageName: ${VM_IMAGE_NAME}
         volumeSize: 50Gi
         bootOrder: 0
