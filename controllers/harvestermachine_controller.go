@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
@@ -32,7 +34,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/strings/slices"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
@@ -79,10 +82,6 @@ const (
 	listImagesSelector     = "spec.displayName"
 )
 
-var (
-	cloudInitListSections = []string{"package_update", "packages", "runcmd", "ssh_authorized_keys", "groups", "users", "write_files", "bootcmd"}
-)
-
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines/finalizers,verbs=update
@@ -115,12 +114,12 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	defer func() {
 
 		// Always attempt to Patch the HarvesterMachine object and status after each reconciliation.
-		if err := r.Client.Status().Update(ctx, hvMachine); err != nil {
-			logger.Error(err, "failed to update HarvesterMachine status")
-			if rerr == nil {
-				rerr = err
-			}
-		}
+		//if err := r.Client.Status().Update(ctx, hvMachine); err != nil {
+		//logger.Error(err, "failed to update HarvesterMachine status")
+		//if rerr == nil {
+		//rerr = err
+		//}
+		//}
 
 		if err := patchHelper.Patch(ctx,
 			hvMachine,
@@ -253,10 +252,10 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("found VM: ", "vm", existingVM)
+	logger.Info("found VM: " + existingVM.Namespace + "/" + existingVM.Name)
 
 	if (existingVM != nil) && (existingVM.Name == hvScope.HarvesterMachine.Name) {
-		logger.Info("VM already exists in Harvester, doing nothing.")
+		logger.Info("VM already exists in Harvester, updating IP addresses.")
 
 		if *existingVM.Spec.Running == true {
 			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
@@ -267,7 +266,28 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 			hvScope.HarvesterMachine.Status.Addresses = ipAddresses
 			if len(ipAddresses) > 0 {
 				hvScope.HarvesterMachine.Status.Ready = true
+			} else {
+				hvScope.HarvesterMachine.Status.Ready = false
+				return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 			}
+
+		}
+
+		if hvScope.HarvesterMachine.Spec.ProviderID == "" {
+			providerID, err := getProviderIDFromWorkloadCluster(hvScope)
+			if err != nil {
+				logger.Error(err, "unable to get providerID from workload cluster")
+				return ctrl.Result{}, err
+			}
+
+			if providerID != "" {
+				hvScope.HarvesterMachine.Spec.ProviderID = providerID
+				hvScope.HarvesterMachine.Status.Ready = true
+			} else {
+				hvScope.HarvesterMachine.Status.Ready = false
+				return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+			}
+
 		}
 
 		return ctrl.Result{}, nil
@@ -278,31 +298,85 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 		logger.Error(err, "unable to create VM from HarvesterMachine information")
 	}
 
-	//TODO: Set the `spec.ProviderID`
+	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+}
 
-	return ctrl.Result{}, nil
+func getProviderIDFromWorkloadCluster(hvScope Scope) (string, error) {
+	var workloadConfig *rest.Config
+	workloadConfig, err := getWorkloadClusterConfig(hvScope)
+	if err != nil {
+		return "", errors.Wrap(err, "unable to get workload cluster config from Management Cluster")
+	}
+
+	ipPattern := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+
+	// replace the cluster API endpoint in the workload cluster config with the Machine IP Address
+	workloadConfig.Host = ipPattern.ReplaceAllString(workloadConfig.Host, hvScope.HarvesterMachine.Status.Addresses[0].Address)
+
+	// Get Kubernetes client for workload cluster
+	workloadClient, err := client.New(workloadConfig, client.Options{})
+	if err != nil {
+		return "", errors.Wrap(err, "unable to get workload cluster client from Kubeconfig")
+	}
+
+	// Get ProviderID from the Node object in the workload cluster
+	node := &v1.Node{}
+	err = workloadClient.Get(hvScope.Ctx, types.NamespacedName{Name: hvScope.HarvesterMachine.Name}, node)
+	if err != nil {
+		return "", err
+	}
+
+	if node.Spec.ProviderID == "" {
+		return "harvester://" + hvScope.HarvesterMachine.Spec.TargetNamespace + "/" + hvScope.HarvesterMachine.Name, nil
+	}
+
+	return node.Spec.ProviderID, nil
+}
+
+// getWorkloadClusterConfig returns a rest.Config for the workload cluster from a secret in the management cluster
+func getWorkloadClusterConfig(hvScope Scope) (*rest.Config, error) {
+	// Get the workload cluster kubeconfig secret
+	workloadClusterKubeconfigSecret := &v1.Secret{}
+	err := hvScope.ReconcilerClient.Get(hvScope.Ctx, types.NamespacedName{
+		Namespace: hvScope.Cluster.Namespace,
+		Name:      hvScope.Cluster.Name + "-kubeconfig",
+	}, workloadClusterKubeconfigSecret)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to get workload cluster kubeconfig secret")
+	}
+
+	// Get the kubeconfig data from the secret
+	kubeconfigData, ok := workloadClusterKubeconfigSecret.Data["value"]
+	if !ok {
+		return nil, fmt.Errorf("no kubeconfig data found in secret %s", workloadClusterKubeconfigSecret.Name)
+	}
+
+	// Create a rest.Config from the kubeconfig data
+	workloadConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfigData)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to get workload cluster config from kubeconfig data")
+	}
+
+	return workloadConfig, nil
 }
 
 func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harvclient.Clientset) ([]clusterv1.MachineAddress, error) {
 
 	var ipAddresses []clusterv1.MachineAddress
 
-	vmInstances, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).List(context.TODO(), metav1.ListOptions{})
+	vmInstance, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).Get(context.TODO(), existingVM.Name, metav1.GetOptions{})
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return ipAddresses, fmt.Errorf("no VM instance found for VM %s", existingVM.Name)
+		}
 		return ipAddresses, err
 	}
 
-	if len(vmInstances.Items) == 0 {
-		return ipAddresses, fmt.Errorf("no VM instances found for VM %s", existingVM.Name)
-	}
-
-	for _, vmInstance := range vmInstances.Items {
-		for _, nic := range vmInstance.Status.Interfaces {
-			ipAddresses = append(ipAddresses, clusterv1.MachineAddress{
-				Type:    clusterv1.MachineExternalIP,
-				Address: nic.IP,
-			})
-		}
+	for _, nic := range vmInstance.Status.Interfaces {
+		ipAddresses = append(ipAddresses, clusterv1.MachineAddress{
+			Type:    clusterv1.MachineExternalIP,
+			Address: nic.IP,
+		})
 	}
 
 	return ipAddresses, nil
@@ -313,6 +387,7 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 
 	vmLabels := map[string]string{
 		"harvesterhci.io/creator": "harvester",
+		cpVMLabelKey:              cpVMLabelValuePrefix + "-" + hvScope.Cluster.Name,
 	}
 	vmiLabels := vmLabels
 
@@ -471,7 +546,7 @@ runcmd:
 		return
 	}
 
-	err, finalCloudInit := mergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitUserData)
+	finalCloudInit, err := locutil.MergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitUserData)
 	if err != nil {
 		err = fmt.Errorf("error during merging cloud init user data from Harvester: %w", err)
 		return
@@ -515,6 +590,7 @@ runcmd:
 			Annotations: map[string]string{
 				hvAnnotationDiskNames: "[\"" + pvcName + "\"]",
 				hvAnnotationSSH:       "[\"" + sshKey.GetName() + "\"]",
+				cpVMLabelKey:          cpVMLabelValuePrefix + "-" + hvScope.Cluster.Name,
 			},
 			Labels: vmiLabels,
 		},
@@ -620,36 +696,6 @@ runcmd:
 		},
 	}
 	return
-}
-
-func mergeCloudInitData(cloudInits ...string) (error, []byte) {
-	var resultCloudInit []byte
-
-	// resCloudInitObj will be an object that stores the result of merging all the cloud-init objects
-	resCloudInitObj := make(map[string]interface{})
-	for _, cloudInit := range cloudInits {
-		cloudInitObj := make(map[string]interface{})
-		err := json.Unmarshal([]byte(cloudInit), &cloudInitObj)
-		if err != nil {
-			return err, nil
-		}
-		for k, v := range cloudInitObj {
-			if slices.Contains(cloudInitListSections, k) {
-				listSection := resCloudInitObj[k].([]interface{})
-				listSection = append(listSection, v)
-				resCloudInitObj[k] = listSection
-			}
-
-		}
-	}
-
-	resultCloudInit, err := json.Marshal(resCloudInitObj)
-	resultCloudInit = []byte("#cloud-config\n" + string(resultCloudInit))
-	if err != nil {
-		return errors.Wrap(err, "unable to marshall cloud-init, input cloud-init is malformed"), nil
-	}
-
-	return nil, resultCloudInit
 }
 
 func getCloudInitData(hvScope Scope) (string, error) {
