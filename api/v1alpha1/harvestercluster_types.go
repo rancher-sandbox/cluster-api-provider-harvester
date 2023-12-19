@@ -30,12 +30,19 @@ const (
 const (
 	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester
 	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
-	// LoadBalancerReadyReason documents the reason why the load balancer is not ready
+	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready
 	LoadBalancerNotReadyReason = "LoadBalancerNotReady"
 	// LoadBalancerReadyMessage documents the message why the load balancer is not ready
 	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
 	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready
 	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
+)
+
+const (
+	// InitMachineCreatedCondition documents the status of the init machine in Harvester
+	InitMachineCreatedCondition clusterv1.ConditionType = "InitMachineCreated"
+	// InitMachineNotCreatedReason documents the reason why the init machine is not ready
+	InitMachineNotYetCreatedReason = "InitMachineNotYetCreated"
 )
 
 // HarvesterClusterSpec defines the desired state of HarvesterCluster
@@ -53,6 +60,9 @@ type HarvesterClusterSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+
+	// TargetNamespace is the namespace on the Harvester cluster where VMs, Load Balancers, etc. should be created
+	TargetNamespace string `json:"targetNamespace"`
 }
 
 type SecretKey struct {

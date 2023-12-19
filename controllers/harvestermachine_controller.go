@@ -20,7 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -40,6 +39,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -246,20 +246,22 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 		return ctrl.Result{}, nil
 	}
 	// check if Harvester has a machine with the same name and namespace
-	existingVM, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterMachine.Spec.TargetNamespace).Get(context.TODO(), hvScope.HarvesterMachine.Name, metav1.GetOptions{})
+	existingVM, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(context.TODO(), hvScope.HarvesterMachine.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		logger.Error(err, "unable to check existence of VM from Harvester")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("found VM: " + existingVM.Namespace + "/" + existingVM.Name)
-
 	if (existingVM != nil) && (existingVM.Name == hvScope.HarvesterMachine.Name) {
-		logger.Info("VM already exists in Harvester, updating IP addresses.")
+		logger.Info("VM " + existingVM.Namespace + "/" + existingVM.Name + " already exists in Harvester, updating IP addresses.")
 
 		if *existingVM.Spec.Running == true {
 			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
 			if err != nil {
+				if apierrors.IsNotFound(err) {
+					logger.Info("VM is not running yet, waiting for it to be ready")
+					return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+				}
 				logger.Error(err, "unable to get IP addresses from VMI in Harvester")
 				return ctrl.Result{}, err
 			}
@@ -274,10 +276,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 		}
 
 		if hvScope.HarvesterMachine.Spec.ProviderID == "" {
-			providerID, err := getProviderIDFromWorkloadCluster(hvScope)
+			providerID, err := getProviderIDFromWorkloadCluster(hvScope, existingVM)
 			if err != nil {
-				logger.Error(err, "unable to get providerID from workload cluster")
-				return ctrl.Result{}, err
+				logger.Info("ProviderID not set on Node in workload cluster, setting a new one in harvesterMachine")
 			}
 
 			if providerID != "" {
@@ -293,25 +294,34 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 		return ctrl.Result{}, nil
 	}
 
+	logger.Info("No existing VM found in Harvester, creating a new one ...")
 	_, err = createVMFromHarvesterMachine(hvScope)
 	if err != nil {
 		logger.Error(err, "unable to create VM from HarvesterMachine information")
 	}
 
+	// Patch the HarvesterCluster resource with the current conditions.
+	hvClusterCopy := hvScope.HarvesterCluster.DeepCopy()
+	conditions.MarkTrue(hvClusterCopy, infrav1.InitMachineCreatedCondition)
+	if err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster)); err != nil {
+		logger.Error(err, "failed to update HarvesterCluster Conditions with InitMachineCreatedCondition")
+	}
+
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 }
 
-func getProviderIDFromWorkloadCluster(hvScope Scope) (string, error) {
+func getProviderIDFromWorkloadCluster(hvScope Scope, existingVM *kubevirtv1.VirtualMachine) (string, error) {
 	var workloadConfig *rest.Config
 	workloadConfig, err := getWorkloadClusterConfig(hvScope)
 	if err != nil {
 		return "", errors.Wrap(err, "unable to get workload cluster config from Management Cluster")
 	}
 
-	ipPattern := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+	// TODO: remove the comments below, older, failing way to access workloadCluster
+	//ipPattern := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
 
 	// replace the cluster API endpoint in the workload cluster config with the Machine IP Address
-	workloadConfig.Host = ipPattern.ReplaceAllString(workloadConfig.Host, hvScope.HarvesterMachine.Status.Addresses[0].Address)
+	//workloadConfig.Host = ipPattern.ReplaceAllString(workloadConfig.Host, hvScope.HarvesterMachine.Status.Addresses[0].Address)
 
 	// Get Kubernetes client for workload cluster
 	workloadClient, err := client.New(workloadConfig, client.Options{})
@@ -327,7 +337,7 @@ func getProviderIDFromWorkloadCluster(hvScope Scope) (string, error) {
 	}
 
 	if node.Spec.ProviderID == "" {
-		return "harvester://" + hvScope.HarvesterMachine.Spec.TargetNamespace + "/" + hvScope.HarvesterMachine.Name, nil
+		return "harvester://" + string(existingVM.UID), nil
 	}
 
 	return node.Spec.ProviderID, nil
@@ -407,7 +417,7 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to find VM image reference in HarvesterMachine")
 	}
-	pvcAnnotation, err := buildPVCAnnotationFromImageID(&imageVolumes[0], pvcName, hvScope.HarvesterMachine.Spec.TargetNamespace, vmImage)
+	pvcAnnotation, err := buildPVCAnnotationFromImageID(&imageVolumes[0], pvcName, hvScope.HarvesterCluster.Spec.TargetNamespace, vmImage)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to generate PVC annotation on VM")
 	}
@@ -425,7 +435,7 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 	ubuntuVM := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vmName,
-			Namespace: hvScope.HarvesterMachine.Spec.TargetNamespace,
+			Namespace: hvScope.HarvesterCluster.Spec.TargetNamespace,
 			Annotations: map[string]string{
 
 				vmAnnotationPVC:        pvcAnnotation,
@@ -440,7 +450,7 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 		},
 	}
 
-	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterMachine.Spec.TargetNamespace).Create(context.TODO(), ubuntuVM, metav1.CreateOptions{})
+	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(context.TODO(), ubuntuVM, metav1.CreateOptions{})
 
 	if err != nil {
 		return hvCreatedMachine, err
@@ -518,7 +528,7 @@ func buildVMTemplate(hvScope Scope,
 	var sshKey *harvesterv1beta1.KeyPair
 
 	keyName := hvScope.HarvesterMachine.Spec.SSHKeyPair
-	sshKey, err = hvScope.HarvesterClient.HarvesterhciV1beta1().KeyPairs(hvScope.HarvesterMachine.Spec.TargetNamespace).Get(context.TODO(), keyName, metav1.GetOptions{})
+	sshKey, err = hvScope.HarvesterClient.HarvesterhciV1beta1().KeyPairs(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(context.TODO(), keyName, metav1.GetOptions{})
 	if err != nil {
 		err = fmt.Errorf("error during getting keypair from Harvester: %w", err)
 		return
@@ -556,7 +566,7 @@ runcmd:
 	cloudInitSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      hvScope.HarvesterMachine.Name + "-cloud-init",
-			Namespace: hvScope.HarvesterMachine.Spec.TargetNamespace,
+			Namespace: hvScope.HarvesterCluster.Spec.TargetNamespace,
 		},
 		Data: map[string][]byte{
 			//"userData": []byte(cloudInitUserData + cloudInitBase + cloudInitSSHSection),
@@ -567,14 +577,14 @@ runcmd:
 	hvScope.Logger.Info("cloud-init final value is " + string(finalCloudInit))
 
 	// check if secret already exists
-	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterMachine.Spec.TargetNamespace).Get(context.TODO(), hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
+	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(context.TODO(), hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			hvScope.Logger.V(2).Info("unable to get cloud-init secret, error was different than NotFound")
 		}
 	}
 
-	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterMachine.Spec.TargetNamespace).Create(context.TODO(), cloudInitSecret, metav1.CreateOptions{})
+	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(context.TODO(), cloudInitSecret, metav1.CreateOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create cloud-init secret")
 	}
@@ -725,8 +735,7 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 	logger := log.FromContext(hvScope.Ctx)
 	logger.Info("Deleting HarvesterMachine ...")
 
-	err := hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterMachine.Spec.TargetNamespace).Delete(hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.DeleteOptions{})
-
+	err := hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete cloud-init secret, error was different than NotFound")
@@ -734,19 +743,53 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 		}
 		logger.Info("cloud-init secret not found, doing nothing")
 	}
+	logger.V(5).Info("cloud-init secret deleted successfully: " + hvScope.HarvesterMachine.Name + "-cloud-init")
 
-	err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterMachine.Spec.TargetNamespace).Delete(hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
-
+	vm, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "unable to delete VM, error was different than NotFound")
+			logger.Error(err, "unable to get VM, error was different than NotFound")
 			return ctrl.Result{Requeue: true}, err
 		}
-		logger.Info("VM not found, doing nothing")
+		logger.Info("No VM found in Harvester that corresponds to HarvesterMachine...")
 	}
+	logger.V(5).Info("found VM: " + vm.Namespace + "/" + vm.Name)
 
-	if ok := controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer); !ok {
-		return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from HarvesterMachine %s/%s", infrav1.MachineFinalizer, hvScope.HarvesterMachine.Namespace, hvScope.HarvesterMachine.Name)
+	if (vm != &kubevirtv1.VirtualMachine{}) {
+		attachedPVCString := vm.Annotations[vmAnnotationPVC]
+		attachedPVCObj := []*v1.PersistentVolumeClaim{}
+		err = json.Unmarshal([]byte(attachedPVCString), &attachedPVCObj)
+		if err != nil {
+			logger.Error(err, "unable to unmarshal PVC annotation from VM")
+			return ctrl.Result{Requeue: true}, err
+		}
+
+		err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
+
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				logger.Error(err, "unable to delete VM, error was different than NotFound")
+				return ctrl.Result{Requeue: true}, err
+			}
+			logger.Info("VM not found, doing nothing")
+		}
+		logger.V(5).Info("VM deleted successfully: " + hvScope.HarvesterMachine.Name)
+
+		for _, pvc := range attachedPVCObj {
+			err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(hvScope.Ctx, pvc.Name, metav1.DeleteOptions{})
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					logger.Error(err, "unable to delete PVC, error was different than NotFound")
+					return ctrl.Result{Requeue: true}, err
+				}
+				logger.Info("attached PVC not found, continuing")
+			}
+			logger.V(5).Info("PVC deleted successfully: " + pvc.Name)
+		}
+
+		if ok := controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer); !ok {
+			return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from HarvesterMachine %s/%s", infrav1.MachineFinalizer, hvScope.HarvesterMachine.Namespace, hvScope.HarvesterMachine.Name)
+		}
 	}
 
 	return ctrl.Result{}, nil

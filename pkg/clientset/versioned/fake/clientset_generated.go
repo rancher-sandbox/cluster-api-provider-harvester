@@ -49,6 +49,10 @@ import (
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
+	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
+	fakelbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -95,6 +99,7 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 func (c *Clientset) Tracker() testing.ObjectTracker {
 	return c.tracker
 }
+
 
 var (
 	_ clientset.Interface = &Clientset{}
@@ -159,4 +164,14 @@ func (c *Clientset) StorageV1() storagev1.StorageV1Interface {
 // UpgradeV1 retrieves the UpgradeV1Client
 func (c *Clientset) UpgradeV1() upgradev1.UpgradeV1Interface {
 	return &fakeupgradev1.FakeUpgradeV1{Fake: &c.Fake}
+}
+
+// CoreV1 retrieves the CoreV1Client
+func (c *Clientset) CoreV1() corev1.CoreV1Interface {
+	return &fakecorev1.FakeCoreV1{Fake: &c.Fake}
+}
+
+// LoadbalancerV1beta1 retrieves the LoadbalancerV1beta1Client
+func (c *Clientset) LoadbalancerV1beta1() lbv1.LoadbalancerV1beta1Interface {
+	return &fakelbv1.FakeLoadbalancerV1beta1{Fake: &c.Fake}
 }

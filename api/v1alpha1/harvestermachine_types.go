@@ -31,11 +31,6 @@ const (
 
 // HarvesterMachineSpec defines the desired state of HarvesterMachine
 type HarvesterMachineSpec struct {
-	// TargetNamespace defines the Harvester namespacee in which the individual machines will be created.
-	// +optional
-	// +kubebuilder:default:=default
-	TargetNamespace string `json:"targetNamespace,omitempty"`
-
 	// ProviderID will be the ID of the machine used by the controller.
 	// This will be "<harvester vm namespace>-<harvester vm name>"
 	// +optional

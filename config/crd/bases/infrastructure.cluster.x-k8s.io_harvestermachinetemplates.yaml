@@ -292,11 +292,6 @@ spec:
                         description: SSHUser is the user that should be used to connect
                           to the VMs using SSH.
                         type: string
-                      targetNamespace:
-                        default: default
-                        description: TargetNamespace defines the Harvester namespacee
-                          in which the individual machines will be created.
-                        type: string
                       volumes:
                         description: Volumes is a list of Volumes to attach to the
                           VM

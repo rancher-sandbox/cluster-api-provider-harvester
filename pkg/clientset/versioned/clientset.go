@@ -38,6 +38,7 @@ import (
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
 )
 
 type Interface interface {
@@ -54,6 +55,8 @@ type Interface interface {
 	SnapshotV1() snapshotv1.SnapshotV1Interface
 	StorageV1() storagev1.StorageV1Interface
 	UpgradeV1() upgradev1.UpgradeV1Interface
+	CoreV1() corev1.CoreV1Interface
+	LoadbalancerV1beta1() lbv1.LoadbalancerV1beta1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -73,6 +76,7 @@ type Clientset struct {
 	storageV1           *storagev1.StorageV1Client
 	upgradeV1           *upgradev1.UpgradeV1Client
 	corev1							*corev1.CoreV1Client
+	lbv1beta1 				 *lbv1.LoadbalancerV1beta1Client
 }
 
 // CoreV1 retrieves the CoreV1Client
@@ -149,6 +153,11 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 		return nil
 	}
 	return c.DiscoveryClient
+}
+
+// LoadBalancerV1beta1 retrieves the LoadBalancerV1beta1Client
+func (c *Clientset) LoadbalancerV1beta1() lbv1.LoadbalancerV1beta1Interface {
+	return c.lbv1beta1
 }
 
 // NewForConfig creates a new Clientset for the given config.
@@ -242,6 +251,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	}
 
 	cs.corev1, err = corev1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
+	cs.lbv1beta1, err = lbv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
 	}

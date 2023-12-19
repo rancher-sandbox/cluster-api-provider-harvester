@@ -125,9 +125,14 @@ spec:
               server:
                 description: Server is the url to connect to Harvester.
                 type: string
+              targetNamespace:
+                description: TargetNamespace is the namespace on the Harvester cluster
+                  where VMs, Load Balancers, etc. should be created
+                type: string
             required:
             - identitySecret
             - loadBalancerConfig
+            - targetNamespace
             type: object
           status:
             description: HarvesterClusterStatus defines the observed state of HarvesterCluster
