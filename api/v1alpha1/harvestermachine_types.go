@@ -31,11 +31,6 @@ const (
 
 // HarvesterMachineSpec defines the desired state of HarvesterMachine
 type HarvesterMachineSpec struct {
-	// TargetNamespace defines the Harvester namespacee in which the individual machines will be created.
-	// +optional
-	// +kubebuilder:default:=default
-	TargetNamespace string `json:"targetNamespace,omitempty"`
-
 	// ProviderID will be the ID of the machine used by the controller.
 	// This will be "<harvester vm namespace>-<harvester vm name>"
 	// +optional
@@ -53,6 +48,9 @@ type HarvesterMachineSpec struct {
 
 	// SSHUser is the user that should be used to connect to the VMs using SSH.
 	SSHUser string `json:"sshUser"`
+
+	//SSHKeyPair is the name of the SSH key pair to use for SSH access to the VM (this keyPair should be created in Harvester)
+	SSHKeyPair string `json:"sshKeyPair"`
 
 	// Volumes is a list of Volumes to attach to the VM
 	Volumes []Volume `json:"volumes"`
@@ -101,9 +99,8 @@ type VolumeType string
 
 // HarvesterMachineStatus defines the observed state of HarvesterMachine
 type HarvesterMachineStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	Ready string `json:"ready"`
+	// Ready is true when the provider resource is ready.
+	Ready bool `json:"ready"`
 
 	Conditions []capiv1beta1.Condition `json:"conditions,omitempty"`
 

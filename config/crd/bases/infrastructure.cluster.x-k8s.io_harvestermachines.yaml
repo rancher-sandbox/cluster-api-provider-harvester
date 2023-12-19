@@ -254,14 +254,13 @@ spec:
                   controller. This will be "<harvester vm namespace>-<harvester vm
                   name>"
                 type: string
+              sshKeyPair:
+                description: SSHKeyPair is the name of the SSH key pair to use for
+                  SSH access to the VM (this keyPair should be created in Harvester)
+                type: string
               sshUser:
                 description: SSHUser is the user that should be used to connect to
                   the VMs using SSH.
-                type: string
-              targetNamespace:
-                default: default
-                description: TargetNamespace defines the Harvester namespacee in which
-                  the individual machines will be created.
                 type: string
               volumes:
                 description: Volumes is a list of Volumes to attach to the VM
@@ -594,6 +593,7 @@ spec:
             - cpu
             - memory
             - networks
+            - sshKeyPair
             - sshUser
             - volumes
             type: object
@@ -666,10 +666,8 @@ spec:
               failureReason:
                 type: string
               ready:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
-                type: string
+                description: Ready is true when the provider resource is ready.
+                type: boolean
             required:
             - ready
             type: object

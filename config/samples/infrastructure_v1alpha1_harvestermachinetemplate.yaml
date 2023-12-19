@@ -1,0 +1,12 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  labels:
+    app.kubernetes.io/name: harvestermachinetemplate
+    app.kubernetes.io/instance: harvestermachinetemplate-sample
+    app.kubernetes.io/part-of: caph
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: caph
+  name: harvestermachinetemplate-sample
+spec:
+  # TODO(user): Add fields here

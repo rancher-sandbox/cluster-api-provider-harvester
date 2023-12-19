@@ -27,6 +27,24 @@ const (
 	POOL             = "pool"
 )
 
+const (
+	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester
+	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
+	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready
+	LoadBalancerNotReadyReason = "LoadBalancerNotReady"
+	// LoadBalancerReadyMessage documents the message why the load balancer is not ready
+	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
+	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready
+	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
+)
+
+const (
+	// InitMachineCreatedCondition documents the status of the init machine in Harvester
+	InitMachineCreatedCondition clusterv1.ConditionType = "InitMachineCreated"
+	// InitMachineNotCreatedReason documents the reason why the init machine is not ready
+	InitMachineNotYetCreatedReason = "InitMachineNotYetCreated"
+)
+
 // HarvesterClusterSpec defines the desired state of HarvesterCluster
 type HarvesterClusterSpec struct {
 	// Server is the url to connect to Harvester.
@@ -42,6 +60,9 @@ type HarvesterClusterSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+
+	// TargetNamespace is the namespace on the Harvester cluster where VMs, Load Balancers, etc. should be created
+	TargetNamespace string `json:"targetNamespace"`
 }
 
 type SecretKey struct {
@@ -96,6 +117,10 @@ type HarvesterClusterStatus struct {
 	// FailureMessage is a full error message dump of the above failureReason
 	// +optional
 	FailureMessage string `json:"failureMessage,omitempty"`
+
+	// Conditions defines current service state of the Harvester cluster.
+	// +optional
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -156,4 +181,14 @@ type HarvesterClusterTemplateList struct {
 
 func init() {
 	SchemeBuilder.Register(&HarvesterCluster{}, &HarvesterClusterList{})
+}
+
+// GetConditions returns the set of conditions for this object.
+func (m *HarvesterCluster) GetConditions() clusterv1.Conditions {
+	return m.Status.Conditions
+}
+
+// SetConditions sets the conditions on this object.
+func (m *HarvesterCluster) SetConditions(conditions clusterv1.Conditions) {
+	m.Status.Conditions = conditions
 }
