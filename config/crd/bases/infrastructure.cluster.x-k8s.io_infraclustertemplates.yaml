@@ -103,6 +103,10 @@ spec:
                         description: LoadBalancerConfig describes how the load balancer
                           should be created in Harvester.
                         properties:
+                          description:
+                            description: Description is a description of the load
+                              balancer that should be created.
+                            type: string
                           ipPool:
                             description: IpPool defines a new IpPool that will be
                               added to Harvester. This field is mutually exclusive
@@ -141,6 +145,41 @@ spec:
                             - dhcp
                             - pool
                             type: string
+                          listeners:
+                            description: Listeners is a list of listeners that should
+                              be created on the load balancer.
+                            items:
+                              description: Listener is a description of a new Listener
+                                to be created on the Load Balancer
+                              properties:
+                                backendPort:
+                                  description: TargetPort is the port that the listener
+                                    should forward traffic to
+                                  format: int32
+                                  type: integer
+                                name:
+                                  description: Name is the name of the listener
+                                  type: string
+                                port:
+                                  description: Port is the port that the listener
+                                    should listen on
+                                  format: int32
+                                  type: integer
+                                protocol:
+                                  default: TCP
+                                  description: Protocol is the protocol that the listener
+                                    should use, either TCP or UDP
+                                  enum:
+                                  - TCP
+                                  - UDP
+                                  type: string
+                              required:
+                              - backendPort
+                              - name
+                              - port
+                              - protocol
+                              type: object
+                            type: array
                         required:
                         - ipamType
                         type: object

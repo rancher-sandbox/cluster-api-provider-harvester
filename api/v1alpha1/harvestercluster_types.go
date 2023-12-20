@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
@@ -86,6 +87,14 @@ type LoadBalancerConfig struct {
 	// IpPool defines a new IpPool that will be added to Harvester.
 	// This field is mutually exclusive with "IpPoolRef"
 	IpPool IpPool `json:"ipPool,omitempty"`
+
+	// Listeners is a list of listeners that should be created on the load balancer.
+	// +optional
+	Listeners []Listener `json:"listeners,omitempty"`
+
+	// Description is a description of the load balancer that should be created.
+	// +optional
+	Description string `json:"description,omitempty"`
 }
 
 // IPPAMType describes the way the LoadBalancer IP should be created, using DHCP or using an IPPool defined in Harvester.
@@ -104,6 +113,22 @@ type IpPool struct {
 	// Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet
 	// e.g. 172.17.1.1
 	Gateway string `json:"gateway"`
+}
+
+// Listener is a description of a new Listener to be created on the Load Balancer
+type Listener struct {
+	// Name is the name of the listener
+	Name string `json:"name"`
+
+	// Port is the port that the listener should listen on
+	Port int32 `json:"port"`
+
+	// Protocol is the protocol that the listener should use, either TCP or UDP
+	// +kubebuilder:validation:Enum:=TCP;UDP
+	Protocol corev1.Protocol `json:"protocol"`
+
+	// TargetPort is the port that the listener should forward traffic to
+	BackendPort int32 `json:"backendPort"`
 }
 
 // HarvesterClusterStatus defines the observed state of HarvesterCluster

@@ -425,6 +425,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 }
 
 func createLoadBalancerIfNotExists(ownerCluster *clusterv1.Cluster, cluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset, ownedCPMachines []infrav1.HarvesterMachine) error {
+
+	additionalListeners := getListenersFromAPI(cluster)
+
 	lbToCreate := &lbv1beta1.LoadBalancer{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      cluster.Namespace + "-" + cluster.Name + "-lb",
@@ -434,14 +437,12 @@ func createLoadBalancerIfNotExists(ownerCluster *clusterv1.Cluster, cluster *inf
 			Description:  "Load Balancer for cluster " + cluster.Name,
 			WorkloadType: "vm",
 			IPAM:         lbv1beta1.IPAM(cluster.Spec.LoadBalancerConfig.IPAMType),
-			Listeners: []lbv1beta1.Listener{
-				{
-					Name:        apiServerListener,
-					Port:        apiServerLBPort,
-					Protocol:    apiServerProtocol,
-					BackendPort: apiServerBackendPort,
-				},
-			},
+			Listeners: append(additionalListeners, lbv1beta1.Listener{
+				Name:        apiServerListener,
+				Port:        apiServerLBPort,
+				Protocol:    apiServerProtocol,
+				BackendPort: apiServerBackendPort,
+			}),
 			HealthCheck: &lbv1beta1.HealthCheck{
 				Port:             apiServerBackendPort,
 				SuccessThreshold: 1,
@@ -485,6 +486,20 @@ func createLoadBalancerIfNotExists(ownerCluster *clusterv1.Cluster, cluster *inf
 	}
 
 	return nil
+}
+
+// getListenersFromAPI is a function that gets the listeners from the HarvesterCluster Resource and returns them as a slice of lbv1beta1.Listener
+func getListenersFromAPI(cluster *infrav1.HarvesterCluster) []lbv1beta1.Listener {
+	var additionalListeners []lbv1beta1.Listener
+	for _, listener := range cluster.Spec.LoadBalancerConfig.Listeners {
+		additionalListeners = append(additionalListeners, lbv1beta1.Listener{
+			Name:        listener.Name,
+			Port:        listener.Port,
+			Protocol:    listener.Protocol,
+			BackendPort: listener.BackendPort,
+		})
+	}
+	return additionalListeners
 }
 
 func createIPPool(cluster *infrav1.HarvesterCluster, lbClient *lbclient.Clientset, machineNetwork string, targetVMNamespace string) (string, error) {
