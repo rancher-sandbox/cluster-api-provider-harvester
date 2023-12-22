@@ -31,3 +31,7 @@ tilt-provider.json
 # IDE files
 .idea/
 .vscode/
+
+
+# All environment variables should be added to .env file
+/**/*.env
