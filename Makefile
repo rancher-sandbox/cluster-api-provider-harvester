@@ -249,8 +249,6 @@ release-manifests: $(RELEASE_DIR) $(KUSTOMIZE) ## Build the manifests to publish
 	$(KUSTOMIZE) build config/default > $(RELEASE_DIR)/components.yaml
 	$(MAKE) set-manifest-image MANIFEST_IMG=$(IMG) MANIFEST_TAG=$(TAG) TARGET_RESOURCE="$(RELEASE_DIR)/components.yaml"
 	# Build control-plane-components.
-	$(KUSTOMIZE) build controlplane/config/default > $(RELEASE_DIR)/control-plane-components.yaml
-	$(MAKE) set-manifest-image MANIFEST_IMG=$(CONTROLPLANE_IMG) MANIFEST_TAG=$(TAG) TARGET_RESOURCE="$(RELEASE_DIR)/control-plane-components.yaml"
 
 	# Add metadata to the release artifacts
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
