@@ -31,7 +31,7 @@ ARCH ?= $(shell go env GOARCH)
 ALL_ARCH = amd64 arm arm64 ppc64le s390x
 REGISTRY ?= ghcr.io
 ORG ?= rancher-sandbox
-IMAGE_NAME ?= cluster-api-harvester-controller
+IMAGE_NAME ?= cluster-api-provider-harvester
 # Image URL to use all building/pushing image targets
 IMG ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME)
 
@@ -90,8 +90,7 @@ generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Lint the codebase
-	cd $(CAPBPR_DIR); $(GOLANGCI_LINT) run -v --timeout 5m $(GOLANGCI_LINT_EXTRA_ARGS)
-	cd $(CAPRKE2_DIR); $(GOLANGCI_LINT) run -v --timeout 5m $(GOLANGCI_LINT_EXTRA_ARGS)
+	$(GOLANGCI_LINT) run -v --timeout 5m $(GOLANGCI_LINT_EXTRA_ARGS)
 	./scripts/ci-lint-dockerfiles.sh $(HADOLINT_VER) $(HADOLINT_FAILURE_THRESHOLD)
 
 .PHONY: lint-dockerfiles
@@ -154,7 +153,7 @@ docker-push-all: $(addprefix docker-push-,$(ALL_ARCH))  ## Push all the architec
 docker-push-%:
 	$(MAKE) ARCH=$* docker-push
 
-.PHONY: docker-push-manifest-rke2
+.PHONY: docker-push-manifest
 docker-push-manifest: ## Push the multiarch manifest for the harvester docker images
 	## Minimum docker version 18.06.0 is required for creating and pushing manifest images.
 	docker manifest create --amend $(IMG):$(TAG) $(shell echo $(ALL_ARCH) | sed -e "s~[^ ]*~$(IMG)\-&:$(TAG)~g")
@@ -256,7 +255,7 @@ release-manifests: $(RELEASE_DIR) $(KUSTOMIZE) ## Build the manifests to publish
 .PHONY: release-notes
 release-notes: $(RELEASE_DIR) $(GH)
 	if [ -n "${PRE_RELEASE}" ]; then \
-	echo ":rotating_light: This is a RELEASE CANDIDATE. Use it only for testing purposes. If you find any bugs, file an [issue](https://github.com/rancher-sandbox/cluster-api-provider-rke2/issues/new)." > $(RELEASE_DIR)/CHANGELOG.md; \
+	echo ":rotating_light: This is a RELEASE CANDIDATE. Use it only for testing purposes. If you find any bugs, file an [issue](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/new)." > $(RELEASE_DIR)/CHANGELOG.md; \
 	else \
 	$(GH) api repos/$(ORG)/$(GH_REPO_NAME)/releases/generate-notes -F tag_name=$(VERSION) -F previous_tag_name=$(PREVIOUS_VERSION) --jq '.body' > $(RELEASE_DIR)/CHANGELOG.md; \
 	fi
