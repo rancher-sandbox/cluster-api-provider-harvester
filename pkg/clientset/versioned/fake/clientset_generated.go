@@ -19,6 +19,8 @@ limitations under the License.
 package fake
 
 import (
+	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
+	fakelbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1/fake"
 	clientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	catalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1"
 	fakecatalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1/fake"
@@ -48,11 +50,9 @@ import (
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
-	"k8s.io/client-go/testing"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
-	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
-	fakelbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1/fake"
+	"k8s.io/client-go/testing"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
@@ -99,7 +99,6 @@ func (c *Clientset) Discovery() discovery.DiscoveryInterface {
 func (c *Clientset) Tracker() testing.ObjectTracker {
 	return c.tracker
 }
-
 
 var (
 	_ clientset.Interface = &Clientset{}

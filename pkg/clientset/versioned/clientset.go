@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 
+	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
 	catalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1"
 	clusterv1alpha4 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4"
 	harvesterhciv1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/harvesterhci.io/v1beta1"
@@ -35,10 +36,9 @@ import (
 	storagev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/storage.k8s.io/v1"
 	upgradev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/upgrade.cattle.io/v1"
 	discovery "k8s.io/client-go/discovery"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
 )
 
 type Interface interface {
@@ -75,8 +75,8 @@ type Clientset struct {
 	snapshotV1          *snapshotv1.SnapshotV1Client
 	storageV1           *storagev1.StorageV1Client
 	upgradeV1           *upgradev1.UpgradeV1Client
-	corev1							*corev1.CoreV1Client
-	lbv1beta1 				 *lbv1.LoadbalancerV1beta1Client
+	corev1              *corev1.CoreV1Client
+	lbv1beta1           *lbv1.LoadbalancerV1beta1Client
 }
 
 // CoreV1 retrieves the CoreV1Client
