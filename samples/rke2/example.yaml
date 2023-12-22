@@ -236,9 +236,7 @@ data:
             - args:
                 - --nodeid=$(NODE_ID)
                 - --endpoint=$(CSI_ENDPOINT)
-                - --drivername=driver.harvesterhci.io
-                - --namespace=default
-                - --kubeconfig=/etc/csi/cloud-provider-config
+                - --kubeconfig=/etc/csi/cloud-config
               env:
                 - name: NODE_ID
                   valueFrom:
@@ -388,7 +386,6 @@ data:
                 - --enable-leader-election
                 - --leader-election-type=leases
                 - --leader-election-namespace=$(POD_NAMESPACE)
-                - --default-fstype=ext4
               env:
                 - name: ADDRESS
                   value: /csi/csi.sock
