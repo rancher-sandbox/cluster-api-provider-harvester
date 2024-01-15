@@ -15,6 +15,7 @@ require (
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.62.0
 	github.com/rancher/rancher/pkg/apis v0.0.0
 	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20210727200656-10b094e30007
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
 	k8s.io/api v0.28.3
 	k8s.io/apimachinery v0.28.3
 	k8s.io/client-go v12.0.0+incompatible
@@ -26,7 +27,6 @@ require (
 require (
 	github.com/google/gxui v0.0.0-20151028112939-f85e0a97b3a4 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
-	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 

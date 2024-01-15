@@ -91,6 +91,10 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
 
+.PHONY: generate-modules
+generate-modules: ## Run go mod tidy to ensure modules are up to date
+	go mod tidy
+
 # --------------------------------------
 ## Lint / Verify
 ## --------------------------------------
@@ -124,6 +128,9 @@ test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
 
 ##@ Build
+.PHONY: manager
+manager: ## Build the rke2 bootstrap manager binary into the ./bin folder
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/manager github.com/rancher-sandbox/cluster-api-provider-harvester
 
 .PHONY: build
 build: generate fmt vet ## Build manager binary.
@@ -304,6 +311,29 @@ $(ENVTEST): $(LOCALBIN)
 ## --------------------------------------
 ## Cleanup / Verification
 ## --------------------------------------
+
+ALL_VERIFY_CHECKS = modules gen
+
+.PHONY: verify
+verify: $(addprefix verify-,$(ALL_VERIFY_CHECKS)) lint-dockerfiles ## Run all verify-* targets
+
+.PHONY: verify-modules
+verify-modules: generate-modules  ## Verify go modules are up to date
+	@if !(git diff --quiet HEAD -- go.sum go.mod $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/go.sum $(TEST_DIR)/go.mod $(TEST_DIR)/go.sum); then \
+		git diff; \
+		echo "go module files are out of date"; exit 1; \
+	fi
+	@if (find . -name 'go.mod' | xargs -n1 grep -q -i 'k8s.io/client-go.*+incompatible'); then \
+		find . -name "go.mod" -exec grep -i 'k8s.io/client-go.*+incompatible' {} \; -print; \
+		echo "go module contains an incompatible client-go version"; exit 1; \
+	fi
+
+.PHONY: verify-gen
+verify-gen: generate  ## Verify go generated files are up to date
+	@if !(git diff --quiet HEAD); then \
+		git diff; \
+		echo "generated files are out of date, run make generate"; exit 1; \
+	fi
 
 ##@ clean:
 
