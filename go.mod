@@ -1,14 +1,14 @@
 module github.com/rancher-sandbox/cluster-api-provider-harvester
 
-go 1.19
+go 1.20
 
 require (
 	emperror.dev/errors v0.8.0
-	github.com/harvester/harvester v1.2.0-rc1
-	github.com/harvester/harvester-load-balancer v0.2.0
+	github.com/harvester/harvester v1.2.1
+	github.com/harvester/harvester-load-balancer v0.2.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
-	github.com/longhorn/longhorn-manager v1.4.2
+	github.com/longhorn/longhorn-manager v1.4.3
 	github.com/onsi/ginkgo/v2 v2.11.0
 	github.com/onsi/gomega v1.27.10
 	github.com/pkg/errors v0.9.1
@@ -27,6 +27,8 @@ require (
 require (
 	github.com/google/gxui v0.0.0-20151028112939-f85e0a97b3a4 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
+	github.com/rancher/eks-operator v1.1.5 // indirect
+	github.com/rancher/gke-operator v1.1.4 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 
@@ -72,21 +74,18 @@ require (
 	github.com/prometheus/common v0.44.0 // indirect
 	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rancher/aks-operator v1.0.7 // indirect
-	github.com/rancher/eks-operator v1.1.5 // indirect
 	github.com/rancher/fleet/pkg/apis v0.0.0-20230123175930-d296259590be // indirect
-	github.com/rancher/gke-operator v1.1.4 // indirect
 	github.com/rancher/lasso v0.0.0-20221227210133-6ea88ca2fbcc // indirect
 	github.com/rancher/norman v0.0.0-20221205184727-32ef2e185b99 // indirect
 	github.com/rancher/rke v1.3.18 // indirect
 	github.com/rancher/wrangler v1.1.1 // indirect
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/testify v1.8.3 // indirect
 	github.com/zach-klippenstein/goregen v0.0.0-20160303162051-795b5e3961ea
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.25.0 // indirect
 	golang.org/x/net v0.19.0 // indirect
-	golang.org/x/oauth2 v0.10.0 // indirect
+	golang.org/x/oauth2 v0.13.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
@@ -94,7 +93,7 @@ require (
 	golang.org/x/time v0.3.0 // indirect
 	golang.org/x/tools v0.16.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
-	google.golang.org/appengine v1.6.7 // indirect
+	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/protobuf v1.31.0 // indirect

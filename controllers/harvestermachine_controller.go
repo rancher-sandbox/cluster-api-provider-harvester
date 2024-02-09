@@ -606,18 +606,20 @@ runcmd:
 		},
 		Spec: kubevirtv1.VirtualMachineInstanceSpec{
 			Hostname: hvScope.HarvesterMachine.Name,
-			Networks: []kubevirtv1.Network{
+			Networks: getKubevirtNetworksFromHarvesterMachine(hvScope.HarvesterMachine),
 
-				{
-					Name: "nic-1",
+			// Networks: []kubevirtv1.Network{
 
-					NetworkSource: kubevirtv1.NetworkSource{
-						Multus: &kubevirtv1.MultusNetwork{
-							NetworkName: "vlan1",
-						},
-					},
-				},
-			},
+			// 	{
+			// 		Name: "nic-1",
+
+			// 		NetworkSource: kubevirtv1.NetworkSource{
+			// 			Multus: &kubevirtv1.MultusNetwork{
+			// 				NetworkName: "vlan1",
+			// 			},
+			// 		},
+			// 	},
+			// },
 			Volumes: []kubevirtv1.Volume{
 				{
 					Name: "disk-0",
@@ -706,6 +708,22 @@ runcmd:
 		},
 	}
 	return
+}
+
+func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.HarvesterMachine) []kubevirtv1.Network {
+
+	var networks []kubevirtv1.Network
+	for i, network := range harvesterMachine.Spec.Networks {
+		networks = append(networks, kubevirtv1.Network{
+			Name: "nic-" + fmt.Sprint(i+1),
+			NetworkSource: kubevirtv1.NetworkSource{
+				Multus: &kubevirtv1.MultusNetwork{
+					NetworkName: network,
+				},
+			},
+		})
+	}
+	return networks
 }
 
 func getCloudInitData(hvScope Scope) (string, error) {
