@@ -90,12 +90,12 @@ Now, you can test out the provider by generating some YAML and applying it to th
 
 ```bash
 export CLUSTER_NAME=test-rk # Name of the cluster that will be created.
-export CLUSTER_NAMESPACE=example-rk # Namespace where the cluster will be created.
+export NAMESPACE=example-rk # Namespace where the cluster will be created.
 export KUBERNETES_VERSION=v1.26.6 # Kubernetes Version
 export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest
 export VM_IMAGE_NAME=default/jammy-server-cloudimg-amd64.img # Should have the format <NAMESPACE>/<NAME> for an image that exists on Harvester
-export CONTROLPLANE_REPLICAS=3
-export WORKER_REPLICAS=2
+export CONTROL_PLANE_MACHINE_COUNT=3
+export WORKER_MACHINE_COUNT=2
 export HARVESTER_KUBECONFIG_B64=XXXYYY #Full Harvester's kubeconfig encoded in Base64. You can use: cat kubeconfig.yaml | base64
 ```
 
