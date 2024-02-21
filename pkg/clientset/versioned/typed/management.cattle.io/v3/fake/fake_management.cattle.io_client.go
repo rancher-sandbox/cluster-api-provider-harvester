@@ -19,9 +19,10 @@ limitations under the License.
 package fake
 
 import (
-	v3 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/management.cattle.io/v3"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
+	v3 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/management.cattle.io/v3"
 )
 
 type FakeManagementV3 struct {

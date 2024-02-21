@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,13 +20,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
 	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -36,12 +34,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/annotations"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
-	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,12 +42,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/predicates"
+
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	harvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
 )
 
-// HarvesterMachineReconciler reconciles a HarvesterMachine object
+// HarvesterMachineReconciler reconciles a HarvesterMachine object.
 type HarvesterMachineReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -98,10 +97,12 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.Get(ctx, req.NamespacedName, hvMachine); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Error(err, "harvestermachine not found")
+
 			return ctrl.Result{}, nil
 		}
 
 		logger.Error(err, "Error happened when getting harvestermachine")
+
 		return ctrl.Result{}, err
 	}
 
@@ -110,22 +111,15 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
 	// Always attempt to Patch the HarvesterMachine object and status after each reconciliation.
 	defer func() {
-
-		// Always attempt to Patch the HarvesterMachine object and status after each reconciliation.
-		//if err := r.Client.Status().Update(ctx, hvMachine); err != nil {
-		//logger.Error(err, "failed to update HarvesterMachine status")
-		//if rerr == nil {
-		//rerr = err
-		//}
-		//}
-
 		if err := patchHelper.Patch(ctx,
 			hvMachine,
-		//conditions.WithOwnedConditions( []clusterv1.ConditionType{ clusterv1.ReadyCondition}),
+		// conditions.WithOwnedConditions( []clusterv1.ConditionType{ clusterv1.ReadyCondition}),
 		); err != nil {
 			logger.Error(err, "failed to patch HarvesterMachine")
+
 			if rerr == nil {
 				rerr = err
 			}
@@ -135,20 +129,26 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	ownerMachine, err := util.GetOwnerMachine(ctx, r.Client, hvMachine.ObjectMeta)
 	if err != nil {
 		logger.Error(err, "unable to get owner machine")
+
 		return ctrl.Result{}, err
 	}
+
 	if ownerMachine == nil {
 		logger.Info("Waiting for Machine Controller to set OwnerRef on HarvesterMachine")
+
 		return ctrl.Result{}, nil
 	}
 
 	ownerCluster, err := util.GetClusterFromMetadata(ctx, r.Client, ownerMachine.ObjectMeta)
 	if err != nil {
 		logger.Info("HarvesterMachine owner Machine is missing cluster label or cluster does not exist")
+
 		return ctrl.Result{}, err
 	}
+
 	if ownerCluster == nil {
 		logger.Info(fmt.Sprintf("Please associate this machine with a cluster using the label %s: <name of cluster>", clusterv1.ClusterNameLabel))
+
 		return ctrl.Result{}, nil
 	}
 
@@ -165,18 +165,20 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	err = r.Get(ctx, hvClusterKey, hvCluster)
 	if err != nil {
 		logger.Error(err, "unable to find corresponding harvestercluster to harvestermachine")
+
 		return ctrl.Result{}, err
 	}
 
 	hvSecret, err := locutil.GetSecretForHarvesterConfig(ctx, hvCluster, r.Client)
 	if err != nil {
 		logger.Error(err, "unable to get Datasource secret")
+
 		return ctrl.Result{}, err
 	}
 
 	hvClient, err := locutil.GetHarvesterClientFromSecret(hvSecret)
 	if err != nil {
-		logger.Error(err, "unable to create Harvester client from Datasource secret", hvClient)
+		logger.Error(err, "unable to create Harvester client from Datasource secret "+hvSecret.Name)
 	}
 
 	hvScope := Scope{
@@ -193,7 +195,7 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if !hvMachine.DeletionTimestamp.IsZero() {
 		return r.ReconcileDelete(hvScope)
 	} else {
-		return r.ReconcileNormal(hvScope)
+		return r.ReconcileNormal(hvScope) //nolint:contextcheck
 	}
 }
 
@@ -225,54 +227,72 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 	// Return early if the object or Cluster is paused.
 	if annotations.IsPaused(hvScope.Cluster, hvScope.HarvesterMachine) {
 		logger.Info("Reconciliation is paused for this object")
+
 		return ctrl.Result{}, nil
 	}
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
 	if !controllerutil.ContainsFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer) && hvScope.HarvesterMachine.DeletionTimestamp.IsZero() {
 		controllerutil.AddFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer)
+
+		hvScope.HarvesterMachine.Status.Ready = false
+
 		return ctrl.Result{}, nil
 	}
 
 	// Return early if the ownerCluster has infrastructureReady = false
 	if !hvScope.Cluster.Status.InfrastructureReady {
 		logger.Info("Waiting for Infrastructure to be ready ... ")
-		return ctrl.Result{}, nil
+
+		hvScope.HarvesterMachine.Status.Ready = false
+
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
 	// Return early if no userdata secret is referenced in ownerMachine
 	if hvScope.Machine.Spec.Bootstrap.DataSecretName == nil {
 		logger.Info("Waiting for Machine's Userdata to be set ... ")
+
+		hvScope.HarvesterMachine.Status.Ready = false
+
 		return ctrl.Result{}, nil
 	}
 	// check if Harvester has a machine with the same name and namespace
-	existingVM, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(context.TODO(), hvScope.HarvesterMachine.Name, metav1.GetOptions{})
+	existingVM, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
+		context.TODO(), hvScope.HarvesterMachine.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		logger.Error(err, "unable to check existence of VM from Harvester")
+
+		hvScope.HarvesterMachine.Status.Ready = false
+
 		return ctrl.Result{}, err
 	}
 
 	if (existingVM != nil) && (existingVM.Name == hvScope.HarvesterMachine.Name) {
 		logger.Info("VM " + existingVM.Namespace + "/" + existingVM.Name + " already exists in Harvester, updating IP addresses.")
 
-		if *existingVM.Spec.Running == true {
+		if *existingVM.Spec.Running {
 			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					logger.Info("VM is not running yet, waiting for it to be ready")
+
 					return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 				}
-				logger.Error(err, "unable to get IP addresses from VMI in Harvester")
-				return ctrl.Result{}, err
+
+				logger.V(1).Info("unable to get IP addresses from VMI in Harvester, requeuing in 1 minute ...")
+
+				return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 			}
+
 			hvScope.HarvesterMachine.Status.Addresses = ipAddresses
 			if len(ipAddresses) > 0 {
 				hvScope.HarvesterMachine.Status.Ready = true
 			} else {
 				hvScope.HarvesterMachine.Status.Ready = false
+
 				return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 			}
-
 		}
 
 		if hvScope.HarvesterMachine.Spec.ProviderID == "" {
@@ -286,15 +306,16 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 				hvScope.HarvesterMachine.Status.Ready = true
 			} else {
 				hvScope.HarvesterMachine.Status.Ready = false
+
 				return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 			}
-
 		}
 
 		return ctrl.Result{}, nil
 	}
 
 	logger.Info("No existing VM found in Harvester, creating a new one ...")
+
 	_, err = createVMFromHarvesterMachine(hvScope)
 	if err != nil {
 		logger.Error(err, "unable to create VM from HarvesterMachine information")
@@ -303,6 +324,8 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 	// Patch the HarvesterCluster resource with the current conditions.
 	hvClusterCopy := hvScope.HarvesterCluster.DeepCopy()
 	conditions.MarkTrue(hvClusterCopy, infrav1.InitMachineCreatedCondition)
+	hvClusterCopy.Status.Ready = false
+
 	if err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster)); err != nil {
 		logger.Error(err, "failed to update HarvesterCluster Conditions with InitMachineCreatedCondition")
 	}
@@ -312,18 +335,13 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 
 func getProviderIDFromWorkloadCluster(hvScope Scope, existingVM *kubevirtv1.VirtualMachine) (string, error) {
 	var workloadConfig *rest.Config
+
 	workloadConfig, err := getWorkloadClusterConfig(hvScope)
 	if err != nil {
 		return "", errors.Wrap(err, "unable to get workload cluster config from Management Cluster")
 	}
 
-	// TODO: remove the comments below, older, failing way to access workloadCluster
-	//ipPattern := regexp.MustCompile(`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
-
-	// replace the cluster API endpoint in the workload cluster config with the Machine IP Address
-	//workloadConfig.Host = ipPattern.ReplaceAllString(workloadConfig.Host, hvScope.HarvesterMachine.Status.Addresses[0].Address)
-
-	// Get Kubernetes client for workload cluster
+	// Get Kubernetes client for workload cluster.
 	workloadClient, err := client.New(workloadConfig, client.Options{})
 	if err != nil {
 		return "", errors.Wrap(err, "unable to get workload cluster client from Kubeconfig")
@@ -331,6 +349,7 @@ func getProviderIDFromWorkloadCluster(hvScope Scope, existingVM *kubevirtv1.Virt
 
 	// Get ProviderID from the Node object in the workload cluster
 	node := &v1.Node{}
+
 	err = workloadClient.Get(hvScope.Ctx, types.NamespacedName{Name: hvScope.HarvesterMachine.Name}, node)
 	if err != nil {
 		return "", err
@@ -343,10 +362,11 @@ func getProviderIDFromWorkloadCluster(hvScope Scope, existingVM *kubevirtv1.Virt
 	return node.Spec.ProviderID, nil
 }
 
-// getWorkloadClusterConfig returns a rest.Config for the workload cluster from a secret in the management cluster
+// getWorkloadClusterConfig returns a rest.Config for the workload cluster from a secret in the management cluster.
 func getWorkloadClusterConfig(hvScope Scope) (*rest.Config, error) {
 	// Get the workload cluster kubeconfig secret
 	workloadClusterKubeconfigSecret := &v1.Secret{}
+
 	err := hvScope.ReconcilerClient.Get(hvScope.Ctx, types.NamespacedName{
 		Namespace: hvScope.Cluster.Namespace,
 		Name:      hvScope.Cluster.Name + "-kubeconfig",
@@ -371,14 +391,14 @@ func getWorkloadClusterConfig(hvScope Scope) (*rest.Config, error) {
 }
 
 func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harvclient.Clientset) ([]clusterv1.MachineAddress, error) {
-
-	var ipAddresses []clusterv1.MachineAddress
+	ipAddresses := []clusterv1.MachineAddress{}
 
 	vmInstance, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).Get(context.TODO(), existingVM.Name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return ipAddresses, fmt.Errorf("no VM instance found for VM %s", existingVM.Name)
 		}
+
 		return ipAddresses, err
 	}
 
@@ -413,17 +433,18 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 	// Supposing that the imageName field in HarvesterMachine.Spec.Volumes has the format "<NAMESPACE>/<NAME>",
 	// we use the following to get vmImageNS and vmImageName
 	imageVolumes := locutil.Filter[infrav1.Volume](hvScope.HarvesterMachine.Spec.Volumes, hasVMIMageName)
-	vmImage, err := getImageFromHarvesterMachine(imageVolumes, hvScope.HarvesterClient)
+
+	vmImage, err := getImageFromHarvesterMachine(imageVolumes, hvScope)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to find VM image reference in HarvesterMachine")
 	}
+
 	pvcAnnotation, err := buildPVCAnnotationFromImageID(&imageVolumes[0], pvcName, hvScope.HarvesterCluster.Spec.TargetNamespace, vmImage)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unable to generate PVC annotation on VM")
 	}
 
 	vmTemplate, err := buildVMTemplate(hvScope, pvcName, vmiLabels)
-
 	if err != nil {
 		return &kubevirtv1.VirtualMachine{}, errors.Wrap(err, "unable to build VM definition")
 	}
@@ -437,7 +458,6 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 			Name:      vmName,
 			Namespace: hvScope.HarvesterCluster.Spec.TargetNamespace,
 			Annotations: map[string]string{
-
 				vmAnnotationPVC:        pvcAnnotation,
 				vmAnnotationNetworkIps: "[]",
 			},
@@ -450,8 +470,10 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 		},
 	}
 
-	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(context.TODO(), ubuntuVM, metav1.CreateOptions{})
-
+	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
+		context.TODO(),
+		ubuntuVM,
+		metav1.CreateOptions{})
 	if err != nil {
 		return hvCreatedMachine, err
 	}
@@ -459,8 +481,12 @@ func createVMFromHarvesterMachine(hvScope Scope) (*kubevirtv1.VirtualMachine, er
 	return hvCreatedMachine, nil
 }
 
-func buildPVCAnnotationFromImageID(imageVolume *infrav1.Volume, pvcName string, pvcNamespace string, vmImage *harvesterv1beta1.VirtualMachineImage) (string, error) {
-
+func buildPVCAnnotationFromImageID(
+	imageVolume *infrav1.Volume,
+	pvcName string,
+	pvcNamespace string,
+	vmImage *harvesterv1beta1.VirtualMachineImage,
+) (string, error) {
 	block := v1.PersistentVolumeBlock
 	scName := "longhorn-" + vmImage.Name
 	pvc := &v1.PersistentVolumeClaim{
@@ -493,52 +519,67 @@ func buildPVCAnnotationFromImageID(imageVolume *infrav1.Volume, pvcName string, 
 	return string(pvcJsonString), nil
 }
 
-func getImageFromHarvesterMachine(imageVolumes []infrav1.Volume, hvClient *harvclient.Clientset) (image *harvesterv1beta1.VirtualMachineImage, err error) {
+func getImageFromHarvesterMachine(imageVolumes []infrav1.Volume, hvScope Scope) (image *harvesterv1beta1.VirtualMachineImage, err error) {
+	vmImageNamespacedString := imageVolumes[0].ImageName
 
-	vmImageNamespacedName := imageVolumes[0].ImageName
-
-	vmImageNameParts := strings.Split(vmImageNamespacedName, "/")
-	if len(vmImageNameParts) != 2 {
+	err, vmImageNamespacedName := locutil.GetNamespacedName(vmImageNamespacedString, hvScope.HarvesterCluster.Spec.TargetNamespace)
+	if err != nil {
 		return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf("ImageName is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format")
 	}
 
-	foundImages, err := hvClient.HarvesterhciV1beta1().VirtualMachineImages(vmImageNameParts[0]).List(context.TODO(), metav1.ListOptions{})
-
+	foundImages, err := hvScope.HarvesterClient.HarvesterhciV1beta1().VirtualMachineImages(vmImageNamespacedName.Namespace).List(
+		context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		return &harvesterv1beta1.VirtualMachineImage{}, err
 	}
+
 	if len(foundImages.Items) == 0 {
-		return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf("impossible to find referenced VM image from imageName field in HarvesterMachine")
+		return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf(
+			"impossible to find any VM image referenced namespace %s", vmImageNamespacedName.Namespace)
 	}
 
 	for _, image := range foundImages.Items {
-		if image.Spec.DisplayName == vmImageNameParts[1] {
+		if image.Spec.DisplayName == vmImageNamespacedName.Name {
 			return &image, nil
 		}
 	}
 
-	// returning namespaced name of the vm image
-	return nil, fmt.Errorf("impossible to find referenced VM image from imageName field in HarvesterMachine")
+	return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf(
+		"impossible to find VM image %s in namespace %s", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
 }
 
-// buildVMTemplate creates a *kubevirtv1.VirtualMachineInstanceTemplateSpec from the CLI Flags and some computed values
+// buildVMTemplate creates a *kubevirtv1.VirtualMachineInstanceTemplateSpec from the CLI Flags and some computed values.
 func buildVMTemplate(hvScope Scope,
-	pvcName string, vmiLabels map[string]string) (vmTemplate *kubevirtv1.VirtualMachineInstanceTemplateSpec, err error) {
-
+	pvcName string, vmiLabels map[string]string,
+) (vmTemplate *kubevirtv1.VirtualMachineInstanceTemplateSpec, err error) {
 	var sshKey *harvesterv1beta1.KeyPair
 
 	keyName := hvScope.HarvesterMachine.Spec.SSHKeyPair
-	sshKey, err = hvScope.HarvesterClient.HarvesterhciV1beta1().KeyPairs(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(context.TODO(), keyName, metav1.GetOptions{})
-	if err != nil {
-		err = fmt.Errorf("error during getting keypair from Harvester: %w", err)
-		return
-	}
-	logrus.Debugf("SSH Key Name %s given does exist!", hvScope.HarvesterMachine.Spec.SSHKeyPair)
 
-	if sshKey == nil || sshKey == (&harvesterv1beta1.KeyPair{}) {
-		err = fmt.Errorf("no keypair could be defined")
-		return
+	err, keyPairFullName := locutil.GetNamespacedName(keyName, hvScope.HarvesterCluster.Spec.TargetNamespace)
+	if err != nil {
+		return nil, fmt.Errorf("SSHKeyPair is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format or simple DNS name without slash")
 	}
+
+	sshKey, err = hvScope.HarvesterClient.HarvesterhciV1beta1().KeyPairs(keyPairFullName.Namespace).Get(
+		context.TODO(), keyPairFullName.Name, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			err = fmt.Errorf(
+				`no keypair could be found in namespace %s, keypair was only referenced by name %s, 
+try to specify the namespace using the format <NAMESPACE>/<NAME>`,
+				keyPairFullName.Namespace, keyName)
+
+			return nil, err
+		}
+
+		err = fmt.Errorf("error during getting keypair from Harvester: %w", err)
+
+		return nil, err
+	}
+
+	hvScope.Logger.V(3).Info("SSH Key Name " + keyName + " given does exist!")
+
 	// building cloud-init user data
 	cloudInitBase := `package_update: true
 packages:
@@ -553,16 +594,18 @@ runcmd:
 	cloudInitUserData, err1 := getCloudInitData(hvScope)
 	if err1 != nil {
 		err = fmt.Errorf("error during getting cloud init user data from Harvester: %w", err1)
-		return
+
+		return nil, err
 	}
 
 	finalCloudInit, err := locutil.MergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitUserData)
 	if err != nil {
 		err = fmt.Errorf("error during merging cloud init user data from Harvester: %w", err)
-		return
+
+		return nil, err
 	}
 
-	// create cloud-init secret for referrence in Harvester
+	// create cloud-init secret for reference in Harvester.
 	cloudInitSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      hvScope.HarvesterMachine.Name + "-cloud-init",
@@ -574,25 +617,27 @@ runcmd:
 		},
 	}
 
-	hvScope.Logger.Info("cloud-init final value is " + string(finalCloudInit))
+	hvScope.Logger.V(5).Info("cloud-init final value is " + string(finalCloudInit))
 
 	// check if secret already exists
-	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(context.TODO(), hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
+	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
+		context.TODO(), hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			hvScope.Logger.V(2).Info("unable to get cloud-init secret, error was different than NotFound")
+			hvScope.Logger.V(2).Info("unable to get cloud-init secret, error was different than NotFound") //nolint:gomnd
 		}
 	}
 
-	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(context.TODO(), cloudInitSecret, metav1.CreateOptions{})
+	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
+		context.TODO(), cloudInitSecret, metav1.CreateOptions{})
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to create cloud-init secret")
 	}
 
-	vmTemplate = nil
 	if err != nil {
 		err = fmt.Errorf("error during getting cloud init user data from Harvester: %w", err)
-		return
+
+		return nil, err
 	}
 
 	vmTemplate = &kubevirtv1.VirtualMachineInstanceTemplateSpec{
@@ -707,12 +752,12 @@ runcmd:
 			},
 		},
 	}
-	return
+
+	return vmTemplate, nil
 }
 
 func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.HarvesterMachine) []kubevirtv1.Network {
-
-	var networks []kubevirtv1.Network
+	networks := []kubevirtv1.Network{}
 	for i, network := range harvesterMachine.Spec.Networks {
 		networks = append(networks, kubevirtv1.Network{
 			Name: "nic-" + fmt.Sprint(i+1),
@@ -723,19 +768,19 @@ func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.Harvester
 			},
 		})
 	}
+
 	return networks
 }
 
 func getCloudInitData(hvScope Scope) (string, error) {
-
 	dataSecretNamespacedName := types.NamespacedName{
 		Namespace: hvScope.Machine.Namespace,
 		Name:      *hvScope.Machine.Spec.Bootstrap.DataSecretName,
 	}
 
 	dataSecret := &v1.Secret{}
-	err := hvScope.ReconcilerClient.Get(hvScope.Ctx, dataSecretNamespacedName, dataSecret)
 
+	err := hvScope.ReconcilerClient.Get(hvScope.Ctx, dataSecretNamespacedName, dataSecret)
 	if err != nil {
 		return "", err
 	}
@@ -749,65 +794,82 @@ func getCloudInitData(hvScope Scope) (string, error) {
 }
 
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
-
 	logger := log.FromContext(hvScope.Ctx)
 	logger.Info("Deleting HarvesterMachine ...")
 
-	err := hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.DeleteOptions{})
+	err := hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
+		hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete cloud-init secret, error was different than NotFound")
+
 			return ctrl.Result{Requeue: true}, err
 		}
+
 		logger.Info("cloud-init secret not found, doing nothing")
 	}
+
 	logger.V(5).Info("cloud-init secret deleted successfully: " + hvScope.HarvesterMachine.Name + "-cloud-init")
 
-	vm, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.GetOptions{})
+	vm, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
+		hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to get VM, error was different than NotFound")
+
 			return ctrl.Result{Requeue: true}, err
 		}
+
 		logger.Info("No VM found in Harvester that corresponds to HarvesterMachine...")
-	}
-	logger.V(5).Info("found VM: " + vm.Namespace + "/" + vm.Name)
+	} else {
+		logger.V(5).Info("found VM: " + vm.Namespace + "/" + vm.Name)
 
-	if (vm != &kubevirtv1.VirtualMachine{}) {
-		attachedPVCString := vm.Annotations[vmAnnotationPVC]
-		attachedPVCObj := []*v1.PersistentVolumeClaim{}
-		err = json.Unmarshal([]byte(attachedPVCString), &attachedPVCObj)
-		if err != nil {
-			logger.Error(err, "unable to unmarshal PVC annotation from VM")
-			return ctrl.Result{Requeue: true}, err
-		}
+		if (vm != &kubevirtv1.VirtualMachine{}) {
+			attachedPVCString := vm.Annotations[vmAnnotationPVC]
+			attachedPVCObj := []*v1.PersistentVolumeClaim{}
 
-		err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
-
-		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				logger.Error(err, "unable to delete VM, error was different than NotFound")
+			err = json.Unmarshal([]byte(attachedPVCString), &attachedPVCObj)
+			if err != nil {
 				return ctrl.Result{Requeue: true}, err
 			}
-			logger.Info("VM not found, doing nothing")
-		}
-		logger.V(5).Info("VM deleted successfully: " + hvScope.HarvesterMachine.Name)
 
-		for _, pvc := range attachedPVCObj {
-			err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(hvScope.Ctx, pvc.Name, metav1.DeleteOptions{})
+			err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
+				hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
 			if err != nil {
 				if !apierrors.IsNotFound(err) {
-					logger.Error(err, "unable to delete PVC, error was different than NotFound")
+					logger.Error(err, "unable to delete VM, error was different than NotFound")
+
 					return ctrl.Result{Requeue: true}, err
 				}
-				logger.Info("attached PVC not found, continuing")
-			}
-			logger.V(5).Info("PVC deleted successfully: " + pvc.Name)
-		}
 
-		if ok := controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer); !ok {
-			return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from HarvesterMachine %s/%s", infrav1.MachineFinalizer, hvScope.HarvesterMachine.Namespace, hvScope.HarvesterMachine.Name)
+				logger.Info("VM not found, doing nothing")
+			}
+
+			logger.V(5).Info("VM deleted successfully: " + hvScope.HarvesterMachine.Name)
+
+			for _, pvc := range attachedPVCObj {
+				err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
+					hvScope.Ctx, pvc.Name, metav1.DeleteOptions{})
+				if err != nil {
+					if !apierrors.IsNotFound(err) {
+						logger.Error(err, "unable to delete PVC, error was different than NotFound")
+
+						return ctrl.Result{Requeue: true}, err
+					}
+
+					logger.Info("attached PVC not found, continuing")
+				}
+
+				logger.V(5).Info("PVC deleted successfully: " + pvc.Name)
+			}
 		}
+	}
+
+	if ok := controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer); !ok {
+		return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from HarvesterMachine %s/%s",
+			infrav1.MachineFinalizer,
+			hvScope.HarvesterMachine.Namespace,
+			hvScope.HarvesterMachine.Name)
 	}
 
 	return ctrl.Result{}, nil

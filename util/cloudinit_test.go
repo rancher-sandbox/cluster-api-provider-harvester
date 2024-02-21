@@ -28,7 +28,6 @@ packages:
 runcmd:
   - echo "hello world 3"
 `
-
 	})
 	It("Should show the right resulting cloud-init", func() {
 		mergedCloudInit, err := MergeCloudInitData(cloudinit1, cloudinit2, cloudinit3)

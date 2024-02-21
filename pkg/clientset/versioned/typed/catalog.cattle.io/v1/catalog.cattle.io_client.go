@@ -21,9 +21,10 @@ package v1
 import (
 	"net/http"
 
-	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 	v1 "github.com/rancher/rancher/pkg/apis/catalog.cattle.io/v1"
 	rest "k8s.io/client-go/rest"
+
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 )
 
 type CatalogV1Interface interface {

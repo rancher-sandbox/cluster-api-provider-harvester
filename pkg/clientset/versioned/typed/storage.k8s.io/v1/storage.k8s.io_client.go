@@ -21,9 +21,10 @@ package v1
 import (
 	"net/http"
 
-	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 	v1 "k8s.io/api/storage/v1"
 	rest "k8s.io/client-go/rest"
+
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 )
 
 type StorageV1Interface interface {

@@ -22,12 +22,14 @@ import (
 	"context"
 	"time"
 
-	scheme "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
+
 	v1alpha4 "sigs.k8s.io/cluster-api/api/v1alpha4"
+
+	scheme "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 )
 
 // ClustersGetter has a method to return a ClusterInterface.

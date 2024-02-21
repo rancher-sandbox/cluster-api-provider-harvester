@@ -39,7 +39,7 @@ issues:
       linters:
         - gosec
     - text: unexported-return
-      path: pkg/rke2
+      path: pkg/harvester
       linters:
         - revive
 linters-settings:
@@ -54,17 +54,17 @@ linters-settings:
       - "4"
       - "3"
   goimports:
-    local-prefixes: github.com/rancher-sandbox/cluster-api-provider-rke2
+    local-prefixes: github.com/rancher-sandbox/cluster-api-provider-harvester
   gci:
     custom-order: true
-    #local-prefixes: github.com/rancher-sandbox/cluster-api-provider-rke2
+    #local-prefixes: github.com/rancher-sandbox/cluster-api-provider-harvester
     sections:
       - "standard" 
       - "blank"
       - "dot"
       - "default"
       - "prefix(sigs.k8s.io/cluster-api)"
-      - "prefix(github.com/rancher-sandbox/cluster-api-provider-rke2)"
+      - "prefix(github.com/rancher-sandbox/cluster-api-provider-harvester)"
 linters:
   enable-all: true
   disable:
@@ -102,5 +102,8 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - wastedassign
+    - depguard
+    - typecheck
+    - gomoddirectives
 
     

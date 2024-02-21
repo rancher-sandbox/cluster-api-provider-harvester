@@ -7,15 +7,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/pkg/errors"
-	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
-	hvclientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	regen "github.com/zach-klippenstein/goregen"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	hvclientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 )
 
 const (
@@ -23,7 +27,12 @@ const (
 )
 
 func Healthcheck(config *clientcmdapi.Config) (bool, error) {
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{}
+	httpTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return false, fmt.Errorf("unable to assert http.DefaultTransport as *http.Transport")
+	}
+
+	httpTransport.TLSClientConfig = &tls.Config{}
 
 	currentCluster := config.Contexts[config.CurrentContext].Cluster
 	currentUser := config.Contexts[config.CurrentContext].AuthInfo
@@ -33,24 +42,23 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	if err != nil {
 		return false, errors.Wrapf(err, "unable to load system certificate pool")
 	}
-	//fmt.Println("serverCA :" + string(serverCAstring))
-	ok := systemTrustedCertificates.AppendCertsFromPEM(serverCAstring)
+	// fmt.Println("serverCA :" + string(serverCAstring))
+	ok = systemTrustedCertificates.AppendCertsFromPEM(serverCAstring)
 	if !ok {
 		return false, fmt.Errorf("unable to append CA to Cert pool")
 	}
 
-	http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+	httpTransport.TLSClientConfig = &tls.Config{
 		RootCAs: systemTrustedCertificates,
 	}
 
 	healthcheckUrl := config.Clusters[currentCluster].Server + "/healthz"
 
-	req, err := http.NewRequest("GET", healthcheckUrl, nil)
+	req, err := http.NewRequest(http.MethodGet, healthcheckUrl, nil)
 	if err != nil {
 		return false, errors.Wrapf(err, "http request couldn't be create for url: "+healthcheckUrl)
 	}
 
-	// TODO: implement scenario where Harvester Cluster Config does not use token but certs
 	req.Header.Add("Authorization", "Bearer "+config.AuthInfos[currentUser].Token)
 
 	httpClient := http.Client{}
@@ -63,13 +71,14 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	var body []byte
 
 	defer resp.Body.Close()
+
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return false, errors.Wrapf(err, "unable to read response body")
 	}
 
 	res := string(body)
-	fmt.Println(res)
+	// fmt.Println(res)
 	if res == "ok" {
 		return true, nil
 	}
@@ -82,6 +91,7 @@ func GetSecretForHarvesterConfig(ctx context.Context, cluster *infrav1.Harvester
 	secretKey := client.ObjectKey(cluster.Spec.IdentitySecret)
 
 	err := cl.Get(ctx, secretKey, secret, &client.GetOptions{})
+
 	return secret, err
 }
 
@@ -92,31 +102,60 @@ func GetHarvesterClientFromSecret(secret *corev1.Secret) (*hvclientset.Clientset
 	}
 
 	return hvclientset.NewForConfig(hvRESTConfig)
-
 }
 
 // RandomID returns a random string used as an ID internally in Harvester.
 func RandomID() string {
 	res, err := regen.Generate("[a-z]{3}[0-9][a-z]")
 	if err != nil {
-		fmt.Println("Random function was not successful!")
 		return ""
 	}
+
 	return res
 }
 
-// NewTrue returns a pointer to true
+// NewTrue returns a pointer to true.
 func NewTrue() *bool {
 	b := true
+
 	return &b
 }
 
-// Filter is a generic filter function
+// Filter is a generic filter function.
 func Filter[T any](ss []T, test func(T) bool) (ret []T) {
 	for _, s := range ss {
 		if test(s) {
 			ret = append(ret, s)
 		}
 	}
+
 	return
+}
+
+// CheckNamespacedName checks if the given string is in the format of "namespace/name".
+func CheckNamespacedName(name string) bool {
+	return regexp.MustCompile(`^[a-z0-9-\.]+/[a-z0-9-\.]+$`).MatchString(name)
+}
+
+// GetNamespacedName returns the namespace and name from the given string in the format of "namespace/name".
+func GetNamespacedName(name string, alternativeTargetNS string) (error, types.NamespacedName) {
+	// If the given string is in the format of "namespace/name", return the namespace and name from the string.
+	if CheckNamespacedName(name) {
+		s := strings.Split(name, "/")
+
+		return nil, types.NamespacedName{
+			Namespace: s[0],
+			Name:      s[1],
+		}
+	}
+
+	if !regexp.MustCompile(`^[a-z0-9-\.]+$`).MatchString(name) {
+		return fmt.Errorf("malformed reference, should be <NAMESPACE>/<NAME>"), types.NamespacedName{}
+	}
+
+	// Else, return the namespace from the ownerObject and the name from the string.
+	return nil, types.NamespacedName{
+		Namespace: alternativeTargetNS,
+		Name:      name,
+	}
 }

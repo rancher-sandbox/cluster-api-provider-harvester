@@ -23,6 +23,11 @@ import (
 	"net/http"
 
 	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
+	discovery "k8s.io/client-go/discovery"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	rest "k8s.io/client-go/rest"
+	flowcontrol "k8s.io/client-go/util/flowcontrol"
+
 	catalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1"
 	clusterv1alpha4 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4"
 	harvesterhciv1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/harvesterhci.io/v1beta1"
@@ -35,10 +40,6 @@ import (
 	snapshotv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/snapshot.storage.k8s.io/v1"
 	storagev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/storage.k8s.io/v1"
 	upgradev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/upgrade.cattle.io/v1"
-	discovery "k8s.io/client-go/discovery"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	rest "k8s.io/client-go/rest"
-	flowcontrol "k8s.io/client-go/util/flowcontrol"
 )
 
 type Interface interface {

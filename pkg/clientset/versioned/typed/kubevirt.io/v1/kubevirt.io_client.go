@@ -21,9 +21,10 @@ package v1
 import (
 	"net/http"
 
-	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 	v1 "kubevirt.io/api/core/v1"
+
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 )
 
 type KubevirtV1Interface interface {

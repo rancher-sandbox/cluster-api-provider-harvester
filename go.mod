@@ -79,7 +79,7 @@ require (
 	github.com/rancher/norman v0.0.0-20221205184727-32ef2e185b99 // indirect
 	github.com/rancher/rke v1.3.18 // indirect
 	github.com/rancher/wrangler v1.1.1 // indirect
-	github.com/sirupsen/logrus v1.9.3
+	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/zach-klippenstein/goregen v0.0.0-20160303162051-795b5e3961ea
 	go.uber.org/multierr v1.11.0 // indirect

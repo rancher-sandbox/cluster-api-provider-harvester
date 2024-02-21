@@ -19,9 +19,10 @@ limitations under the License.
 package fake
 
 import (
-	v1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/kubevirt.io/v1"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
+	v1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/kubevirt.io/v1"
 )
 
 type FakeKubevirtV1 struct {

@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,13 +23,13 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// HarvesterMachineTemplateSpec defines the desired state of HarvesterMachineTemplate
+// HarvesterMachineTemplateSpec defines the desired state of HarvesterMachineTemplate.
 type HarvesterMachineTemplateSpec struct {
 	// Template is the HarvesterMachineTemplate template
 	Template HarvesterMachineTemplateResource `json:"template,omitempty"`
 }
 
-// HarvesterMachineTemplateResource describes the data needed to create a HarvesterMachine from a template
+// HarvesterMachineTemplateResource describes the data needed to create a HarvesterMachine from a template.
 type HarvesterMachineTemplateResource struct {
 	// Spec is the specification of the desired behavior of the machine.
 	Spec HarvesterMachineSpec `json:"spec"`
@@ -38,7 +38,7 @@ type HarvesterMachineTemplateResource struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// HarvesterMachineTemplate is the Schema for the harvestermachinetemplates API
+// HarvesterMachineTemplate is the Schema for the harvestermachinetemplates API.
 type HarvesterMachineTemplate struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -48,7 +48,7 @@ type HarvesterMachineTemplate struct {
 
 //+kubebuilder:object:root=true
 
-// HarvesterMachineTemplateList contains a list of HarvesterMachineTemplate
+// HarvesterMachineTemplateList contains a list of HarvesterMachineTemplate.
 type HarvesterMachineTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

@@ -19,9 +19,10 @@ limitations under the License.
 package fake
 
 import (
-	v1beta2 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/longhorn.io/v1beta2"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
+	v1beta2 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/longhorn.io/v1beta2"
 )
 
 type FakeLonghornV1beta2 struct {

@@ -21,9 +21,11 @@ package v1alpha4
 import (
 	"net/http"
 
-	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
+
 	v1alpha4 "sigs.k8s.io/cluster-api/api/v1alpha4"
+
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 )
 
 type ClusterV1alpha4Interface interface {

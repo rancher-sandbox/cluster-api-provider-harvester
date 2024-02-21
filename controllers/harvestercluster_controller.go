@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,9 +23,10 @@ import (
 
 	"github.com/go-logr/logr"
 	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
-	lbclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
+	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -35,10 +36,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	capiutil "sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,27 +45,34 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/pkg/errors"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	capiutil "sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
+
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	lbclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 const (
-	harvesterNamespace        = "harvester-system"
-	harvesterDeploymentName   = "harvester"
-	availableConditionType    = "Available"
-	apiServerListener         = "api-server"
-	apiServerLBPort           = 6443
-	apiServerBackendPort      = 6443
-	apiServerProtocol         = "TCP"
-	cpIPPoolDescriptionPrefix = "IP Pool for the control plane's LB of cluster"
-	// TODO: Re-do the following when the HarvesterMachine API is done.
-	cpVMLabelKey         = "harvestercluster/machinetype"
-	cpVMLabelValuePrefix = "controlplane"
+	harvesterNamespace           = "harvester-system"
+	harvesterDeploymentName      = "harvester"
+	availableConditionType       = "Available"
+	lbHealthCheckPeriodSections  = 30
+	lbHealthCheckTimeoutSections = 60
+	apiServerListener            = "api-server"
+	apiServerLBPort              = 6443
+	apiServerBackendPort         = 6443
+	apiServerProtocol            = "TCP"
+	cpIPPoolDescriptionPrefix    = "IP Pool for the control plane's LB of cluster"
+	cpVMLabelKey                 = "harvestercluster/machinetype"
+	cpVMLabelValuePrefix         = "controlplane"
+	requeueTimeThirtySeconds     = 30 * time.Second
+	requeueTimeFiveMinutes       = 5 * time.Minute
 )
 
-// HarvesterClusterReconciler reconciles a HarvesterCluster object
+// HarvesterClusterReconciler reconciles a HarvesterCluster object.
 type HarvesterClusterReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -80,6 +84,7 @@ type ClusterScope struct {
 	Logger           logr.Logger
 	Ctx              context.Context
 	HarvesterClient  *lbclient.Clientset
+	ReconcileClient  client.Client
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters,verbs=get;list;watch;create;update;patch;delete
@@ -94,15 +99,19 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	var cluster infrav1.HarvesterCluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
-
 		if apierrors.IsNotFound(err) {
 			logger.Error(err, "cluster not found", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
+
 			return ctrl.Result{}, nil
 		}
 
-		logger.Error(err, "Error happened when getting harvestercluster", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
+		logger.Error(err, "Error happened when getting harvestercluster",
+			"cluster-name", req.NamespacedName.Name,
+			"cluster-namespace", req.NamespacedName.Namespace)
+
 		return ctrl.Result{}, err
 	}
+
 	patchHelper, err := patch.NewHelper(&cluster, r.Client)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -118,11 +127,13 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	clusterOwner, err := capiutil.GetOwnerCluster(ctx, r.Client, cluster.ObjectMeta)
 	if err != nil {
 		logger.Error(err, "Error Getting ClusterOwner")
+
 		return ctrl.Result{}, err
 	}
 
 	if clusterOwner == nil {
 		logger.Info("ClusterOwner not yet set, waiting for CAPI to set it")
+
 		return ctrl.Result{}, nil
 	}
 
@@ -136,6 +147,7 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	hvClient, err := lbclient.NewForConfig(hvRESTConfig)
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client from restConfig")
+
 		return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
 	}
 
@@ -145,13 +157,15 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Logger:           logger,
 		Ctx:              ctx,
 		HarvesterClient:  hvClient,
+		ReconcileClient:  r.Client,
 	}
 
 	// Handling DeletionTimestamp to decide if it is a Deletion or a Normal reconcile
 	if !cluster.DeletionTimestamp.IsZero() {
-		return r.ReconcileDelete(scope)
+		return r.ReconcileDelete(scope) //nolint:contextcheck
 	}
-	return r.ReconcileNormal(scope)
+
+	return r.ReconcileNormal(scope) //nolint:contextcheck
 }
 
 const (
@@ -160,16 +174,18 @@ const (
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *HarvesterClusterReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
-
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &infrav1.HarvesterCluster{}, secretIdField, func(obj client.Object) []string {
-
-		cluster := obj.(*infrav1.HarvesterCluster)
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &infrav1.HarvesterCluster{}, secretIdField, func(obj client.Object) []string {
+		cluster, ok := obj.(*infrav1.HarvesterCluster)
+		if !ok {
+			return nil
+		}
 
 		if (cluster.Spec.IdentitySecret == infrav1.SecretKey{}) || cluster.Spec.IdentitySecret.Name == "" {
 			return nil
 		}
 
 		clusterSecretName := cluster.Spec.IdentitySecret.Name
+
 		return []string{clusterSecretName}
 	}); err != nil {
 		return err
@@ -191,7 +207,7 @@ func (r *HarvesterClusterReconciler) findObjectsForSecret(ctx context.Context, s
 		FieldSelector: fields.OneTermEqualSelector(secretIdField, secret.GetName()),
 	}
 
-	err := r.List(context.TODO(), attachedClusters, listOps)
+	err := r.List(ctx, attachedClusters, listOps)
 	if err != nil {
 		return []reconcile.Request{}
 	}
@@ -206,47 +222,74 @@ func (r *HarvesterClusterReconciler) findObjectsForSecret(ctx context.Context, s
 			},
 		}
 	}
+
 	return requests
 }
 
 // isHarvesterAvailable is a function that parses all conditions for the Available type and Status == True.
-// The function return a bool true if the AvailableCondition has a status true, and false in all other cases
+// The function return a bool true if the AvailableCondition has a status true, and false in all other cases.
 func isHarvesterAvailable(conditions []appsv1.DeploymentCondition) bool {
 	for _, condition := range conditions {
 		if condition.Type == availableConditionType && condition.Status == apiv1.ConditionTrue {
 			return true
 		}
 	}
+
 	return false
 }
 
-// ReconcileNormal is the reconciliation function when not deleting the HarvesterCluster instance
+// ReconcileNormal is the reconciliation function when not deleting the HarvesterCluster instance.
 func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ctrl.Result, err error) {
 	logger := log.FromContext(scope.Ctx)
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
 	if !controllerutil.ContainsFinalizer(scope.HarvesterCluster, infrav1.ClusterFinalizer) {
 		controllerutil.AddFinalizer(scope.HarvesterCluster, infrav1.ClusterFinalizer)
+
 		return ctrl.Result{}, nil
+	}
+
+	// Check if TargetNamespace exists, if not create it
+	_, err = scope.HarvesterClient.CoreV1().Namespaces().Get(context.TODO(), scope.HarvesterCluster.Spec.TargetNamespace, v1.GetOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			_, err = scope.HarvesterClient.CoreV1().Namespaces().Create(context.TODO(), &apiv1.Namespace{
+				ObjectMeta: v1.ObjectMeta{
+					Name: scope.HarvesterCluster.Spec.TargetNamespace,
+				},
+			}, v1.CreateOptions{})
+			if err != nil {
+				logger.Error(err, "unable to create TargetNamespace")
+			}
+		} else {
+			logger.Error(err, "unable to get TargetNamespace in Harvester, problem with the HarvesterClient")
+		}
 	}
 
 	// Initializing return values
 	res = ctrl.Result{}
+
 	ownedCPHarvesterMachines, err := r.getOwnedCPHarversterMachines(scope)
 	if err != nil {
 		logger.Error(err, "could not get ownerCPMachines")
-		return
+
+		return res, err
 	}
 
 	if len(ownedCPHarvesterMachines) == 0 {
 		logger.Info("no ControlPlane Machines exist yet for cluster, skipping Load Balancer creation and Requeing ...")
 
 		// Create a placeholder LoadBalancer svc to avoid blocking the CAPI Controller
-		existingPlaceholderLB, err1 := scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Get(scope.Ctx, scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb", v1.GetOptions{})
+		existingPlaceholderLB, err1 := scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Get(
+			scope.Ctx,
+			scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb",
+			v1.GetOptions{})
+
 		if err1 != nil {
 			if !apierrors.IsNotFound(err1) {
 				logger.Error(err1, "could not get the placeholder LoadBalancer")
-				return ctrl.Result{RequeueAfter: 5 * time.Minute}, err1
+
+				return ctrl.Result{RequeueAfter: requeueTimeFiveMinutes}, err1
 			} else {
 				placeholderSVC := &apiv1.Service{
 					ObjectMeta: v1.ObjectMeta{
@@ -257,7 +300,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 						},
 					},
 					Spec: apiv1.ServiceSpec{
-						AllocateLoadBalancerNodePorts: func() *bool { b := true; return &b }(),
+						AllocateLoadBalancerNodePorts: func() *bool { b := true; return &b }(), //nolint:nlreturn
 						Ports: []apiv1.ServicePort{
 							{
 								Name:       apiServerListener,
@@ -272,55 +315,65 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 						},
 						IPFamilyPolicy: func() *apiv1.IPFamilyPolicyType {
 							policy := apiv1.IPFamilyPolicySingleStack
+
 							return &policy
 						}(),
 						LoadBalancerIP: "0.0.0.0",
 					},
 				}
-				_, err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Create(scope.Ctx, placeholderSVC, v1.CreateOptions{})
+
+				_, err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Create(
+					scope.Ctx,
+					placeholderSVC,
+					v1.CreateOptions{})
 				if err != nil {
 					if !apierrors.IsAlreadyExists(err) {
 						logger.Error(err, "could not create the placeholder LoadBalancer")
-						return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+
+						return ctrl.Result{RequeueAfter: requeueTimeFiveMinutes}, err
 					} else {
 						logger.Info("placeholder LoadBalancer already exists, skipping ...")
 					}
-
 				}
-				res = ctrl.Result{RequeueAfter: 20 * time.Second}
-				return
+				res = ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}
+
+				return res, err
 			}
 		}
 
 		// Requeue if the placeholder LoadBalancer IP is empty
 		if len(existingPlaceholderLB.Status.LoadBalancer.Ingress) == 0 || existingPlaceholderLB.Status.LoadBalancer.Ingress[0].IP == "" {
 			logger.Info("placeholder LoadBalancer IP is empty, waiting for IP to be set ...")
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+
+			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
 		}
 
-		//res = ctrl.Result{RequeueAfter: 5 * time.Minute}
+		// res = ctrl.Result{RequeueAfter: 5 * time.Minute}
 		scope.HarvesterCluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
 			Host: existingPlaceholderLB.Status.LoadBalancer.Ingress[0].IP,
-			Port: 6443,
+			Port: apiServerLBPort,
 		}
 		scope.HarvesterCluster.Status = infrav1.HarvesterClusterStatus{
 			Ready: true,
 		}
-		return
+
+		return res, err
 	}
 
 	// The following is executed only if there are ownedCPHarvesterMachines
 	if !conditions.IsTrue(scope.HarvesterCluster, infrav1.LoadBalancerReadyCondition) {
-		err := createLoadBalancerIfNotExists(scope.Cluster, scope.HarvesterCluster, scope.HarvesterClient, ownedCPHarvesterMachines)
+		err := createLoadBalancerIfNotExists(scope, ownedCPHarvesterMachines)
 		if err != nil {
-			logger.Error(err, "could not create the LoadBalancer")
-			return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+			logger.V(1).Info("could not create the LoadBalancer, requeuing ...")
+
+			return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 		}
 
 		lbIP, err := getLoadBalancerIP(scope.Cluster, scope.HarvesterCluster, scope.HarvesterClient)
 		if err != nil {
 			logger.Error(err, "could not get the LoadBalancer IP")
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, err
+
+			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
 		}
 
 		scope.HarvesterCluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
@@ -334,14 +387,17 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 			Status: apiv1.ConditionTrue,
 		})
 
-		return ctrl.Result{RequeueAfter: 2 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 	}
 
-	return
+	return res, err
 }
 
 func getLoadBalancerIP(cluster *clusterv1.Cluster, harvesterCluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset) (string, error) {
-	createdLB, err := hvClient.LoadbalancerV1beta1().LoadBalancers(harvesterCluster.Spec.TargetNamespace).Get(context.TODO(), harvesterCluster.Namespace+"-"+harvesterCluster.Name+"-lb", v1.GetOptions{})
+	createdLB, err := hvClient.LoadbalancerV1beta1().LoadBalancers(harvesterCluster.Spec.TargetNamespace).Get(
+		context.TODO(),
+		harvesterCluster.Namespace+"-"+harvesterCluster.Name+"-lb",
+		v1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -358,7 +414,6 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 
 	secret, err := locutil.GetSecretForHarvesterConfig(ctx, cluster, r.Client)
 	if (err != nil || secret == &apiv1.Secret{}) {
-
 		cluster.Status = infrav1.HarvesterClusterStatus{
 			FailureReason:  "IdentitySecretUnavailable",
 			FailureMessage: "unable to find the IdentitySecret for Harvester",
@@ -375,6 +430,7 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	kubeconfig := secret.Data[locutil.ConfigSecretDataKey]
 
 	var config *clientcmdapi.Config
+
 	if config, err = clientcmd.Load(kubeconfig); err != nil {
 		cluster.Status = infrav1.HarvesterClusterStatus{
 			FailureReason:  "MalformedIdentitySecret",
@@ -401,42 +457,45 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	hvRESTConfig, err := clientcmd.RESTConfigFromKubeConfig(kubeconfig)
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client config for Harvester")
+
 		return &rest.Config{}, err
 	}
+
 	hvClient, err := kubeclient.NewForConfig(hvRESTConfig)
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client from restConfig")
+
 		return &rest.Config{}, err
 	}
 
 	harvesterDeployment, err := hvClient.AppsV1().Deployments(harvesterNamespace).Get(ctx, harvesterDeploymentName, v1.GetOptions{})
-
 	if err != nil {
 		logger.Error(err, "Harvester deployment not found on target Kubernetes cluster")
+
 		return &rest.Config{}, err
 	}
 
 	if !isHarvesterAvailable(harvesterDeployment.Status.Conditions) {
 		logger.Error(err, "harvester cluster is unavailable")
+
 		return &rest.Config{}, err
 	}
 
 	return hvRESTConfig, nil
 }
 
-func createLoadBalancerIfNotExists(ownerCluster *clusterv1.Cluster, cluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset, ownedCPMachines []infrav1.HarvesterMachine) error {
-
-	additionalListeners := getListenersFromAPI(cluster)
+func createLoadBalancerIfNotExists(scope ClusterScope, ownedCPMachines []infrav1.HarvesterMachine) (err error) {
+	additionalListeners := getListenersFromAPI(scope.HarvesterCluster)
 
 	lbToCreate := &lbv1beta1.LoadBalancer{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      cluster.Namespace + "-" + cluster.Name + "-lb",
-			Namespace: cluster.Spec.TargetNamespace,
+			Name:      scope.HarvesterCluster.Namespace + "-" + scope.HarvesterCluster.Name + "-lb",
+			Namespace: scope.HarvesterCluster.Spec.TargetNamespace,
 		},
 		Spec: lbv1beta1.LoadBalancerSpec{
-			Description:  "Load Balancer for cluster " + cluster.Name,
+			Description:  "Load Balancer for cluster " + scope.HarvesterCluster.Name,
 			WorkloadType: "vm",
-			IPAM:         lbv1beta1.IPAM(cluster.Spec.LoadBalancerConfig.IPAMType),
+			IPAM:         lbv1beta1.IPAM(scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType),
 			Listeners: append(additionalListeners, lbv1beta1.Listener{
 				Name:        apiServerListener,
 				Port:        apiServerLBPort,
@@ -447,38 +506,52 @@ func createLoadBalancerIfNotExists(ownerCluster *clusterv1.Cluster, cluster *inf
 				Port:             apiServerBackendPort,
 				SuccessThreshold: 1,
 				FailureThreshold: 3,
-				PeriodSeconds:    30,
-				TimeoutSeconds:   60,
+				PeriodSeconds:    lbHealthCheckPeriodSections,
+				TimeoutSeconds:   lbHealthCheckTimeoutSections,
 			},
 			BackendServerSelector: map[string][]string{
-				cpVMLabelKey: {cpVMLabelValuePrefix + "-" + ownerCluster.Name},
+				cpVMLabelKey: {cpVMLabelValuePrefix + "-" + scope.Cluster.Name},
 			},
 		},
 	}
 
-	// TODO: replace constante with actual value
-	const machineNetwork = "default/untagged"
-
-	if cluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
-		if cluster.Spec.LoadBalancerConfig.IpPoolRef != "" {
-			lbToCreate.Spec.IPPool = cluster.Spec.LoadBalancerConfig.IpPoolRef
+	machineNetwork := types.NamespacedName{}
+	if scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPool.VMNetwork != "" {
+		err, machineNetwork = locutil.GetNamespacedName(
+			scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPool.VMNetwork,
+			scope.HarvesterCluster.Spec.TargetNamespace)
+		if err != nil {
+			return errors.Wrap(err, "VMNetwork reference is not valid")
 		}
+	}
 
-		if cluster.Spec.LoadBalancerConfig.IpPool != (infrav1.IpPool{}) {
-			createdIPPool, err := createIPPool(
-				cluster,
-				hvClient,
-				machineNetwork,
-				cluster.Spec.TargetNamespace)
-			if err != nil {
-				return err
+	if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
+		if scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef != "" {
+			// IPPools are not namespaced, thus we don't need to add the namespace to the name
+			lbToCreate.Spec.IPPool = scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef
+		} else {
+			if scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPool != (infrav1.IpPool{}) {
+				createdIPPool, err := createIPPool(
+					scope.HarvesterCluster,
+					scope.HarvesterClient,
+					machineNetwork.Namespace+"/"+machineNetwork.Name,
+					scope.HarvesterCluster.Spec.TargetNamespace)
+				if err != nil {
+					return err
+				}
+
+				lbToCreate.Spec.IPPool = createdIPPool
+			} else {
+				return fmt.Errorf("IP Pool is not defined")
 			}
-			lbToCreate.Spec.IPPool = createdIPPool
 		}
 	}
 
 	// Harvester Call to Harvester
-	_, err := hvClient.LoadbalancerV1beta1().LoadBalancers(cluster.Spec.TargetNamespace).Create(context.TODO(), lbToCreate, v1.CreateOptions{})
+	_, err = scope.HarvesterClient.LoadbalancerV1beta1().LoadBalancers(scope.HarvesterCluster.Spec.TargetNamespace).Create(
+		context.TODO(),
+		lbToCreate,
+		v1.CreateOptions{})
 	if err != nil {
 		if !apierrors.IsAlreadyExists(err) {
 			return errors.Wrapf(err, "error during creation of LB")
@@ -488,20 +561,22 @@ func createLoadBalancerIfNotExists(ownerCluster *clusterv1.Cluster, cluster *inf
 	return nil
 }
 
-// getListenersFromAPI is a function that gets the listeners from the HarvesterCluster Resource and returns them as a slice of lbv1beta1.Listener
+// getListenersFromAPI is a function that gets the listeners from the HarvesterCluster Resource and returns them as a slice of lbv1beta1.Listener.
 func getListenersFromAPI(cluster *infrav1.HarvesterCluster) []lbv1beta1.Listener {
-	var additionalListeners []lbv1beta1.Listener
-	for _, listener := range cluster.Spec.LoadBalancerConfig.Listeners {
-		additionalListeners = append(additionalListeners, lbv1beta1.Listener{
+	additionalListeners := make([]lbv1beta1.Listener, len(cluster.Spec.LoadBalancerConfig.Listeners))
+	for i, listener := range cluster.Spec.LoadBalancerConfig.Listeners {
+		additionalListeners[i] = lbv1beta1.Listener{
 			Name:        listener.Name,
 			Port:        listener.Port,
 			Protocol:    listener.Protocol,
 			BackendPort: listener.BackendPort,
-		})
+		}
 	}
+
 	return additionalListeners
 }
 
+// createIPPool is a function that creates an IP Pool in Harvester.
 func createIPPool(cluster *infrav1.HarvesterCluster, lbClient *lbclient.Clientset, machineNetwork string, targetVMNamespace string) (string, error) {
 	ipPoolToCreate := lbv1beta1.IPPool{
 		ObjectMeta: v1.ObjectMeta{
@@ -534,61 +609,86 @@ func createIPPool(cluster *infrav1.HarvesterCluster, lbClient *lbclient.Clientse
 	return createdIPPool.Name, nil
 }
 
-// TODO: Implement
+// getOwnedCPHarversterMachines is a function that gets the HarvesterMachines that are owned by the HarvesterCluster and are controlplane machines.
 func (r *HarvesterClusterReconciler) getOwnedCPHarversterMachines(scope ClusterScope) ([]infrav1.HarvesterMachine, error) {
-
-	// Get all the harvestermachines for the cluster
-	// Filter the harvestermachines that are controlplane machines
-	// Filter the harvestermachines that are owned by the cluster
-	// Return the harvestermachines that are owned by the cluster and are controlplane machines
+	// Get all the harvestermachines for the cluster.
+	// Filter the harvestermachines that are controlplane machines.
+	// Filter the harvestermachines that are owned by the cluster.
+	// Return the harvestermachines that are owned by the cluster and are controlplane machines.
 	ownedCPHarvesterMachines := &infrav1.HarvesterMachineList{}
-	err := r.Client.List(scope.Ctx, ownedCPHarvesterMachines, client.MatchingLabels{clusterv1.ClusterNameLabel: scope.Cluster.Name}, client.HasLabels{clusterv1.MachineControlPlaneLabel})
+
+	err := r.Client.List(scope.Ctx,
+		ownedCPHarvesterMachines,
+		client.MatchingLabels{clusterv1.ClusterNameLabel: scope.Cluster.Name},
+		client.HasLabels{clusterv1.MachineControlPlaneLabel})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			scope.Logger.Info("no ControlPlane Machines exist yet for cluster")
+
 			return []infrav1.HarvesterMachine{}, nil
 		}
+
 		return []infrav1.HarvesterMachine{}, errors.Wrap(err, "unable to list owned ControlPlane Machines")
 	}
 
 	return ownedCPHarvesterMachines.Items, nil
 }
 
-// ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it
+// ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it.
 func (r *HarvesterClusterReconciler) ReconcileDelete(scope ClusterScope) (ctrl.Result, error) {
 	logger := log.FromContext(scope.Ctx)
 	logger.Info("Deleting Harvester Cluster ...", "cluster-name", scope.HarvesterCluster.Name, "cluster-namespace", scope.HarvesterCluster.Namespace)
 
-	err := scope.HarvesterClient.LoadbalancerV1beta1().LoadBalancers(scope.HarvesterCluster.Spec.TargetNamespace).Delete(context.TODO(), scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb", v1.DeleteOptions{})
+	err := scope.HarvesterClient.LoadbalancerV1beta1().LoadBalancers(scope.HarvesterCluster.Spec.TargetNamespace).Delete(
+		context.TODO(),
+		scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb",
+		v1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete Load Balancer in Harvester")
+
 			return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
 		}
+
 		logger.Info("no Load Balancer to be deleted, skipping ...")
 	}
+
 	logger.V(5).Info("Load Balancer deleted successfully")
 
-	err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Delete(context.TODO(), scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb", v1.DeleteOptions{})
+	err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Delete(
+		context.TODO(),
+		scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb",
+		v1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete Load Balancer Service in Harvester")
+
 			return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
 		}
+
 		logger.Info("no Load Balancer Service to be deleted, skipping ...")
 	}
+
 	logger.V(5).Info("Load Balancer Service deleted successfully")
 
-	err = scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Delete(context.TODO(), scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-ip-pool", v1.DeleteOptions{})
+	err = scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Delete(
+		context.TODO(),
+		scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-ip-pool",
+		v1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete generated IP Pool in Harvester")
+
 			return ctrl.Result{RequeueAfter: 3 * time.Minute}, err
 		}
+
 		logger.Info("no IP Pool to be deleted, skipping ...")
 	}
+
 	logger.V(5).Info("IP Pool deleted successfully")
-	logger.Info("Removing finalizer from HarvesterCluster ...", "cluster-name", scope.HarvesterCluster.Name, "cluster-namespace", scope.HarvesterCluster.Namespace)
+	logger.Info("Removing finalizer from HarvesterCluster ...",
+		"cluster-name", scope.HarvesterCluster.Name,
+		"cluster-namespace", scope.HarvesterCluster.Namespace)
 	controllerutil.RemoveFinalizer(scope.HarvesterCluster, infrav1.ClusterFinalizer)
 
 	return ctrl.Result{}, nil

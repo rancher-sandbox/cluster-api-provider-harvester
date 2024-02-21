@@ -3,12 +3,13 @@ package controllers
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+
 	kubevirtv1 "kubevirt.io/api/core/v1"
+
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 )
 
 var _ = Describe("Convert HarvesterMachine networks to Kubevirt Networks", func() {
-
 	var hvMachineNetworks *v1alpha1.HarvesterMachine
 	var kvNetworks []kubevirtv1.Network
 

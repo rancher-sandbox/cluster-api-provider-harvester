@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -29,24 +30,24 @@ const (
 )
 
 const (
-	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester
+	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester.
 	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
-	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready
+	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready.
 	LoadBalancerNotReadyReason = "LoadBalancerNotReady"
-	// LoadBalancerReadyMessage documents the message why the load balancer is not ready
+	// LoadBalancerReadyMessage documents the message why the load balancer is not ready.
 	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
-	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready
+	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready.
 	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
 )
 
 const (
-	// InitMachineCreatedCondition documents the status of the init machine in Harvester
+	// InitMachineCreatedCondition documents the status of the init machine in Harvester.
 	InitMachineCreatedCondition clusterv1.ConditionType = "InitMachineCreated"
-	// InitMachineNotCreatedReason documents the reason why the init machine is not ready
+	// InitMachineNotCreatedReason documents the reason why the init machine is not ready.
 	InitMachineNotYetCreatedReason = "InitMachineNotYetCreated"
 )
 
-// HarvesterClusterSpec defines the desired state of HarvesterCluster
+// HarvesterClusterSpec defines the desired state of HarvesterCluster.
 type HarvesterClusterSpec struct {
 	// Server is the url to connect to Harvester.
 	// +optional
@@ -62,30 +63,29 @@ type HarvesterClusterSpec struct {
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 
-	// TargetNamespace is the namespace on the Harvester cluster where VMs, Load Balancers, etc. should be created
+	// TargetNamespace is the namespace on the Harvester cluster where VMs, Load Balancers, etc. should be created.
 	TargetNamespace string `json:"targetNamespace"`
 }
 
 type SecretKey struct {
-
-	// Namespace is the namespace in which the required Identity Secret should be found
+	// Namespace is the namespace in which the required Identity Secret should be found.
 	Namespace string `json:"namespace"`
 
-	// Name is the name of the required Identity Secret
+	// Name is the name of the required Identity Secret.
 	Name string `json:"name"`
 }
 
 type LoadBalancerConfig struct {
 	// IPAMType is the configuration of IP addressing for the control plane load balancer.
-	// This can take two values, either "dhcp" or "ippool"
+	// This can take two values, either "dhcp" or "ippool".
 	IPAMType IPAMType `json:"ipamType"`
 
-	// IpPoolRef is a reference to an existing IpPool object in Harvester's cluster in the same namespace.
-	// This field is mutually exclusive with "ipPool"
+	// IpPoolRef is a reference to an existing IpPool object in Harvester's cluster.
+	// This field is mutually exclusive with "ipPool". //TODO: To be implemented
 	IpPoolRef string `json:"ipPoolRef,omitempty"`
 
 	// IpPool defines a new IpPool that will be added to Harvester.
-	// This field is mutually exclusive with "IpPoolRef"
+	// This field is mutually exclusive with "IpPoolRef".
 	IpPool IpPool `json:"ipPool,omitempty"`
 
 	// Listeners is a list of listeners that should be created on the load balancer.
@@ -101,45 +101,46 @@ type LoadBalancerConfig struct {
 // +kubebuilder:validation:Enum:=dhcp;pool
 type IPAMType string
 
-// IpPool is a description of a new IPPool to be created in Harvester
+// IpPool is a description of a new IPPool to be created in Harvester.
 type IpPool struct {
 	// VMNetwork is the name of an existing VM Network in Harvester where the IPPool should exist.
+	// The reference can have the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterCluster.
 	VMNetwork string `json:"vmNetwork"`
 
-	// Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address
-	// e.g. 172.17.1.0/24
+	// Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address.
+	// e.g. 172.17.1.0/24.
 	Subnet string `json:"subnet"`
 
-	// Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet
-	// e.g. 172.17.1.1
+	// Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet.
+	// e.g. 172.17.1.1.
 	Gateway string `json:"gateway"`
 }
 
-// Listener is a description of a new Listener to be created on the Load Balancer
+// Listener is a description of a new Listener to be created on the Load Balancer.
 type Listener struct {
-	// Name is the name of the listener
+	// Name is the name of the listener.
 	Name string `json:"name"`
 
-	// Port is the port that the listener should listen on
+	// Port is the port that the listener should listen on.
 	Port int32 `json:"port"`
 
-	// Protocol is the protocol that the listener should use, either TCP or UDP
+	// Protocol is the protocol that the listener should use, either TCP or UDP.
 	// +kubebuilder:validation:Enum:=TCP;UDP
 	Protocol corev1.Protocol `json:"protocol"`
 
-	// TargetPort is the port that the listener should forward traffic to
+	// TargetPort is the port that the listener should forward traffic to.
 	BackendPort int32 `json:"backendPort"`
 }
 
-// HarvesterClusterStatus defines the observed state of HarvesterCluster
+// HarvesterClusterStatus defines the observed state of HarvesterCluster.
 type HarvesterClusterStatus struct {
-	// Reddy describes if the Harvester Cluster can be considered ready for machine creation
+	// Reddy describes if the Harvester Cluster can be considered ready for machine creation.
 	Ready bool `json:"ready"`
 
-	// FailureReason is the short name for the reason why a failure might be happening that makes the cluster not ready
+	// FailureReason is the short name for the reason why a failure might be happening that makes the cluster not ready.
 	// +optional
 	FailureReason string `json:"failureReason,omitempty"`
-	// FailureMessage is a full error message dump of the above failureReason
+	// FailureMessage is a full error message dump of the above failureReason.
 	// +optional
 	FailureMessage string `json:"failureMessage,omitempty"`
 
@@ -154,7 +155,7 @@ type HarvesterClusterStatus struct {
 // +kubebuilder:printcolumn:name="Server",type="string",JSONPath=".spec.server",description="Server is the address of the Harvester endpoint"
 // +kubebuilder:printcolumn:name="ControlPlaneEndpoint",type="string",JSONPath=".spec.controlPlaneEndpoint[0]",description="API Endpoint",priority=1
 
-// HarvesterCluster is the Schema for the harvesterclusters API
+// HarvesterCluster is the Schema for the harvesterclusters API.
 type HarvesterCluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -165,7 +166,7 @@ type HarvesterCluster struct {
 
 //+kubebuilder:object:root=true
 
-// HarvesterClusterList contains a list of HarvesterCluster
+// HarvesterClusterList contains a list of HarvesterCluster.
 type HarvesterClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
@@ -191,7 +192,7 @@ type HarvesterClusterTemplate struct {
 
 type HarvesterClusterTemplateResource struct {
 	// Standard object's metadata.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.
 	// +optional
 	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
 	Spec       HarvesterClusterSpec `json:"spec"`

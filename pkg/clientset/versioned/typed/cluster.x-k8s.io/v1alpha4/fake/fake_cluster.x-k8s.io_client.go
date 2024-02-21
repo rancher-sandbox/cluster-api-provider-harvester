@@ -19,9 +19,10 @@ limitations under the License.
 package fake
 
 import (
-	v1alpha4 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4"
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
+
+	v1alpha4 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4"
 )
 
 type FakeClusterV1alpha4 struct {

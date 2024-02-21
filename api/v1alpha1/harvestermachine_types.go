@@ -1,5 +1,5 @@
 /*
-Copyright 2022.
+Copyright 2024.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,19 +20,20 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	capiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 const (
-	// MachineFinalizer allows ReconcileHarvesterMachine to clean up resources associated with HarvesterMachine before
+	// MachineFinalizer allows ReconcileHarvesterMachine to clean up resources associated with HarvesterMachine before.
 	// removing it from the apiserver.
 	MachineFinalizer = "harvestermachine.infrastructure.cluster.x-k8s.io"
 )
 
-// HarvesterMachineSpec defines the desired state of HarvesterMachine
+// HarvesterMachineSpec defines the desired state of HarvesterMachine.
 type HarvesterMachineSpec struct {
-	// ProviderID will be the ID of the machine used by the controller.
-	// This will be "<harvester vm namespace>-<harvester vm name>"
+	// ProviderID will be the ID of the VM in the provider (Harvester).
+	// This is set by the Cloud provider on the Workload cluster node and replicated by CAPI.
 	// +optional
 	ProviderID string `json:"providerID,omitempty"`
 
@@ -43,19 +44,21 @@ type HarvesterMachineSpec struct {
 	// CPU is the number of CPU to assign to the VM.
 	CPU int `json:"cpu"`
 
-	// Memory is the memory size to assign to the VM (should be similar to pod.spec.containers.resources.limits)
+	// Memory is the memory size to assign to the VM (should be similar to pod.spec.containers.resources.limits).
 	Memory string `json:"memory"`
 
 	// SSHUser is the user that should be used to connect to the VMs using SSH.
 	SSHUser string `json:"sshUser"`
 
-	//SSHKeyPair is the name of the SSH key pair to use for SSH access to the VM (this keyPair should be created in Harvester)
+	// SSHKeyPair is the name of the SSH key pair to use for SSH access to the VM (this keyPair should be created in Harvester).
+	// The reference can be in the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterMachine.
 	SSHKeyPair string `json:"sshKeyPair"`
 
 	// Volumes is a list of Volumes to attach to the VM
 	Volumes []Volume `json:"volumes"`
 
-	// Networks is a list of Networks to attach to the VM. Networks are referenced by their names.
+	// Networks is a list of Networks to attach to the VM.
+	// Each item in the list can have the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterMachine.
 	Networks []string `json:"networks"`
 
 	// NodeAffinity gives the possibility to select preferred nodes for VM scheduling on Harvester. This works exactly like Pods.
@@ -73,6 +76,7 @@ type Volume struct {
 	VolumeType VolumeType `json:"volumeType"`
 
 	// ImageName is the name of the image to use if the volumeType is "image"
+	// ImageName can be in the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterMachine.
 	// +optional
 	ImageName string `json:"imageName,omitempty"`
 
@@ -84,20 +88,17 @@ type Volume struct {
 	// +optional
 	VolumeSize *resource.Quantity `json:"volumeSize,omitempty"`
 
-	// TODO: Implement a control in the admission webhook to check validity of BootOrders across volumes.
-	// No duplicate values + exact sequence corresponding to total number of volumes
-
-	// BootOrder is an integer that determines the order of priority of volumes for booting the VM
+	// BootOrder is an integer that determines the order of priority of volumes for booting the VM.
 	// If absent, the sequence with which volumes appear in the manifest will be used.
 	// +optional
 	BootOrder int `json:"bootOrder,omitempty"`
 }
 
-// VolumeType is an enum string. It can only take the values: "storageClass" or "image"
+// VolumeType is an enum string. It can only take the values: "storageClass" or "image".
 // +kubebuilder:Validation:Enum:=storageClass,image
 type VolumeType string
 
-// HarvesterMachineStatus defines the observed state of HarvesterMachine
+// HarvesterMachineStatus defines the observed state of HarvesterMachine.
 type HarvesterMachineStatus struct {
 	// Ready is true when the provider resource is ready.
 	Ready bool `json:"ready"`
@@ -112,7 +113,7 @@ type HarvesterMachineStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// HarvesterMachine is the Schema for the harvestermachines API
+// HarvesterMachine is the Schema for the harvestermachines API.
 type HarvesterMachine struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -123,7 +124,7 @@ type HarvesterMachine struct {
 
 //+kubebuilder:object:root=true
 
-// HarvesterMachineList contains a list of HarvesterMachine
+// HarvesterMachineList contains a list of HarvesterMachine.
 type HarvesterMachineList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`

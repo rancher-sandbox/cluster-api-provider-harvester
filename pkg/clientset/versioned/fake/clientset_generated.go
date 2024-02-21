@@ -21,6 +21,14 @@ package fake
 import (
 	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
 	fakelbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1/fake"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/discovery"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
+	"k8s.io/client-go/testing"
+
 	clientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	catalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1"
 	fakecatalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1/fake"
@@ -46,13 +54,6 @@ import (
 	fakestoragev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/storage.k8s.io/v1/fake"
 	upgradev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/upgrade.cattle.io/v1"
 	fakeupgradev1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/upgrade.cattle.io/v1/fake"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/discovery"
-	fakediscovery "k8s.io/client-go/discovery/fake"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
-	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
-	"k8s.io/client-go/testing"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.
