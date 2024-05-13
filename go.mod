@@ -11,8 +11,8 @@ require (
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v0.0.0-20200331171230-d50e42f2b669
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/longhorn/longhorn-manager v1.4.3
-	github.com/onsi/ginkgo/v2 v2.17.2
 	github.com/onsi/gomega v1.33.1
+	github.com/onsi/ginkgo/v2 v2.17.3
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.62.0
 	github.com/rancher/rancher/pkg/apis v0.0.0
