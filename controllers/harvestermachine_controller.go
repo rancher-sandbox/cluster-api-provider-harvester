@@ -314,20 +314,39 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope Scope) (res reconci
 		return ctrl.Result{}, nil
 	}
 
-	logger.Info("No existing VM found in Harvester, creating a new one ...")
+	if !conditions.IsTrue(hvScope.HarvesterMachine, infrav1.MachineCreatedCondition) {
+		logger.Info("No existing VM found in Harvester, creating a new one ...")
 
-	_, err = createVMFromHarvesterMachine(hvScope)
-	if err != nil {
-		logger.Error(err, "unable to create VM from HarvesterMachine information")
-	}
+		hvScope.HarvesterMachine.Status.Ready = false
 
-	// Patch the HarvesterCluster resource with the current conditions.
-	hvClusterCopy := hvScope.HarvesterCluster.DeepCopy()
-	conditions.MarkTrue(hvClusterCopy, infrav1.InitMachineCreatedCondition)
-	hvClusterCopy.Status.Ready = false
+		_, err = createVMFromHarvesterMachine(hvScope)
+		if err != nil {
+			logger.Error(err, "unable to create VM from HarvesterMachine information")
 
-	if err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster)); err != nil {
-		logger.Error(err, "failed to update HarvesterCluster Conditions with InitMachineCreatedCondition")
+			return ctrl.Result{}, err
+		}
+
+		conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.MachineCreatedCondition)
+		hvScope.HarvesterMachine.Status.Ready = true
+
+		// Patch the HarvesterCluster resource with the InitMachineCreatedCondition if it is not already set.
+		if conditions.IsFalse(hvScope.HarvesterCluster, infrav1.InitMachineCreatedCondition) {
+			hvClusterCopy := hvScope.HarvesterCluster.DeepCopy()
+			conditions.MarkTrue(hvClusterCopy, infrav1.InitMachineCreatedCondition)
+			hvClusterCopy.Status.Ready = false
+
+			if err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster)); err != nil {
+				logger.Error(err, "failed to update HarvesterCluster Conditions with InitMachineCreatedCondition")
+			}
+		}
+	} else {
+		if (existingVM == &kubevirtv1.VirtualMachine{}) {
+			hvScope.HarvesterMachine.Status.Ready = false
+			conditions.MarkFalse(hvScope.HarvesterMachine,
+				infrav1.MachineCreatedCondition, infrav1.MachineNotFoundReason, clusterv1.ConditionSeverityError, "VM not found in Harvester")
+
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		}
 	}
 
 	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
@@ -625,19 +644,19 @@ runcmd:
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			hvScope.Logger.V(2).Info("unable to get cloud-init secret, error was different than NotFound") //nolint:gomnd
+		} else {
+			_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
+				context.TODO(), cloudInitSecret, metav1.CreateOptions{})
+			if err != nil {
+				return nil, errors.Wrap(err, "unable to create cloud-init secret")
+			}
 		}
-	}
-
-	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
-		context.TODO(), cloudInitSecret, metav1.CreateOptions{})
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to create cloud-init secret")
-	}
-
-	if err != nil {
-		err = fmt.Errorf("error during getting cloud init user data from Harvester: %w", err)
-
-		return nil, err
+	} else {
+		_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Update(
+			context.TODO(), cloudInitSecret, metav1.UpdateOptions{})
+		if err != nil {
+			return nil, errors.Wrap(err, "unable to update cloud-init secret")
+		}
 	}
 
 	vmTemplate = &kubevirtv1.VirtualMachineInstanceTemplateSpec{
@@ -828,11 +847,12 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 			attachedPVCString := vm.Annotations[vmAnnotationPVC]
 			attachedPVCObj := []*v1.PersistentVolumeClaim{}
 
-			err = json.Unmarshal([]byte(attachedPVCString), &attachedPVCObj)
-			if err != nil {
-				return ctrl.Result{Requeue: true}, err
+			if attachedPVCString != "" {
+				err = json.Unmarshal([]byte(attachedPVCString), &attachedPVCObj)
+				if err != nil {
+					return ctrl.Result{Requeue: true}, err
+				}
 			}
-
 			err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
 				hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
 			if err != nil {

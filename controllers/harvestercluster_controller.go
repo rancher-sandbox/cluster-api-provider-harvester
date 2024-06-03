@@ -362,14 +362,14 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 
 	// The following is executed only if there are ownedCPHarvesterMachines
 	if !conditions.IsTrue(scope.HarvesterCluster, infrav1.LoadBalancerReadyCondition) {
-		err := createLoadBalancerIfNotExists(scope, ownedCPHarvesterMachines)
+		err := createLoadBalancerIfNotExists(scope)
 		if err != nil {
 			logger.V(1).Info("could not create the LoadBalancer, requeuing ...")
 
 			return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 		}
 
-		lbIP, err := getLoadBalancerIP(scope.Cluster, scope.HarvesterCluster, scope.HarvesterClient)
+		lbIP, err := getLoadBalancerIP(scope.HarvesterCluster, scope.HarvesterClient)
 		if err != nil {
 			logger.Error(err, "could not get the LoadBalancer IP")
 
@@ -393,7 +393,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 	return res, err
 }
 
-func getLoadBalancerIP(cluster *clusterv1.Cluster, harvesterCluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset) (string, error) {
+func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset) (string, error) {
 	createdLB, err := hvClient.LoadbalancerV1beta1().LoadBalancers(harvesterCluster.Spec.TargetNamespace).Get(
 		context.TODO(),
 		harvesterCluster.Namespace+"-"+harvesterCluster.Name+"-lb",
@@ -484,7 +484,7 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	return hvRESTConfig, nil
 }
 
-func createLoadBalancerIfNotExists(scope ClusterScope, ownedCPMachines []infrav1.HarvesterMachine) (err error) {
+func createLoadBalancerIfNotExists(scope ClusterScope) (err error) {
 	additionalListeners := getListenersFromAPI(scope.HarvesterCluster)
 
 	lbToCreate := &lbv1beta1.LoadBalancer{
@@ -631,7 +631,15 @@ func (r *HarvesterClusterReconciler) getOwnedCPHarversterMachines(scope ClusterS
 		return []infrav1.HarvesterMachine{}, errors.Wrap(err, "unable to list owned ControlPlane Machines")
 	}
 
-	return ownedCPHarvesterMachines.Items, nil
+	ownedCPHarvesterMachinesReady := make([]infrav1.HarvesterMachine, 0)
+
+	for _, machine := range ownedCPHarvesterMachines.Items {
+		if machine.Status.Ready {
+			ownedCPHarvesterMachinesReady = append(ownedCPHarvesterMachinesReady, machine)
+		}
+	}
+
+	return ownedCPHarvesterMachinesReady, nil
 }
 
 // ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it.

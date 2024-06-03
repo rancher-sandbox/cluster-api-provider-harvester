@@ -81,7 +81,8 @@ type LoadBalancerConfig struct {
 	IPAMType IPAMType `json:"ipamType"`
 
 	// IpPoolRef is a reference to an existing IpPool object in Harvester's cluster.
-	// This field is mutually exclusive with "ipPool". //TODO: To be implemented
+	// This field is mutually exclusive with "ipPool".
+	//TODO: To be implemented
 	IpPoolRef string `json:"ipPoolRef,omitempty"`
 
 	// IpPool defines a new IpPool that will be added to Harvester.

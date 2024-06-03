@@ -22,12 +22,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	capiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 const (
 	// MachineFinalizer allows ReconcileHarvesterMachine to clean up resources associated with HarvesterMachine before.
 	// removing it from the apiserver.
 	MachineFinalizer = "harvestermachine.infrastructure.cluster.x-k8s.io"
+)
+
+const (
+	// MachineCreatedCondition documents that the machine has been created.
+	MachineCreatedCondition capiv1beta1.ConditionType = "MachineCreated"
+
+	// MachineNotFoundReason documents that the machine was not found.
+	MachineNotFoundReason = "MachineNotFound"
 )
 
 // HarvesterMachineSpec defines the desired state of HarvesterMachine.
@@ -133,4 +142,14 @@ type HarvesterMachineList struct {
 
 func init() {
 	SchemeBuilder.Register(&HarvesterMachine{}, &HarvesterMachineList{})
+}
+
+// GetConditions returns the set of conditions for this object.
+func (m *HarvesterMachine) GetConditions() clusterv1.Conditions {
+	return m.Status.Conditions
+}
+
+// SetConditions sets the conditions on this object.
+func (m *HarvesterMachine) SetConditions(conditions clusterv1.Conditions) {
+	m.Status.Conditions = conditions
 }
