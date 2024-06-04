@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for the RKE2 Provider
+about: Suggest an idea for the Harvester Provider
 title: ''
 labels: kind/feature, needs-priority, needs-triage
 assigness: ''

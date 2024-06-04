@@ -129,7 +129,7 @@ test: manifests generate fmt vet envtest ## Run tests.
 
 ##@ Build
 .PHONY: manager
-manager: ## Build the rke2 bootstrap manager binary into the ./bin folder
+manager: ## Build the harvester manager binary into the ./bin folder
 	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/manager github.com/rancher-sandbox/cluster-api-provider-harvester
 
 .PHONY: build
@@ -237,6 +237,7 @@ $(RELEASE_DIR):
 release: clean-release ## Build and push container images using the latest git tag for the commit
 	@if [ -z "${RELEASE_TAG}" ]; then echo "RELEASE_TAG is not set"; exit 1; fi
 	@if ! [ -z "$$(git status --porcelain)" ]; then echo "Your local git repository contains uncommitted changes, use git clean before proceeding."; exit 1; fi
+	$(MAKE) kustomize
 	git checkout "${RELEASE_TAG}"
 	# Build binaries first.
 	# GIT_VERSION=$(RELEASE_TAG) $(MAKE) release-binaries
@@ -263,7 +264,6 @@ release-manifests: $(RELEASE_DIR) $(KUSTOMIZE) ## Build the manifests to publish
 	# Build components.
 	$(KUSTOMIZE) build config/default > $(RELEASE_DIR)/components.yaml
 	$(MAKE) set-manifest-image MANIFEST_IMG=$(IMG) MANIFEST_TAG=$(TAG) TARGET_RESOURCE="$(RELEASE_DIR)/components.yaml"
-	# Build control-plane-components.
 
 	# Add metadata to the release artifacts
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml

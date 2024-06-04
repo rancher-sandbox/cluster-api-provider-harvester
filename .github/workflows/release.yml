@@ -63,5 +63,4 @@ jobs:
         name: ${{ env.TAG }}
         files: |
           out/metadata.yaml
-          out/bootstrap-components.yaml
-          out/control-plane-components.yaml
+          out/components.yaml
