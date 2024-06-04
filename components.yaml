@@ -1,0 +1,1521 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: system
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: namespace
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+    control-plane: controller-manager
+  name: caphv-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.2
+  creationTimestamp: null
+  labels:
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: harvesterclusters.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: HarvesterCluster
+    listKind: HarvesterClusterList
+    plural: harvesterclusters
+    singular: harvestercluster
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Cluster infrastructure is ready for HarvesterMachine
+      jsonPath: .status.ready
+      name: Ready
+      type: string
+    - description: Server is the address of the Harvester endpoint
+      jsonPath: .spec.server
+      name: Server
+      type: string
+    - description: API Endpoint
+      jsonPath: .spec.controlPlaneEndpoint[0]
+      name: ControlPlaneEndpoint
+      priority: 1
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HarvesterCluster is the Schema for the harvesterclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HarvesterClusterSpec defines the desired state of HarvesterCluster
+            properties:
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
+                properties:
+                  host:
+                    description: The hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: The port on which the API server is serving.
+                    format: int32
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              identitySecret:
+                description: IdentitySecret is the name of the Secret containing HarvesterKubeConfig file.
+                properties:
+                  name:
+                    description: Name is the name of the required Identity Secret
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace in which the required Identity Secret should be found
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              loadBalancerConfig:
+                description: LoadBalancerConfig describes how the load balancer should be created in Harvester.
+                properties:
+                  description:
+                    description: Description is a description of the load balancer that should be created.
+                    type: string
+                  ipPool:
+                    description: IpPool defines a new IpPool that will be added to Harvester. This field is mutually exclusive with "IpPoolRef"
+                    properties:
+                      gateway:
+                        description: Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet e.g. 172.17.1.1
+                        type: string
+                      subnet:
+                        description: Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address e.g. 172.17.1.0/24
+                        type: string
+                      vmNetwork:
+                        description: VMNetwork is the name of an existing VM Network in Harvester where the IPPool should exist.
+                        type: string
+                    required:
+                    - gateway
+                    - subnet
+                    - vmNetwork
+                    type: object
+                  ipPoolRef:
+                    description: IpPoolRef is a reference to an existing IpPool object in Harvester's cluster in the same namespace. This field is mutually exclusive with "ipPool"
+                    type: string
+                  ipamType:
+                    description: IPAMType is the configuration of IP addressing for the control plane load balancer. This can take two values, either "dhcp" or "ippool"
+                    enum:
+                    - dhcp
+                    - pool
+                    type: string
+                  listeners:
+                    description: Listeners is a list of listeners that should be created on the load balancer.
+                    items:
+                      description: Listener is a description of a new Listener to be created on the Load Balancer
+                      properties:
+                        backendPort:
+                          description: TargetPort is the port that the listener should forward traffic to
+                          format: int32
+                          type: integer
+                        name:
+                          description: Name is the name of the listener
+                          type: string
+                        port:
+                          description: Port is the port that the listener should listen on
+                          format: int32
+                          type: integer
+                        protocol:
+                          default: TCP
+                          description: Protocol is the protocol that the listener should use, either TCP or UDP
+                          enum:
+                          - TCP
+                          - UDP
+                          type: string
+                      required:
+                      - backendPort
+                      - name
+                      - port
+                      - protocol
+                      type: object
+                    type: array
+                required:
+                - ipamType
+                type: object
+              server:
+                description: Server is the url to connect to Harvester.
+                type: string
+              targetNamespace:
+                description: TargetNamespace is the namespace on the Harvester cluster where VMs, Load Balancers, etc. should be created
+                type: string
+            required:
+            - identitySecret
+            - loadBalancerConfig
+            - targetNamespace
+            type: object
+          status:
+            description: HarvesterClusterStatus defines the observed state of HarvesterCluster
+            properties:
+              conditions:
+                description: Conditions defines current service state of the Harvester cluster.
+                items:
+                  description: Condition defines an observation of a Cluster API resource operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status to another. This should be when the underlying condition changed. If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition in CamelCase. The specific API may choose whether or not this field is considered a guaranteed API. This field may not be empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of Reason code, so the users or machines can immediately understand the current situation and act accordingly. The Severity field MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase. Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be useful (see .node.status.conditions), the ability to deconflict is important.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureMessage:
+                description: FailureMessage is a full error message dump of the above failureReason
+                type: string
+              failureReason:
+                description: FailureReason is the short name for the reason why a failure might be happening that makes the cluster not ready
+                type: string
+              ready:
+                description: Reddy describes if the Harvester Cluster can be considered ready for machine creation
+                type: boolean
+            required:
+            - ready
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.2
+  creationTimestamp: null
+  labels:
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: harvestermachines.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: HarvesterMachine
+    listKind: HarvesterMachineList
+    plural: harvestermachines
+    singular: harvestermachine
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HarvesterMachine is the Schema for the harvestermachines API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HarvesterMachineSpec defines the desired state of HarvesterMachine
+            properties:
+              cpu:
+                description: CPU is the number of CPU to assign to the VM.
+                type: integer
+              failureDomain:
+                description: FailureDomain defines the zone or failure domain where this VM should be.
+                type: string
+              memory:
+                description: Memory is the memory size to assign to the VM (should be similar to pod.spec.containers.resources.limits)
+                type: string
+              networks:
+                description: Networks is a list of Networks to attach to the VM. Networks are referenced by their names.
+                items:
+                  type: string
+                type: array
+              nodeAffinity:
+                description: NodeAffinity gives the possibility to select preferred nodes for VM scheduling on Harvester. This works exactly like Pods.
+                properties:
+                  preferredDuringSchedulingIgnoredDuringExecution:
+                    description: The scheduler will prefer to schedule pods to nodes that satisfy the affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling affinity expressions, etc.), compute a sum by iterating through the elements of this field and adding "weight" to the sum if the node matches the corresponding matchExpressions; the node(s) with the highest sum are the most preferred.
+                    items:
+                      description: An empty preferred scheduling term matches all objects with implicit weight 0 (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                      properties:
+                        preference:
+                          description: A node selector term, associated with the corresponding weight.
+                          properties:
+                            matchExpressions:
+                              description: A list of node selector requirements by node's labels.
+                              items:
+                                description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                properties:
+                                  key:
+                                    description: The label key that the selector applies to.
+                                    type: string
+                                  operator:
+                                    description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                    type: string
+                                  values:
+                                    description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                            matchFields:
+                              description: A list of node selector requirements by node's fields.
+                              items:
+                                description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                properties:
+                                  key:
+                                    description: The label key that the selector applies to.
+                                    type: string
+                                  operator:
+                                    description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                    type: string
+                                  values:
+                                    description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        weight:
+                          description: Weight associated with matching the corresponding nodeSelectorTerm, in the range 1-100.
+                          format: int32
+                          type: integer
+                      required:
+                      - preference
+                      - weight
+                      type: object
+                    type: array
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    description: If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to an update), the system may or may not try to eventually evict the pod from its node.
+                    properties:
+                      nodeSelectorTerms:
+                        description: Required. A list of node selector terms. The terms are ORed.
+                        items:
+                          description: A null or empty node selector term matches no objects. The requirements of them are ANDed. The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                          properties:
+                            matchExpressions:
+                              description: A list of node selector requirements by node's labels.
+                              items:
+                                description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                properties:
+                                  key:
+                                    description: The label key that the selector applies to.
+                                    type: string
+                                  operator:
+                                    description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                    type: string
+                                  values:
+                                    description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                            matchFields:
+                              description: A list of node selector requirements by node's fields.
+                              items:
+                                description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                properties:
+                                  key:
+                                    description: The label key that the selector applies to.
+                                    type: string
+                                  operator:
+                                    description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                    type: string
+                                  values:
+                                    description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        type: array
+                    required:
+                    - nodeSelectorTerms
+                    type: object
+                    x-kubernetes-map-type: atomic
+                type: object
+              providerID:
+                description: ProviderID will be the ID of the machine used by the controller. This will be "<harvester vm namespace>-<harvester vm name>"
+                type: string
+              sshKeyPair:
+                description: SSHKeyPair is the name of the SSH key pair to use for SSH access to the VM (this keyPair should be created in Harvester)
+                type: string
+              sshUser:
+                description: SSHUser is the user that should be used to connect to the VMs using SSH.
+                type: string
+              volumes:
+                description: Volumes is a list of Volumes to attach to the VM
+                items:
+                  properties:
+                    bootOrder:
+                      description: BootOrder is an integer that determines the order of priority of volumes for booting the VM If absent, the sequence with which volumes appear in the manifest will be used.
+                      type: integer
+                    imageName:
+                      description: ImageName is the name of the image to use if the volumeType is "image"
+                      type: string
+                    storageClass:
+                      description: StorageClass is the name of the storage class to be used if the volumeType is "storageClass"
+                      type: string
+                    volumeSize:
+                      anyOf:
+                      - type: integer
+                      - type: string
+                      description: 'VolumeSize is the desired size of the volume. This satisfies to standard Kubernetes *resource.Quantity syntax. Examples: 40.5Gi, 30M, etc. are valid'
+                      pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                      x-kubernetes-int-or-string: true
+                    volumeType:
+                      description: 'VolumeType is the type of volume to attach. Choose between: "storageClass" or "image"'
+                      type: string
+                  required:
+                  - volumeType
+                  type: object
+                type: array
+              workloadAffinity:
+                description: WorkloadAffinity gives the possibility to define affinity rules with other workloads running on Harvester.
+                properties:
+                  preferredDuringSchedulingIgnoredDuringExecution:
+                    description: The scheduler will prefer to schedule pods to nodes that satisfy the affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling affinity expressions, etc.), compute a sum by iterating through the elements of this field and adding "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the node(s) with the highest sum are the most preferred.
+                    items:
+                      description: The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)
+                      properties:
+                        podAffinityTerm:
+                          description: Required. A pod affinity term, associated with the corresponding weight.
+                          properties:
+                            labelSelector:
+                              description: A label query over a set of resources, in this case pods.
+                              properties:
+                                matchExpressions:
+                                  description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                  items:
+                                    description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                    properties:
+                                      key:
+                                        description: key is the label key that the selector applies to.
+                                        type: string
+                                      operator:
+                                        description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                        type: string
+                                      values:
+                                        description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                        items:
+                                          type: string
+                                        type: array
+                                    required:
+                                    - key
+                                    - operator
+                                    type: object
+                                  type: array
+                                matchLabels:
+                                  additionalProperties:
+                                    type: string
+                                  description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                  type: object
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            namespaceSelector:
+                              description: A label query over the set of namespaces that the term applies to. The term is applied to the union of the namespaces selected by this field and the ones listed in the namespaces field. null selector and null or empty namespaces list means "this pod's namespace". An empty selector ({}) matches all namespaces.
+                              properties:
+                                matchExpressions:
+                                  description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                  items:
+                                    description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                    properties:
+                                      key:
+                                        description: key is the label key that the selector applies to.
+                                        type: string
+                                      operator:
+                                        description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                        type: string
+                                      values:
+                                        description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                        items:
+                                          type: string
+                                        type: array
+                                    required:
+                                    - key
+                                    - operator
+                                    type: object
+                                  type: array
+                                matchLabels:
+                                  additionalProperties:
+                                    type: string
+                                  description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                  type: object
+                              type: object
+                              x-kubernetes-map-type: atomic
+                            namespaces:
+                              description: namespaces specifies a static list of namespace names that the term applies to. The term is applied to the union of the namespaces listed in this field and the ones selected by namespaceSelector. null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                              items:
+                                type: string
+                              type: array
+                            topologyKey:
+                              description: This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching the labelSelector in the specified namespaces, where co-located is defined as running on a node whose value of the label with key topologyKey matches that of any node on which any of the selected pods is running. Empty topologyKey is not allowed.
+                              type: string
+                          required:
+                          - topologyKey
+                          type: object
+                        weight:
+                          description: weight associated with matching the corresponding podAffinityTerm, in the range 1-100.
+                          format: int32
+                          type: integer
+                      required:
+                      - podAffinityTerm
+                      - weight
+                      type: object
+                    type: array
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    description: If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to a pod label update), the system may or may not try to eventually evict the pod from its node. When there are multiple elements, the lists of nodes corresponding to each podAffinityTerm are intersected, i.e. all terms must be satisfied.
+                    items:
+                      description: Defines a set of pods (namely those matching the labelSelector relative to the given namespace(s)) that this pod should be co-located (affinity) or not co-located (anti-affinity) with, where co-located is defined as running on a node whose value of the label with key <topologyKey> matches that of any node on which a pod of the set of pods is running
+                      properties:
+                        labelSelector:
+                          description: A label query over a set of resources, in this case pods.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                              items:
+                                description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector applies to.
+                                    type: string
+                                  operator:
+                                    description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        namespaceSelector:
+                          description: A label query over the set of namespaces that the term applies to. The term is applied to the union of the namespaces selected by this field and the ones listed in the namespaces field. null selector and null or empty namespaces list means "this pod's namespace". An empty selector ({}) matches all namespaces.
+                          properties:
+                            matchExpressions:
+                              description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                              items:
+                                description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                properties:
+                                  key:
+                                    description: key is the label key that the selector applies to.
+                                    type: string
+                                  operator:
+                                    description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                    type: string
+                                  values:
+                                    description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                    items:
+                                      type: string
+                                    type: array
+                                required:
+                                - key
+                                - operator
+                                type: object
+                              type: array
+                            matchLabels:
+                              additionalProperties:
+                                type: string
+                              description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                              type: object
+                          type: object
+                          x-kubernetes-map-type: atomic
+                        namespaces:
+                          description: namespaces specifies a static list of namespace names that the term applies to. The term is applied to the union of the namespaces listed in this field and the ones selected by namespaceSelector. null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                          items:
+                            type: string
+                          type: array
+                        topologyKey:
+                          description: This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching the labelSelector in the specified namespaces, where co-located is defined as running on a node whose value of the label with key topologyKey matches that of any node on which any of the selected pods is running. Empty topologyKey is not allowed.
+                          type: string
+                      required:
+                      - topologyKey
+                      type: object
+                    type: array
+                type: object
+            required:
+            - cpu
+            - memory
+            - networks
+            - sshKeyPair
+            - sshUser
+            - volumes
+            type: object
+          status:
+            description: HarvesterMachineStatus defines the observed state of HarvesterMachine
+            properties:
+              addresses:
+                items:
+                  description: MachineAddress contains information for the node's address.
+                  properties:
+                    address:
+                      description: The machine address.
+                      type: string
+                    type:
+                      description: Machine address type, one of Hostname, ExternalIP, InternalIP, ExternalDNS or InternalDNS.
+                      type: string
+                  required:
+                  - address
+                  - type
+                  type: object
+                type: array
+              conditions:
+                items:
+                  description: Condition defines an observation of a Cluster API resource operational state.
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status to another. This should be when the underlying condition changed. If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A human readable message indicating details about the transition. This field may be empty.
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition in CamelCase. The specific API may choose whether or not this field is considered a guaranteed API. This field may not be empty.
+                      type: string
+                    severity:
+                      description: Severity provides an explicit classification of Reason code, so the users or machines can immediately understand the current situation and act accordingly. The Severity field MUST be set only when Status=False.
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      type: string
+                    type:
+                      description: Type of condition in CamelCase or in foo.example.com/CamelCase. Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be useful (see .node.status.conditions), the ability to deconflict is important.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureMessage:
+                type: string
+              failureReason:
+                type: string
+              ready:
+                description: Ready is true when the provider resource is ready.
+                type: boolean
+            required:
+            - ready
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.2
+  creationTimestamp: null
+  labels:
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: harvestermachinetemplates.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: HarvesterMachineTemplate
+    listKind: HarvesterMachineTemplateList
+    plural: harvestermachinetemplates
+    singular: harvestermachinetemplate
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HarvesterMachineTemplate is the Schema for the harvestermachinetemplates API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: HarvesterMachineTemplateSpec defines the desired state of HarvesterMachineTemplate
+            properties:
+              template:
+                description: Template is the HarvesterMachineTemplate template
+                properties:
+                  spec:
+                    description: Spec is the specification of the desired behavior of the machine.
+                    properties:
+                      cpu:
+                        description: CPU is the number of CPU to assign to the VM.
+                        type: integer
+                      failureDomain:
+                        description: FailureDomain defines the zone or failure domain where this VM should be.
+                        type: string
+                      memory:
+                        description: Memory is the memory size to assign to the VM (should be similar to pod.spec.containers.resources.limits)
+                        type: string
+                      networks:
+                        description: Networks is a list of Networks to attach to the VM. Networks are referenced by their names.
+                        items:
+                          type: string
+                        type: array
+                      nodeAffinity:
+                        description: NodeAffinity gives the possibility to select preferred nodes for VM scheduling on Harvester. This works exactly like Pods.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: The scheduler will prefer to schedule pods to nodes that satisfy the affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling affinity expressions, etc.), compute a sum by iterating through the elements of this field and adding "weight" to the sum if the node matches the corresponding matchExpressions; the node(s) with the highest sum are the most preferred.
+                            items:
+                              description: An empty preferred scheduling term matches all objects with implicit weight 0 (i.e. it's a no-op). A null preferred scheduling term matches no objects (i.e. is also a no-op).
+                              properties:
+                                preference:
+                                  description: A node selector term, associated with the corresponding weight.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements by node's labels.
+                                      items:
+                                        description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector applies to.
+                                            type: string
+                                          operator:
+                                            description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                    matchFields:
+                                      description: A list of node selector requirements by node's fields.
+                                      items:
+                                        description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector applies to.
+                                            type: string
+                                          operator:
+                                            description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                weight:
+                                  description: Weight associated with matching the corresponding nodeSelectorTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - preference
+                              - weight
+                              type: object
+                            type: array
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to an update), the system may or may not try to eventually evict the pod from its node.
+                            properties:
+                              nodeSelectorTerms:
+                                description: Required. A list of node selector terms. The terms are ORed.
+                                items:
+                                  description: A null or empty node selector term matches no objects. The requirements of them are ANDed. The TopologySelectorTerm type implements a subset of the NodeSelectorTerm.
+                                  properties:
+                                    matchExpressions:
+                                      description: A list of node selector requirements by node's labels.
+                                      items:
+                                        description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector applies to.
+                                            type: string
+                                          operator:
+                                            description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                    matchFields:
+                                      description: A list of node selector requirements by node's fields.
+                                      items:
+                                        description: A node selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: The label key that the selector applies to.
+                                            type: string
+                                          operator:
+                                            description: Represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                            type: string
+                                          values:
+                                            description: An array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. If the operator is Gt or Lt, the values array must have a single element, which will be interpreted as an integer. This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                type: array
+                            required:
+                            - nodeSelectorTerms
+                            type: object
+                            x-kubernetes-map-type: atomic
+                        type: object
+                      providerID:
+                        description: ProviderID will be the ID of the machine used by the controller. This will be "<harvester vm namespace>-<harvester vm name>"
+                        type: string
+                      sshKeyPair:
+                        description: SSHKeyPair is the name of the SSH key pair to use for SSH access to the VM (this keyPair should be created in Harvester)
+                        type: string
+                      sshUser:
+                        description: SSHUser is the user that should be used to connect to the VMs using SSH.
+                        type: string
+                      volumes:
+                        description: Volumes is a list of Volumes to attach to the VM
+                        items:
+                          properties:
+                            bootOrder:
+                              description: BootOrder is an integer that determines the order of priority of volumes for booting the VM If absent, the sequence with which volumes appear in the manifest will be used.
+                              type: integer
+                            imageName:
+                              description: ImageName is the name of the image to use if the volumeType is "image"
+                              type: string
+                            storageClass:
+                              description: StorageClass is the name of the storage class to be used if the volumeType is "storageClass"
+                              type: string
+                            volumeSize:
+                              anyOf:
+                              - type: integer
+                              - type: string
+                              description: 'VolumeSize is the desired size of the volume. This satisfies to standard Kubernetes *resource.Quantity syntax. Examples: 40.5Gi, 30M, etc. are valid'
+                              pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                              x-kubernetes-int-or-string: true
+                            volumeType:
+                              description: 'VolumeType is the type of volume to attach. Choose between: "storageClass" or "image"'
+                              type: string
+                          required:
+                          - volumeType
+                          type: object
+                        type: array
+                      workloadAffinity:
+                        description: WorkloadAffinity gives the possibility to define affinity rules with other workloads running on Harvester.
+                        properties:
+                          preferredDuringSchedulingIgnoredDuringExecution:
+                            description: The scheduler will prefer to schedule pods to nodes that satisfy the affinity expressions specified by this field, but it may choose a node that violates one or more of the expressions. The node that is most preferred is the one with the greatest sum of weights, i.e. for each node that meets all of the scheduling requirements (resource request, requiredDuringScheduling affinity expressions, etc.), compute a sum by iterating through the elements of this field and adding "weight" to the sum if the node has pods which matches the corresponding podAffinityTerm; the node(s) with the highest sum are the most preferred.
+                            items:
+                              description: The weights of all of the matched WeightedPodAffinityTerm fields are added per-node to find the most preferred node(s)
+                              properties:
+                                podAffinityTerm:
+                                  description: Required. A pod affinity term, associated with the corresponding weight.
+                                  properties:
+                                    labelSelector:
+                                      description: A label query over a set of resources, in this case pods.
+                                      properties:
+                                        matchExpressions:
+                                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                          items:
+                                            description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                            properties:
+                                              key:
+                                                description: key is the label key that the selector applies to.
+                                                type: string
+                                              operator:
+                                                description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                type: string
+                                              values:
+                                                description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                                items:
+                                                  type: string
+                                                type: array
+                                            required:
+                                            - key
+                                            - operator
+                                            type: object
+                                          type: array
+                                        matchLabels:
+                                          additionalProperties:
+                                            type: string
+                                          description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                          type: object
+                                      type: object
+                                      x-kubernetes-map-type: atomic
+                                    namespaceSelector:
+                                      description: A label query over the set of namespaces that the term applies to. The term is applied to the union of the namespaces selected by this field and the ones listed in the namespaces field. null selector and null or empty namespaces list means "this pod's namespace". An empty selector ({}) matches all namespaces.
+                                      properties:
+                                        matchExpressions:
+                                          description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                          items:
+                                            description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                            properties:
+                                              key:
+                                                description: key is the label key that the selector applies to.
+                                                type: string
+                                              operator:
+                                                description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                                type: string
+                                              values:
+                                                description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                                items:
+                                                  type: string
+                                                type: array
+                                            required:
+                                            - key
+                                            - operator
+                                            type: object
+                                          type: array
+                                        matchLabels:
+                                          additionalProperties:
+                                            type: string
+                                          description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                          type: object
+                                      type: object
+                                      x-kubernetes-map-type: atomic
+                                    namespaces:
+                                      description: namespaces specifies a static list of namespace names that the term applies to. The term is applied to the union of the namespaces listed in this field and the ones selected by namespaceSelector. null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                                      items:
+                                        type: string
+                                      type: array
+                                    topologyKey:
+                                      description: This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching the labelSelector in the specified namespaces, where co-located is defined as running on a node whose value of the label with key topologyKey matches that of any node on which any of the selected pods is running. Empty topologyKey is not allowed.
+                                      type: string
+                                  required:
+                                  - topologyKey
+                                  type: object
+                                weight:
+                                  description: weight associated with matching the corresponding podAffinityTerm, in the range 1-100.
+                                  format: int32
+                                  type: integer
+                              required:
+                              - podAffinityTerm
+                              - weight
+                              type: object
+                            type: array
+                          requiredDuringSchedulingIgnoredDuringExecution:
+                            description: If the affinity requirements specified by this field are not met at scheduling time, the pod will not be scheduled onto the node. If the affinity requirements specified by this field cease to be met at some point during pod execution (e.g. due to a pod label update), the system may or may not try to eventually evict the pod from its node. When there are multiple elements, the lists of nodes corresponding to each podAffinityTerm are intersected, i.e. all terms must be satisfied.
+                            items:
+                              description: Defines a set of pods (namely those matching the labelSelector relative to the given namespace(s)) that this pod should be co-located (affinity) or not co-located (anti-affinity) with, where co-located is defined as running on a node whose value of the label with key <topologyKey> matches that of any node on which a pod of the set of pods is running
+                              properties:
+                                labelSelector:
+                                  description: A label query over a set of resources, in this case pods.
+                                  properties:
+                                    matchExpressions:
+                                      description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                      items:
+                                        description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: key is the label key that the selector applies to.
+                                            type: string
+                                          operator:
+                                            description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                            type: string
+                                          values:
+                                            description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                    matchLabels:
+                                      additionalProperties:
+                                        type: string
+                                      description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                      type: object
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                namespaceSelector:
+                                  description: A label query over the set of namespaces that the term applies to. The term is applied to the union of the namespaces selected by this field and the ones listed in the namespaces field. null selector and null or empty namespaces list means "this pod's namespace". An empty selector ({}) matches all namespaces.
+                                  properties:
+                                    matchExpressions:
+                                      description: matchExpressions is a list of label selector requirements. The requirements are ANDed.
+                                      items:
+                                        description: A label selector requirement is a selector that contains values, a key, and an operator that relates the key and values.
+                                        properties:
+                                          key:
+                                            description: key is the label key that the selector applies to.
+                                            type: string
+                                          operator:
+                                            description: operator represents a key's relationship to a set of values. Valid operators are In, NotIn, Exists and DoesNotExist.
+                                            type: string
+                                          values:
+                                            description: values is an array of string values. If the operator is In or NotIn, the values array must be non-empty. If the operator is Exists or DoesNotExist, the values array must be empty. This array is replaced during a strategic merge patch.
+                                            items:
+                                              type: string
+                                            type: array
+                                        required:
+                                        - key
+                                        - operator
+                                        type: object
+                                      type: array
+                                    matchLabels:
+                                      additionalProperties:
+                                        type: string
+                                      description: matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is "key", the operator is "In", and the values array contains only "value". The requirements are ANDed.
+                                      type: object
+                                  type: object
+                                  x-kubernetes-map-type: atomic
+                                namespaces:
+                                  description: namespaces specifies a static list of namespace names that the term applies to. The term is applied to the union of the namespaces listed in this field and the ones selected by namespaceSelector. null or empty namespaces list and null namespaceSelector means "this pod's namespace".
+                                  items:
+                                    type: string
+                                  type: array
+                                topologyKey:
+                                  description: This pod should be co-located (affinity) or not co-located (anti-affinity) with the pods matching the labelSelector in the specified namespaces, where co-located is defined as running on a node whose value of the label with key topologyKey matches that of any node on which any of the selected pods is running. Empty topologyKey is not allowed.
+                                  type: string
+                              required:
+                              - topologyKey
+                              type: object
+                            type: array
+                        type: object
+                    required:
+                    - cpu
+                    - memory
+                    - networks
+                    - sshKeyPair
+                    - sshUser
+                    - volumes
+                    type: object
+                required:
+                - spec
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kuberentes.io/instance: controller-manager
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: serviceaccount
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-controller-manager
+  namespace: caphv-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: leader-election-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: role
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-leader-election-role
+  namespace: caphv-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  labels:
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  - clusters/status
+  - machinepools
+  - machinepools/status
+  - machines
+  - machines/status
+  - machinesets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - clusters
+  - machines
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvesterclusters
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvesterclusters/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvesterclusters/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvestermachines
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvestermachines/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - harvestermachines/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: metrics-reader
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: proxy-role
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: leader-election-rolebinding
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: rolebinding
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-leader-election-rolebinding
+  namespace: caphv-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: caphv-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: caphv-controller-manager
+  namespace: caphv-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: manager-rolebinding
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrolebinding
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: caphv-manager-role
+subjects:
+- kind: ServiceAccount
+  name: caphv-controller-manager
+  namespace: caphv-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: proxy-rolebinding
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: clusterrolebinding
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+  name: caphv-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: caphv-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: caphv-controller-manager
+  namespace: caphv-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/component: kube-rbac-proxy
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: controller-manager-metrics-service
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: service
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+    control-plane: controller-manager
+  name: caphv-controller-manager-metrics-service
+  namespace: caphv-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: https
+  selector:
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: manager
+    app.kubernetes.io/created-by: cluster-api-provider-harvester
+    app.kubernetes.io/instance: controller-manager
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: deployment
+    app.kubernetes.io/part-of: cluster-api-provider-harvester
+    cluster.x-k8s.io/provider: infrastructure-harvester
+    cluster.x-k8s.io/v1alpha2: v1alpha1
+    cluster.x-k8s.io/v1alpha3: v1alpha1
+    cluster.x-k8s.io/v1beta1: v1alpha1
+    control-plane: controller-manager
+  name: caphv-controller-manager
+  namespace: caphv-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/provider: infrastructure-harvester
+      cluster.x-k8s.io/v1alpha2: v1alpha1
+      cluster.x-k8s.io/v1alpha3: v1alpha1
+      cluster.x-k8s.io/v1beta1: v1alpha1
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        cluster.x-k8s.io/provider: infrastructure-harvester
+        cluster.x-k8s.io/v1alpha2: v1alpha1
+        cluster.x-k8s.io/v1alpha3: v1alpha1
+        cluster.x-k8s.io/v1beta1: v1alpha1
+        control-plane: controller-manager
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+                - arm64
+                - ppc64le
+                - s390x
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+      containers:
+      - args:
+        - --secure-listen-address=0.0.0.0:8443
+        - --upstream=http://127.0.0.1:8080/
+        - --logtostderr=true
+        - --v=0
+        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.13.0
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 5m
+            memory: 64Mi
+      - args:
+        - --health-probe-bind-address=:9440
+        - --metrics-bind-address=127.0.0.1:8080
+        - --leader-elect
+        command:
+        - /manager
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        image: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:dev202406032233
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        ports:
+        - containerPort: 9440
+          name: healthz
+          protocol: TCP
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: healthz
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1024Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          privileged: true
+      serviceAccountName: caphv-controller-manager
+      terminationGracePeriodSeconds: 10
