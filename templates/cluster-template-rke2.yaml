@@ -564,6 +564,7 @@ data:
       - kind: ServiceAccount
         name: harvester-cloud-controller-manager
         namespace: kube-system
+${CLOUD_CONFIG_SECRET}
 ---
 apiVersion: v1
 kind: ConfigMap
