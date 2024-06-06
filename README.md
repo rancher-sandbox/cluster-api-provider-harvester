@@ -10,7 +10,7 @@ Cluster API Provider Harvester is __Cluster API Infrastructure Provider__ for pr
 
 At this stage, the Provider has been tested on a single environment, with Harvester v1.2.0 using two Control Plane/Bootstrap providers: [Kubeadm](https://github.com/kubernetes-sigs/cluster-api/tree/main/controlplane/kubeadm) and [RKE2](https://github.com/rancher-sandbox/cluster-api-provider-rke2).
 
-The [samples](./samples/) folder contains examples of such configurations.
+The [templates](https://github.com/rancher-sandbox/cluster-api-provider-harvester/tree/main/templates) folder contains examples of such configurations.
 
 ## Getting Started
 Cluster API Provider Harvester is compliant with the `clusterctl` contract, which means that `clusterctl` simplifies its deployment to the CAPI Management Cluster. In this Getting Started guide, we will be using the Harvester Provider with the `RKE2` provider (also called `CAPRKE2`).
@@ -68,14 +68,15 @@ Now, the Harvester and RKE2 providers can be installed with the `clusterctl` com
 
 ```bash
 export EXP_CLUSTER_RESOURCE_SET=true
+
 $ clusterctl init --infrastructure harvester --control-plane rke2 --bootstrap rke2
 Fetching providers
-Installing cert-manager Version="v1.12.3"
+Installing cert-manager Version="v1.14.5"
 Waiting for cert-manager to be available...
-Installing Provider="cluster-api" Version="v1.6.0" TargetNamespace="capi-system"
-Installing Provider="bootstrap-rke2" Version="v0.2.2" TargetNamespace="rke2-bootstrap-system"
-Installing Provider="control-plane-rke2" Version="v0.2.2" TargetNamespace="rke2-control-plane-system"
-Installing Provider="infrastructure-harvester" Version="v0.1.0" TargetNamespace="caphv-system"
+Installing Provider="cluster-api" Version="v1.7.2" TargetNamespace="capi-system"
+Installing Provider="bootstrap-rke2" Version="v0.3.0" TargetNamespace="rke2-bootstrap-system"
+Installing Provider="control-plane-rke2" Version="v0.3.0" TargetNamespace="rke2-control-plane-system"
+Installing Provider="infrastructure-harvester" Version="v0.1.2" TargetNamespace="caphv-system"
 
 Your management cluster has been initialized successfully!
 
@@ -90,6 +91,7 @@ Now, you can test out the provider by generating some YAML and applying it to th
 
 ```bash
 export CLUSTER_NAME=test-rk # Name of the cluster that will be created.
+export HARVESTER_ENDPOINT=x.x.x.x # Harvester Clusters IP Adr.
 export NAMESPACE=example-rk # Namespace where the cluster will be created.
 export KUBERNETES_VERSION=v1.26.6 # Kubernetes Version
 export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest
@@ -102,7 +104,7 @@ export HARVESTER_KUBECONFIG_B64=XXXYYY #Full Harvester's kubeconfig encoded in B
 Now, we can generate the YAML using the following command:
 
 ```bash
-clusterctl generate cluster --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/v0.1.0/samples/rke2/example.yaml -n example-rk test-rk > harvester-rke2-clusterctl.yaml
+clusterctl generate cluster --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/v0.1.2/templates/cluster-template-rke2.yaml -n example-rk test-rk > harvester-rke2-clusterctl.yaml
 ```
 
 After examining the resulting YAML file, you can apply it to the management cluster:
@@ -130,7 +132,7 @@ configmap/calico-helm-config created
 ```
 
 ### Checking the workload cluster:
-After a while you should be able to check functionality of the workload cluster using `clusterctl`: 
+After a while you should be able to check functionality of the workload cluster using `clusterctl`:
 
 ```bash
 clusterctl describe cluster -n example-rk test-rk
@@ -148,5 +150,3 @@ Cluster/test-rk                                          True                   
   └─MachineDeployment/test-rk-workers                    True                     7h46m
     └─2 Machines...                                      True                     7h46m  See test-rk-workers-jwjdg-sz7qk, test-rk-workers-jwjdg-vxgbx
 ```
-
-
