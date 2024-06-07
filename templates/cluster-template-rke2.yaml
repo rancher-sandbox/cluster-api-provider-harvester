@@ -9,6 +9,7 @@ metadata:
   namespace: ${NAMESPACE}
   name: ${CLUSTER_NAME} 
   labels:
+${RANCHER_TURTLES_LABEL}
     ccm: external
     csi: external
     cni: external
