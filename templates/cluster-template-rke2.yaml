@@ -158,7 +158,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: cloud-controller-manager-addon
-  strategy: ApplyOnce
+  strategy: Reconcile
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
@@ -172,7 +172,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: harvester-csi-driver-addon
-  strategy: ApplyOnce
+  strategy: Reconcile
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
@@ -186,7 +186,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: calico-helm-config
-  strategy: ApplyOnce
+  strategy: Reconcile
 ---
 apiVersion: v1
 kind: ConfigMap
