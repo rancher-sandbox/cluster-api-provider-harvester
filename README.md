@@ -104,7 +104,7 @@ export HARVESTER_KUBECONFIG_B64=XXXYYY #Full Harvester's kubeconfig encoded in B
 Now, we can generate the YAML using the following command:
 
 ```bash
-clusterctl generate cluster --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/v0.1.2/templates/cluster-template-rke2.yaml -n example-rk test-rk > harvester-rke2-clusterctl.yaml
+clusterctl generate cluster --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/v0.1.2/templates/cluster-template-rke2.yaml -n ${CLUSTER_NAMESPACE} ${CLUSTER_NAME} > harvester-rke2-clusterctl.yaml
 ```
 
 After examining the resulting YAML file, you can apply it to the management cluster:
