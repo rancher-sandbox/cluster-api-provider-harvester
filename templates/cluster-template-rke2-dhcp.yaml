@@ -31,8 +31,7 @@ metadata:
 spec:
   targetNamespace: default
   loadBalancerConfig:
-    ipamType: pool
-    ipPoolRef: ${IP_POOL_NAME}
+    ipamType: dhcp
     listeners:
     - name: rke2-server
       port: 9345
@@ -159,7 +158,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: cloud-controller-manager-addon
-  strategy: Reconcile
+  strategy: ApplyOnce
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
@@ -173,7 +172,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: harvester-csi-driver-addon
-  strategy: Reconcile
+  strategy: ApplyOnce
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
@@ -187,7 +186,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: calico-helm-config
-  strategy: Reconcile
+  strategy: ApplyOnce
 ---
 apiVersion: v1
 kind: ConfigMap
