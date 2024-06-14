@@ -110,7 +110,7 @@ type VolumeType string
 // HarvesterMachineStatus defines the observed state of HarvesterMachine.
 type HarvesterMachineStatus struct {
 	// Ready is true when the provider resource is ready.
-	Ready bool `json:"ready"`
+	Ready bool `json:"ready,omitempty"`
 
 	Conditions []capiv1beta1.Condition `json:"conditions,omitempty"`
 

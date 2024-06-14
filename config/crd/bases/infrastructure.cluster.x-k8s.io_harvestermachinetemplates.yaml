@@ -19,7 +19,7 @@ spec:
     schema:
       openAPIV3Schema:
         description: HarvesterMachineTemplate is the Schema for the harvestermachinetemplates
-          API
+          API.
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -35,7 +35,7 @@ spec:
             type: object
           spec:
             description: HarvesterMachineTemplateSpec defines the desired state of
-              HarvesterMachineTemplate
+              HarvesterMachineTemplate.
             properties:
               template:
                 description: Template is the HarvesterMachineTemplate template
@@ -53,11 +53,13 @@ spec:
                         type: string
                       memory:
                         description: Memory is the memory size to assign to the VM
-                          (should be similar to pod.spec.containers.resources.limits)
+                          (should be similar to pod.spec.containers.resources.limits).
                         type: string
                       networks:
                         description: Networks is a list of Networks to attach to the
-                          VM. Networks are referenced by their names.
+                          VM. Each item in the list can have the format "namespace/name"
+                          or just "name" if the object is in the same namespace as
+                          the HarvesterMachine.
                         items:
                           type: string
                         type: array
@@ -279,14 +281,16 @@ spec:
                             x-kubernetes-map-type: atomic
                         type: object
                       providerID:
-                        description: ProviderID will be the ID of the machine used
-                          by the controller. This will be "<harvester vm namespace>-<harvester
-                          vm name>"
+                        description: ProviderID will be the ID of the VM in the provider
+                          (Harvester). This is set by the Cloud provider on the Workload
+                          cluster node and replicated by CAPI.
                         type: string
                       sshKeyPair:
                         description: SSHKeyPair is the name of the SSH key pair to
                           use for SSH access to the VM (this keyPair should be created
-                          in Harvester)
+                          in Harvester). The reference can be in the format "namespace/name"
+                          or just "name" if the object is in the same namespace as
+                          the HarvesterMachine.
                         type: string
                       sshUser:
                         description: SSHUser is the user that should be used to connect
@@ -299,13 +303,15 @@ spec:
                           properties:
                             bootOrder:
                               description: BootOrder is an integer that determines
-                                the order of priority of volumes for booting the VM
+                                the order of priority of volumes for booting the VM.
                                 If absent, the sequence with which volumes appear
                                 in the manifest will be used.
                               type: integer
                             imageName:
                               description: ImageName is the name of the image to use
-                                if the volumeType is "image"
+                                if the volumeType is "image" ImageName can be in the
+                                format "namespace/name" or just "name" if the object
+                                is in the same namespace as the HarvesterMachine.
                               type: string
                             storageClass:
                               description: StorageClass is the name of the storage

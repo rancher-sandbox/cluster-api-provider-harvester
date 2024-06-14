@@ -19,8 +19,11 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"net"
 	"time"
 
+	current "github.com/containernetworking/cni/pkg/types/100"
+	"github.com/containernetworking/plugins/plugins/ipam/host-local/backend/allocator"
 	"github.com/go-logr/logr"
 	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
 	"github.com/pkg/errors"
@@ -100,7 +103,7 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	var cluster infrav1.HarvesterCluster
 	if err := r.Get(ctx, req.NamespacedName, &cluster); err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.Error(err, "cluster not found", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
+			logger.Info("cluster not found", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
 
 			return ctrl.Result{}, nil
 		}
@@ -277,8 +280,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 	}
 
 	if len(ownedCPHarvesterMachines) == 0 {
-		logger.Info("no ControlPlane Machines exist yet for cluster, skipping Load Balancer creation and Requeing ...")
-
+		lbNamespacedName := scope.HarvesterCluster.Spec.TargetNamespace + "/" + scope.HarvesterCluster.Namespace + "-" + scope.HarvesterCluster.Name + "-lb"
 		// Create a placeholder LoadBalancer svc to avoid blocking the CAPI Controller
 		existingPlaceholderLB, err1 := scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Get(
 			scope.Ctx,
@@ -291,6 +293,15 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 
 				return ctrl.Result{RequeueAfter: requeueTimeFiveMinutes}, err1
 			} else {
+				lbIP := "0.0.0.0"
+				if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
+					lbIP, err = getIPFromIPPool(scope, lbNamespacedName)
+					if err != nil {
+						logger.Error(err, "could not get IP from IP Pool")
+
+						return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+					}
+				}
 				placeholderSVC := &apiv1.Service{
 					ObjectMeta: v1.ObjectMeta{
 						Name:      scope.HarvesterCluster.Namespace + "-" + scope.HarvesterCluster.Name + "-lb",
@@ -318,7 +329,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 
 							return &policy
 						}(),
-						LoadBalancerIP: "0.0.0.0",
+						LoadBalancerIP: lbIP,
 					},
 				}
 
@@ -345,7 +356,35 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 		if len(existingPlaceholderLB.Status.LoadBalancer.Ingress) == 0 || existingPlaceholderLB.Status.LoadBalancer.Ingress[0].IP == "" {
 			logger.Info("placeholder LoadBalancer IP is empty, waiting for IP to be set ...")
 
-			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+			if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
+				ipPool, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(context.TODO(),
+					scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef, v1.GetOptions{})
+				if err != nil {
+					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+				}
+
+				if ipPool.Status.AllocatedHistory == nil {
+					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, fmt.Errorf("IP Pool %s does not have any allocated IPs", ipPool.Name)
+				}
+
+				for k, v := range ipPool.Status.AllocatedHistory {
+					if lbNamespacedName == v {
+						existingPlaceholderLB.Spec.LoadBalancerIP = k
+
+						_, err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Update(context.TODO(),
+							existingPlaceholderLB, v1.UpdateOptions{})
+						if err != nil {
+							err = errors.Wrap(err, "could not update the placeholder LoadBalancer")
+
+							return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+						}
+					}
+				}
+
+				return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+			} else {
+				return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+			}
 		}
 
 		// res = ctrl.Result{RequeueAfter: 5 * time.Minute}
@@ -356,6 +395,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 		scope.HarvesterCluster.Status = infrav1.HarvesterClusterStatus{
 			Ready: true,
 		}
+		res = ctrl.Result{RequeueAfter: 1 * time.Minute}
 
 		return res, err
 	}
@@ -366,14 +406,14 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 		if err != nil {
 			logger.V(1).Info("could not create the LoadBalancer, requeuing ...")
 
-			return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}
 
 		lbIP, err := getLoadBalancerIP(scope.HarvesterCluster, scope.HarvesterClient)
 		if err != nil {
-			logger.Error(err, "could not get the LoadBalancer IP")
+			logger.Info("LoadBalancer IP is not yet available, requeuing ...")
 
-			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
 		}
 
 		scope.HarvesterCluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
@@ -387,10 +427,83 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 			Status: apiv1.ConditionTrue,
 		})
 
-		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
 	return res, err
+}
+
+func getIPFromIPPool(scope ClusterScope, lbNamespacedName string) (string, error) {
+	poolRef := scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef
+
+	if poolRef == "" {
+		return "", fmt.Errorf("IP Pool reference is empty, while IPAMType is set to %s", infrav1.POOL)
+	}
+
+	referencedIPPool, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+		context.TODO(),
+		poolRef,
+		v1.GetOptions{})
+	if err != nil {
+		return "", errors.Wrapf(err, "could not get referenced IP Pool %s", poolRef)
+	}
+
+	if referencedIPPool.Status.Available == 0 {
+		return "", fmt.Errorf("IP Pool %s does not have available addresses", poolRef)
+	}
+
+	return allocateIPFromPool(referencedIPPool, lbNamespacedName, &scope)
+}
+
+func allocateIPFromPool(refPool *lbv1beta1.IPPool, lbNamespacedName string, scope *ClusterScope) (string, error) {
+	rangeSlice := make([]allocator.Range, 0)
+
+	var total int64
+
+	ranges := refPool.Spec.Ranges
+
+	for i := range ranges {
+		element, err := locutil.MakeRange(&ranges[i])
+		if err != nil {
+			return "", err
+		}
+
+		rangeSlice = append(rangeSlice, *element)
+
+		total += locutil.CountIP(element)
+	}
+
+	rangeSet := allocator.RangeSet(rangeSlice)
+
+	a := allocator.NewIPAllocator(&rangeSet, locutil.NewStore(refPool), 0)
+
+	var ipObj *current.IPConfig
+
+	var err error
+
+	// apply the IP allocated before in priority
+	if refPool.Status.AllocatedHistory != nil {
+		for k, v := range refPool.Status.AllocatedHistory {
+			if lbNamespacedName == v {
+				ipObj, err = a.Get(lbNamespacedName, "", net.ParseIP(k))
+				if err != nil {
+					return "", err
+				}
+			}
+		}
+	}
+
+	if ipObj == nil {
+		ipObj, err = a.Get(lbNamespacedName, "", nil)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// Update Pool in Harvester with the new allocated IP
+	scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(context.TODO(), refPool, v1.UpdateOptions{})
+
+	return ipObj.Address.IP.String(), nil
 }
 
 func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset) (string, error) {
@@ -631,15 +744,26 @@ func (r *HarvesterClusterReconciler) getOwnedCPHarversterMachines(scope ClusterS
 		return []infrav1.HarvesterMachine{}, errors.Wrap(err, "unable to list owned ControlPlane Machines")
 	}
 
-	ownedCPHarvesterMachinesReady := make([]infrav1.HarvesterMachine, 0)
+	ownedCPMachinesExistInHarvester := make([]infrav1.HarvesterMachine, 0)
 
 	for _, machine := range ownedCPHarvesterMachines.Items {
-		if machine.Status.Ready {
-			ownedCPHarvesterMachinesReady = append(ownedCPHarvesterMachinesReady, machine)
+		hvMachineName := machine.Name
+		hvMachineNamespace := scope.HarvesterCluster.Spec.TargetNamespace
+
+		_, err := scope.HarvesterClient.KubevirtV1().VirtualMachines(hvMachineNamespace).Get(context.TODO(), hvMachineName, v1.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				scope.Logger.V(4).Info("Owned ControlPlane Machine does not exist in Harvester yet", "machine-name",
+					hvMachineName, "machine-namespace", hvMachineNamespace)
+
+				continue
+			}
 		}
+
+		ownedCPMachinesExistInHarvester = append(ownedCPMachinesExistInHarvester, machine)
 	}
 
-	return ownedCPHarvesterMachinesReady, nil
+	return ownedCPMachinesExistInHarvester, nil
 }
 
 // ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it.
