@@ -210,7 +210,7 @@ set-manifest-pull-policy:
 .PHONY: set-manifest-image
 set-manifest-image:
 	$(info Updating kustomize image patch file for manager resource)
-	sed -i'' -e 's@image: .*@image: '"${MANIFEST_IMG}:$(MANIFEST_TAG)"'@' $(TARGET_RESOURCE)
+	sed -i'' -e 's@image: ghcr.io/rancher-sandbox/cluster-api-provider-harvester.*@image: '"${MANIFEST_IMG}:$(MANIFEST_TAG)"'@' $(TARGET_RESOURCE)
 
 ## --------------------------------------
 ## Release

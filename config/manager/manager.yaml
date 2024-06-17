@@ -86,7 +86,7 @@ spec:
             fieldRef:
               fieldPath: metadata.uid
         ports:
-        - containerPort: 9440
+        - containerPort: 8081
           protocol: TCP
           name: healthz
         livenessProbe:
