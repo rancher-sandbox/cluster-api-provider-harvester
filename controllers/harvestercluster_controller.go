@@ -73,6 +73,7 @@ const (
 	cpVMLabelValuePrefix         = "controlplane"
 	requeueTimeThirtySeconds     = 30 * time.Second
 	requeueTimeFiveMinutes       = 5 * time.Minute
+	dhcpLbIP                     = "0.0.0.0"
 )
 
 // HarvesterClusterReconciler reconciles a HarvesterCluster object.
@@ -293,7 +294,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 
 				return ctrl.Result{RequeueAfter: requeueTimeFiveMinutes}, err1
 			} else {
-				lbIP := "0.0.0.0"
+				lbIP := dhcpLbIP
 				if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
 					lbIP, err = getIPFromIPPool(scope, lbNamespacedName)
 					if err != nil {
@@ -357,31 +358,42 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope ClusterScope) (res ct
 			logger.Info("placeholder LoadBalancer IP is empty, waiting for IP to be set ...")
 
 			if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
+				newLbIP := dhcpLbIP
+
 				ipPool, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(context.TODO(),
 					scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef, v1.GetOptions{})
 				if err != nil {
 					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
 				}
 
-				if ipPool.Status.AllocatedHistory == nil {
-					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, fmt.Errorf("IP Pool %s does not have any allocated IPs", ipPool.Name)
-				}
-
-				for k, v := range ipPool.Status.AllocatedHistory {
-					if lbNamespacedName == v {
-						existingPlaceholderLB.Spec.LoadBalancerIP = k
-
-						_, err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Update(context.TODO(),
-							existingPlaceholderLB, v1.UpdateOptions{})
-						if err != nil {
-							err = errors.Wrap(err, "could not update the placeholder LoadBalancer")
-
-							return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+				if ipPool.Status.AllocatedHistory != nil {
+					for k, v := range ipPool.Status.AllocatedHistory {
+						if lbNamespacedName == v {
+							newLbIP = k
 						}
 					}
 				}
 
-				return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+				if newLbIP == dhcpLbIP {
+					newLbIP, err = getIPFromIPPool(scope, lbNamespacedName)
+					if err != nil {
+						return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+					}
+				}
+
+				existingPlaceholderLB.Spec.LoadBalancerIP = newLbIP
+
+				_, err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Update(context.TODO(),
+					existingPlaceholderLB, v1.UpdateOptions{})
+				if err != nil {
+					err = errors.Wrap(err, "could not update the placeholder LoadBalancer")
+
+					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+				}
+
+				logger.Info("placeholder LoadBalancer IP updated successfully using IP Pools", "IP", newLbIP)
+
+				return ctrl.Result{Requeue: true}, nil
 			} else {
 				return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
 			}
