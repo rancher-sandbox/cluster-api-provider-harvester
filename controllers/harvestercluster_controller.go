@@ -554,28 +554,19 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 
 	kubeconfig := secret.Data[locutil.ConfigSecretDataKey]
 
-	var config *clientcmdapi.Config
-
-	if config, err = clientcmd.Load(kubeconfig); err != nil {
+	harvesterServer, err := getHarvesterServerFromKubeconfig(kubeconfig)
+	if err != nil {
 		cluster.Status = infrav1.HarvesterClusterStatus{
 			FailureReason:  "MalformedIdentitySecret",
-			FailureMessage: "unable to Load a valid Harvester config from the referenced Secret",
+			FailureMessage: err.Error(),
 			Ready:          false,
 		}
 
-		if err := r.Status().Update(ctx, cluster); err != nil {
-			return &rest.Config{}, errors.Wrapf(err, "failed to update status")
-		}
-
-		return &rest.Config{}, errors.Wrapf(err, "unable to Load a valid Harvester config from the referenced Secret %s", ctx)
+		return &rest.Config{}, err
 	}
 
-	configCluster := config.Clusters[config.CurrentContext]
-
-	configServer := configCluster.Server
-
-	if cluster.Spec.Server == "" || cluster.Spec.Server != configServer {
-		cluster.Spec.Server = configServer
+	if cluster.Spec.Server == "" || cluster.Spec.Server != harvesterServer {
+		cluster.Spec.Server = harvesterServer
 		logger.Info("Value for Server is now set to " + cluster.Spec.Server)
 	}
 
@@ -836,4 +827,35 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope ClusterScope) (ctrl.R
 	controllerutil.RemoveFinalizer(scope.HarvesterCluster, infrav1.ClusterFinalizer)
 
 	return ctrl.Result{}, nil
+}
+
+func getHarvesterServerFromKubeconfig(kubeconfig []byte) (server string, err error) {
+	var config *clientcmdapi.Config
+
+	if config, err = clientcmd.Load(kubeconfig); err != nil {
+		return "", errors.Wrapf(err, "unable to Load a valid Harvester config from the referenced Secret")
+	}
+
+	if config.CurrentContext == "" {
+		return "", fmt.Errorf("the provided Kubeconfig is malformed: no current-context set.")
+	}
+
+	configContext := config.Contexts[config.CurrentContext]
+	if configContext == nil {
+		return "", fmt.Errorf("the provided Kubeconfig is malformed, no context section corresponds to the current-context, with the name %s",
+			config.CurrentContext)
+	}
+
+	configCluster := config.Clusters[configContext.Cluster]
+	if configCluster == nil {
+		return "", fmt.Errorf("the provided Kubeconfig is malformed, no cluster section corresponds to the cluster name %s in the context %s",
+			configContext.Cluster, config.CurrentContext)
+	}
+
+	configServer := configCluster.Server
+	if configServer == "" {
+		return "", fmt.Errorf("the provided Kubeconfig is malformed, no server found for cluster %s", configContext.Cluster)
+	}
+
+	return configServer, nil
 }
