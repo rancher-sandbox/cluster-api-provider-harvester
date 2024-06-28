@@ -1,18 +1,20 @@
 module github.com/rancher-sandbox/cluster-api-provider-harvester
 
-go 1.20
+go 1.21
+
+toolchain go1.21.11
 
 require (
 	emperror.dev/errors v0.8.0
-	github.com/containernetworking/cni v1.1.2
+	github.com/containernetworking/cni v1.2.0-rc1
 	github.com/containernetworking/plugins v1.1.1
 	github.com/harvester/harvester v1.2.1
 	github.com/harvester/harvester-load-balancer v0.2.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.0
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/longhorn/longhorn-manager v1.4.3
-	github.com/onsi/gomega v1.33.1
 	github.com/onsi/ginkgo/v2 v2.17.3
+	github.com/onsi/gomega v1.33.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.62.0
 	github.com/rancher/rancher/pkg/apis v0.0.0
@@ -35,7 +37,7 @@ require (
 	github.com/rancher/gke-operator v1.1.4 // indirect
 	github.com/safchain/ethtool v0.0.0-20210803160452-9aa261dae9b1 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
-	github.com/vishvananda/netns v0.0.0-20211101163701-50045581ed74 // indirect
+	github.com/vishvananda/netns v0.0.4 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 )
 
