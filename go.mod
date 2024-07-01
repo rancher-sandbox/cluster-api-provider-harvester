@@ -5,13 +5,13 @@ go 1.22
 require (
 	emperror.dev/errors v0.8.0
 	github.com/containernetworking/cni v1.2.0-rc1
-	github.com/containernetworking/plugins v1.1.1
+	github.com/containernetworking/plugins v1.5.1
 	github.com/harvester/harvester v1.2.1
 	github.com/harvester/harvester-load-balancer v0.2.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.0
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/longhorn/longhorn-manager v1.4.3
-	github.com/onsi/ginkgo/v2 v2.17.3
+	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.74.0
@@ -27,13 +27,13 @@ require (
 )
 
 require (
-	github.com/coreos/go-iptables v0.6.0 // indirect
+	github.com/coreos/go-iptables v0.7.0 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/gxui v0.0.0-20151028112939-f85e0a97b3a4 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/rancher/eks-operator v1.1.5 // indirect
 	github.com/rancher/gke-operator v1.1.4 // indirect
-	github.com/safchain/ethtool v0.0.0-20210803160452-9aa261dae9b1 // indirect
+	github.com/safchain/ethtool v0.4.0 // indirect
 	github.com/vishvananda/netlink v1.2.1-beta.2 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
@@ -93,15 +93,14 @@ require (
 	golang.org/x/net v0.25.0 // indirect
 	golang.org/x/oauth2 v0.13.0 // indirect
 	golang.org/x/sync v0.7.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
+	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/term v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
-	golang.org/x/tools v0.20.0 // indirect
+	golang.org/x/tools v0.21.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0
