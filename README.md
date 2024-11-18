@@ -94,16 +94,19 @@ export CLUSTER_NAME=test-rk # Name of the cluster that will be created.
 export HARVESTER_ENDPOINT=x.x.x.x # Harvester Clusters IP Adr.
 export NAMESPACE=example-rk # Namespace where the cluster will be created.
 export KUBERNETES_VERSION=v1.26.6 # Kubernetes Version
-export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest
-export VM_IMAGE_NAME=default/jammy-server-cloudimg-amd64.img # Should have the format <NAMESPACE>/<NAME> for an image that exists on Harvester
+export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest. Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME>
+export VM_IMAGE_NAME=default/jammy-server-cloudimg-amd64.img # Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME> for an image that exists on Harvester
 export CONTROL_PLANE_MACHINE_COUNT=3
 export WORKER_MACHINE_COUNT=2
 export VM_DISK_SIZE=40Gi # Put here the desired disk size
 export RANCHER_TURTLES_LABEL='' # This is used if you are using Rancher CAPI Extension (Turtles) to import the cluster automatically.
-export VM_NETWORK=default/untagged # change here according to your Harvester available VM Networks
+export VM_NETWORK=default/untagged # change here according to your Harvester available VM Networks. Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME>
 export HARVESTER_KUBECONFIG_B64=XXXYYY #Full Harvester's kubeconfig encoded in Base64. You can use: cat kubeconfig.yaml | base64
 export CLOUD_CONFIG_KUBECONFIG_B64=ZZZZAAA # Kubeconfig generated for the Cloud Provider: https://docs.harvesterhci.io/v1.3/rancher/cloud-provider#deploying-to-the-rke2-custom-cluster-experimental 
+export IP_POOL_NAME=default # for the non-DHCP template, specify the IP pool for the Harvester load balancer. The IP pool must exist in Harvester prior to applying manifest
+export TARGET_HARVESTER_NAMESPACE=default # the namespace on the Harvester cluster where the VMs, load balancers etc. should be created
 ```
+
 NOTE: The `CLOUD_CONFIG_KUBECONFIG_B64` variable content should be the result of the script available [here](https://docs.harvesterhci.io/v1.3/rancher/cloud-provider#deploying-to-the-rke2-custom-cluster-experimental) -- meaning, the generated kubeconfig -- encoded in BASE64.
 
 Now, we can generate the YAML using the following command:

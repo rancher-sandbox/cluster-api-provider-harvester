@@ -29,7 +29,7 @@ metadata:
   name: ${CLUSTER_NAME}-hv
   namespace: ${NAMESPACE}
 spec:
-  targetNamespace: default
+  targetNamespace: ${TARGET_HARVESTER_NAMESPACE}
   loadBalancerConfig:
     ipamType: dhcp
     listeners:
