@@ -48,7 +48,7 @@ linters-settings:
     statements: 60
   lll:
     line-length: 150
-  gomnd:
+  mnd:
     ignored-numbers:
       - "5"
       - "4"

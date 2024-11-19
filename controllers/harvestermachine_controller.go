@@ -309,6 +309,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 					hvScope.HarvesterMachine.Status.Ready = true
 				} else {
 					logger.Info("Waiting for ProviderID to be set on Node resource in Workload Cluster ...")
+
 					hvScope.HarvesterMachine.Status.Ready = false
 
 					return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
@@ -612,7 +613,7 @@ try to specify the namespace using the format <NAMESPACE>/<NAME>`,
 		return nil, err
 	}
 
-	hvScope.Logger.V(3).Info("SSH Key Name " + keyName + " given does exist!")
+	hvScope.Logger.V(3).Info("SSH Key Name " + keyName + " given does exist!") //nolint:mnd
 
 	// building cloud-init user data
 	cloudInitBase := `package_update: true
@@ -651,14 +652,14 @@ runcmd:
 		},
 	}
 
-	hvScope.Logger.V(5).Info("cloud-init final value is " + string(finalCloudInit))
+	hvScope.Logger.V(5).Info("cloud-init final value is " + string(finalCloudInit)) //nolint:mnd
 
 	// check if secret already exists
 	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
 		context.TODO(), hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
-			hvScope.Logger.V(2).Info("unable to get cloud-init secret, error was different than NotFound") //nolint:gomnd
+			hvScope.Logger.V(3).Info("unable to get cloud-init secret, error was different than NotFound")
 		} else {
 			_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
 				context.TODO(), cloudInitSecret, metav1.CreateOptions{})
@@ -868,6 +869,7 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 					return ctrl.Result{Requeue: true}, err
 				}
 			}
+
 			err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
 				hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
 			if err != nil {
@@ -878,6 +880,7 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 				}
 
 				logger.Info("VM not found, doing nothing")
+				time.Sleep(time.Second)
 			}
 
 			logger.V(5).Info("VM deleted successfully: " + hvScope.HarvesterMachine.Name)

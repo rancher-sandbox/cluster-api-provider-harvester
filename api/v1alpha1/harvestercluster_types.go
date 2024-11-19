@@ -38,6 +38,12 @@ const (
 	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
 	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready.
 	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
+	// CustomIPPoolCreatedCondition documents if a custom IP Pool was created in Harvester.
+	CustomIPPoolCreatedCondition clusterv1.ConditionType = "CustomIPPoolCreated"
+	// CustomPoolCreationInHarvesterFailedReason documents the reason why a custom pool was unable to be created.
+	CustomPoolCreationInHarvesterFailedReason = "The custom Pool creation in Harvester failed"
+	// CustomIPPoolCreatedSuccessfullyReason documents the reason why Custom IP Pool was created.
+	CustomIPPoolCreatedSuccessfullyReason = "Custom IP Pool was successfully created"
 )
 
 const (
@@ -82,7 +88,6 @@ type LoadBalancerConfig struct {
 
 	// IpPoolRef is a reference to an existing IpPool object in Harvester's cluster.
 	// This field is mutually exclusive with "ipPool".
-	//TODO: To be implemented
 	IpPoolRef string `json:"ipPoolRef,omitempty"`
 
 	// IpPool defines a new IpPool that will be added to Harvester.
@@ -115,6 +120,14 @@ type IpPool struct {
 	// Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet.
 	// e.g. 172.17.1.1.
 	Gateway string `json:"gateway"`
+
+	// RangeStart is the first IP Address that should be used by the IP Pool.
+	// + optional
+	RangeStart string `json:"rangeStart,omitempty"`
+
+	// RangeEnd is the last IP Address that should be used by the IP Pool.
+	// + optional
+	RangeEnd string `json:"rangeEnd,omitempty"`
 }
 
 // Listener is a description of a new Listener to be created on the Load Balancer.
@@ -135,8 +148,9 @@ type Listener struct {
 
 // HarvesterClusterStatus defines the observed state of HarvesterCluster.
 type HarvesterClusterStatus struct {
-	// Reddy describes if the Harvester Cluster can be considered ready for machine creation.
-	Ready bool `json:"ready"`
+	// Ready describes if the Harvester Cluster can be considered ready for machine creation.
+	// +optional
+	Ready bool `json:"ready,omitempty"`
 
 	// FailureReason is the short name for the reason why a failure might be happening that makes the cluster not ready.
 	// +optional
