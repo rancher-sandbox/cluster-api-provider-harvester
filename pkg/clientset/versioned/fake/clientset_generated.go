@@ -28,6 +28,8 @@ import (
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
 	"k8s.io/client-go/testing"
+	rbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
+	fakerbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1/fake"
 
 	clientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	catalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1"
@@ -169,6 +171,11 @@ func (c *Clientset) UpgradeV1() upgradev1.UpgradeV1Interface {
 // CoreV1 retrieves the CoreV1Client
 func (c *Clientset) CoreV1() corev1.CoreV1Interface {
 	return &fakecorev1.FakeCoreV1{Fake: &c.Fake}
+}
+
+// RbacV1 retrieves the RbacV1Client
+func (c *Clientset) RbacV1() rbacv1.RbacV1Interface {
+	return &fakerbacv1.FakeRbacV1{Fake: &c.Fake}
 }
 
 // LoadbalancerV1beta1 retrieves the LoadbalancerV1beta1Client

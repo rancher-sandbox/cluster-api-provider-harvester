@@ -25,6 +25,7 @@ import (
 	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
+	rbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
 
@@ -58,6 +59,7 @@ type Interface interface {
 	UpgradeV1() upgradev1.UpgradeV1Interface
 	CoreV1() corev1.CoreV1Interface
 	LoadbalancerV1beta1() lbv1.LoadbalancerV1beta1Interface
+	RbacV1() rbacv1.RbacV1Interface
 }
 
 // Clientset contains the clients for groups. Each group has exactly one
@@ -78,6 +80,7 @@ type Clientset struct {
 	upgradeV1           *upgradev1.UpgradeV1Client
 	corev1              *corev1.CoreV1Client
 	lbv1beta1           *lbv1.LoadbalancerV1beta1Client
+	rbacv1 *rbacv1.RbacV1Client
 }
 
 // CoreV1 retrieves the CoreV1Client
@@ -86,6 +89,14 @@ func (c *Clientset) CoreV1() corev1.CoreV1Interface {
 		return nil
 	}
 	return c.corev1
+}
+
+// RbacV1 retrieves the RbacV1Client
+func (c *Clientset) RbacV1() rbacv1.RbacV1Interface {
+	if c == nil {
+		return nil
+	}
+	return c.rbacv1
 }
 
 // CatalogV1 retrieves the CatalogV1Client
@@ -256,6 +267,11 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 		return nil, err
 	}
 
+	cs.rbacv1, err = rbacv1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
+
 	cs.lbv1beta1, err = lbv1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -290,6 +306,7 @@ func New(c rest.Interface) *Clientset {
 	cs.storageV1 = storagev1.New(c)
 	cs.upgradeV1 = upgradev1.New(c)
 	cs.corev1 = corev1.New(c)
+	cs.rbacv1 = rbacv1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
