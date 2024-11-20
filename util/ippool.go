@@ -77,6 +77,7 @@ func (s *Store) Release(ip net.IP) error {
 
 	s.IPPool.Status.AllocatedHistory[ipStr] = s.IPPool.Status.Allocated[ipStr]
 	delete(s.IPPool.Status.Allocated, ipStr)
+
 	s.IPPool.Status.Available++
 
 	return nil
@@ -95,6 +96,7 @@ func (s *Store) ReleaseByID(id string, _ string) error {
 
 			s.IPPool.Status.AllocatedHistory[ip] = applicant
 			delete(s.IPPool.Status.Allocated, ip)
+
 			s.IPPool.Status.Available++
 		}
 	}
@@ -121,6 +123,7 @@ func MakeRange(r *lbv1beta1.Range) (*allocator.Range, error) {
 	}
 
 	var defaultStart, defaultEnd, defaultGateway, start, end, gateway net.IP
+
 	mask := ipNet.Mask.String()
 	// If the subnet is a point to point IP
 	if mask == p2pMaskStr {
@@ -147,10 +150,12 @@ func MakeRange(r *lbv1beta1.Range) (*allocator.Range, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid range start %s: %w", r.RangeStart, err)
 	}
+
 	end, err = parseIP(r.RangeEnd, ipNet, defaultEnd)
 	if err != nil {
 		return nil, fmt.Errorf("invalid range end %s: %w", r.RangeEnd, err)
 	}
+
 	gateway, err = parseIP(r.Gateway, ipNet, defaultGateway)
 	if err != nil {
 		return nil, fmt.Errorf("invalid gateway %s: %w", r.Gateway, err)
@@ -159,6 +164,7 @@ func MakeRange(r *lbv1beta1.Range) (*allocator.Range, error) {
 	// Ensure start IP is smaller than end IP
 	startAddr, _ := netip.AddrFromSlice(start)
 	endAddr, _ := netip.AddrFromSlice(end)
+
 	if startAddr.Compare(endAddr) > 0 {
 		start, end = end, start
 	}
@@ -184,12 +190,15 @@ func parseIP(ipStr string, ipNet *net.IPNet, defaultIP net.IP) (net.IP, error) {
 	if ip == nil {
 		return nil, fmt.Errorf("invalid IP %s", ipStr)
 	}
+
 	if !ipNet.Contains(ip) {
 		return nil, fmt.Errorf("IP %s is out of subnet %s", ipStr, ipNet.String())
 	}
+
 	if ip.Equal(networkIP(*ipNet)) {
 		return nil, fmt.Errorf("IP %s is the network address", ipStr)
 	}
+
 	if ip.Equal(broadcastIP(*ipNet)) {
 		return nil, fmt.Errorf("IP %s is the broadcast address", ipStr)
 	}
@@ -202,15 +211,17 @@ func broadcastIP(n net.IPNet) net.IP {
 	for i := 0; i < len(n.IP); i++ {
 		broadcast[i] = n.IP[i] | ^n.Mask[i]
 	}
+
 	return broadcast
 }
 
-// Determine the last IP of a subnet, excluding the broadcast if IPv4
+// Determine the last IP of a subnet, excluding the broadcast if IPv4.
 func lastIP(subnet net.IPNet) net.IP {
 	var end net.IP
 	for i := 0; i < len(subnet.IP); i++ {
 		end = append(end, subnet.IP[i]|^subnet.Mask[i])
 	}
+
 	if subnet.IP.To4() != nil {
 		end[3]--
 	}
@@ -232,5 +243,6 @@ func ipToInt(ip net.IP) *big.Int {
 	if v := ip.To4(); v != nil {
 		return big.NewInt(0).SetBytes(v)
 	}
+
 	return big.NewInt(0).SetBytes(ip.To16())
 }
