@@ -283,11 +283,13 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	}
 
 	if len(ownedCPHarvesterMachines) == 0 {
-		lbNamespacedName := scope.HarvesterCluster.Spec.TargetNamespace + "/" + scope.HarvesterCluster.Namespace + "-" + scope.HarvesterCluster.Name + "-lb"
+		// Give the LB a name that is RFC-1035 compliant
+		lbName := locutil.GenerateRFC1035Name([]string{scope.HarvesterCluster.Namespace, scope.HarvesterCluster.Name, "lb"})
+		lbNamespacedName := scope.HarvesterCluster.Spec.TargetNamespace + "/" + lbName
 		// Create a placeholder LoadBalancer svc to avoid blocking the CAPI Controller
 		existingPlaceholderLB, err1 := scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Get(
 			scope.Ctx,
-			scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb",
+			lbName,
 			v1.GetOptions{})
 
 		if err1 != nil {
@@ -308,7 +310,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 
 				placeholderSVC := &apiv1.Service{
 					ObjectMeta: v1.ObjectMeta{
-						Name:      scope.HarvesterCluster.Namespace + "-" + scope.HarvesterCluster.Name + "-lb",
+						Name:      lbName,
 						Namespace: scope.HarvesterCluster.Spec.TargetNamespace,
 						Labels: map[string]string{
 							"loadbalancer.harvesterhci.io/servicelb": "true",
@@ -537,7 +539,7 @@ func allocateIPFromPool(refPool *lbv1beta1.IPPool, lbNamespacedName string, scop
 func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset) (string, error) {
 	createdLB, err := hvClient.LoadbalancerV1beta1().LoadBalancers(harvesterCluster.Spec.TargetNamespace).Get(
 		context.TODO(),
-		harvesterCluster.Namespace+"-"+harvesterCluster.Name+"-lb",
+		locutil.GenerateRFC1035Name([]string{harvesterCluster.Namespace, harvesterCluster.Name, "lb"}),
 		v1.GetOptions{})
 	if err != nil {
 		return "", err
@@ -558,10 +560,6 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 		cluster.Status.FailureReason = "IdentitySecretUnavailable"
 		cluster.Status.FailureMessage = "unable to find the IdentitySecret for Harvester"
 		cluster.Status.Ready = false
-
-		// if err := r.Status().Update(ctx, cluster); err != nil {
-		// 	return &rest.Config{}, errors.Wrapf(err, "failed to update status")
-		// }
 
 		return &rest.Config{}, errors.Wrapf(err, "unable to find the IdentitySecret for Harvester %s", ctx)
 	}
@@ -617,7 +615,7 @@ func createLoadBalancerIfNotExists(scope *ClusterScope) (err error) {
 
 	lbToCreate := &lbv1beta1.LoadBalancer{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      scope.HarvesterCluster.Namespace + "-" + scope.HarvesterCluster.Name + "-lb",
+			Name:      locutil.GenerateRFC1035Name([]string{scope.HarvesterCluster.Namespace, scope.HarvesterCluster.Name, "lb"}),
 			Namespace: scope.HarvesterCluster.Spec.TargetNamespace,
 		},
 		Spec: lbv1beta1.LoadBalancerSpec{
@@ -643,38 +641,6 @@ func createLoadBalancerIfNotExists(scope *ClusterScope) (err error) {
 			},
 		},
 	}
-
-	// machineNetwork := types.NamespacedName{}
-	// if scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPool.VMNetwork != "" {
-	// 	err, machineNetwork = locutil.GetNamespacedName(
-	// 		scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPool.VMNetwork,
-	// 		scope.HarvesterCluster.Spec.TargetNamespace)
-	// 	if err != nil {
-	// 		return errors.Wrap(err, "VMNetwork reference is not valid")
-	// 	}
-	// }
-
-	// if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
-	// 	if scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef != "" {
-	// 		// IPPools are not namespaced, thus we don't need to add the namespace to the name
-	// 		lbToCreate.Spec.IPPool = scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPoolRef
-	// 	} else {
-	// 		if scope.HarvesterCluster.Spec.LoadBalancerConfig.IpPool != (infrav1.IpPool{}) {
-	// 			createdIPPool, err := createIPPool(
-	// 				scope.HarvesterCluster,
-	// 				scope.HarvesterClient,
-	// 				machineNetwork.Namespace+"/"+machineNetwork.Name,
-	// 				scope.HarvesterCluster.Spec.TargetNamespace)
-	// 			if err != nil {
-	// 				return err
-	// 			}
-
-	// 			lbToCreate.Spec.IPPool = createdIPPool
-	// 		} else {
-	// 			return fmt.Errorf("IP Pool is not defined")
-	// 		}
-	// 	}
-	// }
 
 	// Harvester Call to Harvester
 	_, err = scope.HarvesterClient.LoadbalancerV1beta1().LoadBalancers(scope.HarvesterCluster.Spec.TargetNamespace).Create(
@@ -713,7 +679,7 @@ func createIPPoolIfNotExists(cluster *infrav1.HarvesterCluster,
 ) (*lbv1beta1.IPPool, error) {
 	ipPoolToCreate := lbv1beta1.IPPool{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      cluster.Namespace + "-" + cluster.Name + "-ip-pool",
+			Name:      locutil.GenerateRFC1035Name([]string{cluster.Namespace, cluster.Name, "ippool"}),
 			Namespace: targetVMNamespace,
 		},
 		Spec: lbv1beta1.IPPoolSpec{
@@ -815,7 +781,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 	err := scope.HarvesterClient.LoadbalancerV1beta1().LoadBalancers(scope.HarvesterCluster.Spec.TargetNamespace).Delete(
 		context.TODO(),
-		scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb",
+		locutil.GenerateRFC1035Name([]string{scope.HarvesterCluster.Namespace, scope.HarvesterCluster.Name, "lb"}),
 		v1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -851,7 +817,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 	err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Delete(
 		context.TODO(),
-		scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-lb",
+		locutil.GenerateRFC1035Name([]string{scope.HarvesterCluster.Namespace, scope.HarvesterCluster.Name, "lb"}),
 		v1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
@@ -867,7 +833,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 	err = scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Delete(
 		context.TODO(),
-		scope.HarvesterCluster.Namespace+"-"+scope.HarvesterCluster.Name+"-ip-pool",
+		locutil.GenerateRFC1035Name([]string{scope.HarvesterCluster.Namespace, scope.HarvesterCluster.Name, "ippool"}),
 		v1.DeleteOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {

@@ -24,6 +24,7 @@ import (
 
 const (
 	ConfigSecretDataKey = "kubeconfig"
+	maximumLabelLength  = 63
 )
 
 func Healthcheck(config *clientcmdapi.Config) (bool, error) {
@@ -64,7 +65,7 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	httpClient := http.Client{}
 	resp, err := httpClient.Do(req)
 
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil || resp.StatusCode != http.StatusOK {
 		return false, errors.Wrapf(err, "error during querying Harvester Server")
 	}
 
@@ -158,4 +159,32 @@ func GetNamespacedName(name string, alternativeTargetNS string) (error, types.Na
 		Namespace: alternativeTargetNS,
 		Name:      name,
 	}
+}
+
+// GenerateRFC1035Name generates a name that is RFC-1035 compliant from an array of strings separated by dashes.
+func GenerateRFC1035Name(nameComponents []string) string {
+	// Join the components with a dash
+	name := strings.Join(nameComponents, "-")
+
+	// Convert to lowercase
+	name = strings.ToLower(name)
+
+	// Replace any invalid characters with a dash
+	re := regexp.MustCompile(`[^a-z0-9-]`)
+	name = re.ReplaceAllString(name, "-")
+
+	// Trim leading and trailing dashes
+	name = strings.Trim(name, "-")
+
+	// Ensure the name starts with a letter
+	if len(name) > 0 && (name[0] < 'a' || name[0] > 'z') {
+		name = "a-" + name
+	}
+
+	// Truncate to 63 characters
+	if len(name) > maximumLabelLength {
+		name = name[:maximumLabelLength]
+	}
+
+	return name
 }
