@@ -1,6 +1,6 @@
 module github.com/rancher-sandbox/cluster-api-provider-harvester
 
-go 1.22.2
+go 1.23
 
 toolchain go1.23.3
 
