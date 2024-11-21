@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: "weekly"
     labels:
-      - "kind/cleanup"
+      - "kind/bump"
       - "area/dependency"
     ignore:
       # Ignore Cluster-API as its upgraded manually.
