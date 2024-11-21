@@ -1,6 +1,6 @@
 module github.com/rancher-sandbox/cluster-api-provider-harvester
 
-go 1.22
+go 1.23
 
 require (
 	emperror.dev/errors v0.8.0
