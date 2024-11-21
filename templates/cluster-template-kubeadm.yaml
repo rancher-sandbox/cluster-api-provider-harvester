@@ -572,4 +572,4 @@ data:
       namespace: kube-system
     type: Opaque
     data:
-      cloud-config: ${HARVESTER_KUBECONFIG_B64}
+      cloud-config: ${CLOUD_CONFIG_KUBECONFIG_B64}

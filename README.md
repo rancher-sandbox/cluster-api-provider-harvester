@@ -87,24 +87,32 @@ You can now create your first workload cluster by running the following:
 ```
 
 ### Create a workload cluster
-Now, you can test out the provider by generating some YAML and applying it to the above `kind` cluster. Such YAML samples can be found in `./samples` directory. We will be interested here in the `RKE2` examples under `./samples/rke2`. Please be aware that the file [example.yaml](./samples/rke2/example.yaml) is a template with placeholders: it cannot be applied directly to the cluster. You need to generate a valid YAML file first. In order to do that, you need to set the following environment variables:
+Now, you can test out the provider by generating some YAML and applying it to the above `kind` cluster. Such YAML templates can be found in `./templates` directory. We will be interested here in the `RKE2` examples under `./templates`. Please be aware that the file [cluster-template-rke2-dhcp.yaml](./templates/cluster-template-rke2-dhcp.yaml) is a template with placeholders: it cannot be applied directly to the cluster. You need to generate a valid YAML file first. In order to do that, you need to set the following environment variables:
 
 ```bash
 export CLUSTER_NAME=test-rk # Name of the cluster that will be created.
 export HARVESTER_ENDPOINT=x.x.x.x # Harvester Clusters IP Adr.
 export NAMESPACE=example-rk # Namespace where the cluster will be created.
 export KUBERNETES_VERSION=v1.26.6 # Kubernetes Version
-export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest
-export VM_IMAGE_NAME=default/jammy-server-cloudimg-amd64.img # Should have the format <NAMESPACE>/<NAME> for an image that exists on Harvester
+export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest. Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME>
+export VM_IMAGE_NAME=default/jammy-server-cloudimg-amd64.img # Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME> for an image that exists on Harvester
 export CONTROL_PLANE_MACHINE_COUNT=3
 export WORKER_MACHINE_COUNT=2
+export VM_DISK_SIZE=40Gi # Put here the desired disk size
+export RANCHER_TURTLES_LABEL='' # This is used if you are using Rancher CAPI Extension (Turtles) to import the cluster automatically.
+export VM_NETWORK=default/untagged # change here according to your Harvester available VM Networks. Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME>
 export HARVESTER_KUBECONFIG_B64=XXXYYY #Full Harvester's kubeconfig encoded in Base64. You can use: cat kubeconfig.yaml | base64
+export CLOUD_CONFIG_KUBECONFIG_B64=ZZZZAAA # Kubeconfig generated for the Cloud Provider: https://docs.harvesterhci.io/v1.3/rancher/cloud-provider#deploying-to-the-rke2-custom-cluster-experimental 
+export IP_POOL_NAME=default # for the non-DHCP template, specify the IP pool for the Harvester load balancer. The IP pool must exist in Harvester prior to applying manifest
+export TARGET_HARVESTER_NAMESPACE=default # the namespace on the Harvester cluster where the VMs, load balancers etc. should be created
 ```
+
+NOTE: The `CLOUD_CONFIG_KUBECONFIG_B64` variable content should be the result of the script available [here](https://docs.harvesterhci.io/v1.3/rancher/cloud-provider#deploying-to-the-rke2-custom-cluster-experimental) -- meaning, the generated kubeconfig -- encoded in BASE64.
 
 Now, we can generate the YAML using the following command:
 
 ```bash
-clusterctl generate cluster --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/v0.1.2/templates/cluster-template-rke2.yaml -n ${CLUSTER_NAMESPACE} ${CLUSTER_NAME} > harvester-rke2-clusterctl.yaml
+clusterctl generate yaml --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/main/templates/cluster-template-rke2.yaml > harvester-rke2-clusterctl.yaml
 ```
 
 After examining the resulting YAML file, you can apply it to the management cluster:

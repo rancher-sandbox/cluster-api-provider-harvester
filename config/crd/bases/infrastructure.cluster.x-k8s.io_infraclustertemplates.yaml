@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.9.2
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: infraclustertemplates.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -26,14 +25,19 @@ spec:
           API.
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -44,24 +48,27 @@ spec:
               template:
                 properties:
                   metadata:
-                    description: 'Standard object''s metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.'
+                    description: |-
+                      Standard object's metadata.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.
                     properties:
                       annotations:
                         additionalProperties:
                           type: string
-                        description: 'Annotations is an unstructured key value map
-                          stored with a resource that may be set by external tools
-                          to store and retrieve arbitrary metadata. They are not queryable
-                          and should be preserved when modifying objects. More info:
-                          http://kubernetes.io/docs/user-guide/annotations'
+                        description: |-
+                          Annotations is an unstructured key value map stored with a resource that may be
+                          set by external tools to store and retrieve arbitrary metadata. They are not
+                          queryable and should be preserved when modifying objects.
+                          More info: http://kubernetes.io/docs/user-guide/annotations
                         type: object
                       labels:
                         additionalProperties:
                           type: string
-                        description: 'Map of string keys and values that can be used
-                          to organize and categorize (scope and select) objects. May
-                          match selectors of replication controllers and services.
-                          More info: http://kubernetes.io/docs/user-guide/labels'
+                        description: |-
+                          Map of string keys and values that can be used to organize and categorize
+                          (scope and select) objects. May match selectors of replication controllers
+                          and services.
+                          More info: http://kubernetes.io/docs/user-guide/labels
                         type: object
                     type: object
                   spec:
@@ -108,26 +115,32 @@ spec:
                               balancer that should be created.
                             type: string
                           ipPool:
-                            description: IpPool defines a new IpPool that will be
-                              added to Harvester. This field is mutually exclusive
-                              with "IpPoolRef".
+                            description: |-
+                              IpPool defines a new IpPool that will be added to Harvester.
+                              This field is mutually exclusive with "IpPoolRef".
                             properties:
                               gateway:
-                                description: Gateway is the IP Address that should
-                                  be used by the Gateway on the Subnet. It should
-                                  be a valid address inside the subnet. e.g. 172.17.1.1.
+                                description: |-
+                                  Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet.
+                                  e.g. 172.17.1.1.
+                                type: string
+                              rangeEnd:
+                                description: RangeEnd is the last IP Address that
+                                  should be used by the IP Pool.
+                                type: string
+                              rangeStart:
+                                description: RangeStart is the first IP Address that
+                                  should be used by the IP Pool.
                                 type: string
                               subnet:
-                                description: Subnet is a string describing the subnet
-                                  that should be used by the IP Pool, it should have
-                                  the CIDR Format of an IPv4 Address. e.g. 172.17.1.0/24.
+                                description: |-
+                                  Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address.
+                                  e.g. 172.17.1.0/24.
                                 type: string
                               vmNetwork:
-                                description: VMNetwork is the name of an existing
-                                  VM Network in Harvester where the IPPool should
-                                  exist. The reference can have the format "namespace/name"
-                                  or just "name" if the object is in the same namespace
-                                  as the HarvesterCluster.
+                                description: |-
+                                  VMNetwork is the name of an existing VM Network in Harvester where the IPPool should exist.
+                                  The reference can have the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterCluster.
                                 type: string
                             required:
                             - gateway
@@ -135,14 +148,14 @@ spec:
                             - vmNetwork
                             type: object
                           ipPoolRef:
-                            description: 'IpPoolRef is a reference to an existing
-                              IpPool object in Harvester''s cluster. This field is
-                              mutually exclusive with "ipPool". TODO: To be implemented'
+                            description: |-
+                              IpPoolRef is a reference to an existing IpPool object in Harvester's cluster.
+                              This field is mutually exclusive with "ipPool".
                             type: string
                           ipamType:
-                            description: IPAMType is the configuration of IP addressing
-                              for the control plane load balancer. This can take two
-                              values, either "dhcp" or "ippool".
+                            description: |-
+                              IPAMType is the configuration of IP addressing for the control plane load balancer.
+                              This can take two values, either "dhcp" or "ippool".
                             enum:
                             - dhcp
                             - pool
@@ -168,7 +181,6 @@ spec:
                                   format: int32
                                   type: integer
                                 protocol:
-                                  default: TCP
                                   description: Protocol is the protocol that the listener
                                     should use, either TCP or UDP.
                                   enum:
