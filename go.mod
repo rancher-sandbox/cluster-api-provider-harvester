@@ -4,7 +4,7 @@ go 1.22
 
 require (
 	emperror.dev/errors v0.8.0
-	github.com/containernetworking/cni v1.2.0-rc1
+	github.com/containernetworking/cni v1.2.3
 	github.com/containernetworking/plugins v1.5.1
 	github.com/harvester/harvester v1.2.1
 	github.com/harvester/harvester-load-balancer v0.2.3
