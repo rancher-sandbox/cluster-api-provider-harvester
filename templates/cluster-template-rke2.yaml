@@ -218,7 +218,7 @@ data:
               env:
                 - name: ADDRESS
                   value: /csi/csi.sock
-              image: rancher/mirrored-longhornio-csi-node-driver-registrar:v2.3.0
+              image: longhornio/csi-node-driver-registrar:v2.12.0
               lifecycle:
                 preStop:
                   exec:
@@ -375,7 +375,7 @@ data:
                     fieldRef:
                       apiVersion: v1
                       fieldPath: metadata.namespace
-              image: rancher/mirrored-longhornio-csi-resizer:v1.2.0
+              image: longhornio/csi-resizer:v1.12.0
               name: csi-resizer
               volumeMounts:
                 - mountPath: /csi/
@@ -394,7 +394,7 @@ data:
                     fieldRef:
                       apiVersion: v1
                       fieldPath: metadata.namespace
-              image: rancher/mirrored-longhornio-csi-provisioner:v2.1.2
+              image: longhornio/csi-provisioner:v5.1.0
               name: csi-provisioner
               volumeMounts:
                 - mountPath: /csi/
@@ -413,7 +413,7 @@ data:
                     fieldRef:
                       apiVersion: v1
                       fieldPath: metadata.namespace
-              image: rancher/mirrored-longhornio-csi-attacher:v3.2.1
+              image: longhornio/csi-attacher:v4.7.0
               name: csi-attacher
               volumeMounts:
                 - mountPath: /csi/
