@@ -447,6 +447,8 @@ data:
     kind: StorageClass
     metadata:
       name: harvester
+      annotation:
+        storageclass.kubernetes.io/is-default-class: "true"
     allowVolumeExpansion: true
     provisioner: driver.harvesterhci.io
     reclaimPolicy: Delete
