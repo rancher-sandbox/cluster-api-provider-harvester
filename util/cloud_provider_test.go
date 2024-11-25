@@ -3,12 +3,36 @@ package util
 import (
 	"encoding/base64"
 	"os"
+	"strings"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/yaml"
+)
+
+var (
+	yamlString string = `apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+  namespace: default
+  type: Opaque
+data:
+  username: aGVsbG8K
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-configmap
+  namespace: default
+data:
+  key1: value1
+  key2: value2
+`
 )
 
 var _ = Describe("GetKubeconfigFromClusterAndCheck", func() {
@@ -48,3 +72,60 @@ var _ = Describe("GetKubeconfigFromClusterAndCheck", func() {
 		Expect(err).To(BeNil())
 	})
 })
+
+var _ = Describe("GetConfigMapsFromYAML", func() {
+	var secrets []*corev1.Secret
+	indexes := make([]int, 0, maxNumberOfSecrets)
+
+	It("Should return the right name", func() {
+		objectsFromYAML, err := GetSerializedObjects(yamlString)
+		Expect(err).To(BeNil())
+
+		secrets, indexes, err = GetSecrets(objectsFromYAML)
+		Expect(err).To(BeNil())
+
+		Expect(len(secrets)).To(Equal(1))
+		Expect(secrets[0].Name).To(Equal("test-secret"))
+		Expect(secrets[0].Namespace).To(Equal("default"))
+		Expect(len(secrets[0].Data)).To(Equal(1))
+		Expect(string(secrets[0].Data["username"])).To(Equal("hello\n"))
+		Expect(len(indexes)).To(Equal(1))
+		Expect(indexes[0]).To(Equal(0))
+	})
+})
+
+// Tests a change in a ConfigMap in YAML
+var _ = Describe("ChangeValueInConfigMapInYAML", func() {
+	var secretName string
+	var secretNamespace string
+	var key string
+	var value []byte
+
+	BeforeEach(func() {
+		secretName = "test-secret"
+		secretNamespace = "default"
+		key = "username"
+		value = []byte("new-value")
+	})
+
+	It("Should return the right name", func() {
+		// Get the modified YAML string
+		modifiedYAMLString, err := ModifyYAMlString(yamlString, secretName, secretNamespace, key, value)
+		Expect(err).To(BeNil())
+		Expect(modifiedYAMLString).To(ContainSubstring("bmV3LXZhbHVl"))
+		documents := strings.Split(modifiedYAMLString, "---")
+		Expect(len(documents)).To(Equal(2))
+		var secret *corev1.Secret
+		for _, document := range documents {
+			if strings.Contains(document, "Secret") {
+				err = yaml.Unmarshal([]byte(document), &secret)
+				Expect(err).To(BeNil())
+				Expect(secret.Data["username"]).To(Equal([]byte("new-value")))
+			}
+		}
+	})
+})
+
+type TestStruct struct {
+	Spec map[string][]byte `yaml:"spec"`
+}

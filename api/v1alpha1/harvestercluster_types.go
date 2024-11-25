@@ -24,17 +24,20 @@ import (
 )
 
 const (
+	// ClusterFinalizer allows ReconcileHarvesterCluster to clean up resources associated with HarvesterCluster before.
 	ClusterFinalizer = "harvester.infrastructure.cluster.x-k8s.io"
-	DHCP             = "dhcp"
-	POOL             = "pool"
+	// DHCP is one of the possible values for the IPAMType field in the LoadBalancerConfig.
+	DHCP = "dhcp"
+	// POOL is one of the possible values for the IPAMType field in the LoadBalancerConfig.
+	POOL = "pool"
 )
 
 const (
 	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester.
 	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
 	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready.
-	LoadBalancerNotReadyReason = "LoadBalancerNotReady"
-	// LoadBalancerReadyMessage documents the message why the load balancer is not ready.
+	LoadBalancerNotReadyReason = "The Load Balancer is not ready"
+	// LoadBalancerNoBackendMachineReason documents that there are no machines matching the load balancer configuration.
 	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
 	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready.
 	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
@@ -44,13 +47,22 @@ const (
 	CustomPoolCreationInHarvesterFailedReason = "The custom Pool creation in Harvester failed"
 	// CustomIPPoolCreatedSuccessfullyReason documents the reason why Custom IP Pool was created.
 	CustomIPPoolCreatedSuccessfullyReason = "Custom IP Pool was successfully created"
+
+	// CloudProviderConfigReadyCondition documents the status of the cloud provider configuration in Harvester.
+	CloudProviderConfigReadyCondition clusterv1.ConditionType = "CloudProviderConfigReady"
+	// CloudProviderConfigNotReadyReason documents the reason why the cloud provider configuration is not ready.
+	CloudProviderConfigNotReadyReason = "The Cloud Provider configuration is not ready"
+	// CloudProviderConfigGenerationFailedReason documents the reason why the cloud provider configuration generation failed.
+	CloudProviderConfigGenerationFailedReason = "The Cloud Provider configuration generation failed"
+	// CloudProviderConfigGeneratedSuccessfullyReason documents the reason why the cloud provider configuration was generated.
+	CloudProviderConfigGeneratedSuccessfullyReason = "The Cloud Provider configuration was generated successfully"
 )
 
 const (
 	// InitMachineCreatedCondition documents the status of the init machine in Harvester.
 	InitMachineCreatedCondition clusterv1.ConditionType = "InitMachineCreated"
-	// InitMachineNotCreatedReason documents the reason why the init machine is not ready.
-	InitMachineNotYetCreatedReason = "InitMachineNotYetCreated"
+	// InitMachineNotYetCreatedReason documents the reason why the init machine is not ready.
+	InitMachineNotYetCreatedReason = "Init Machine not yet created"
 )
 
 // HarvesterClusterSpec defines the desired state of HarvesterCluster.
@@ -71,8 +83,14 @@ type HarvesterClusterSpec struct {
 
 	// TargetNamespace is the namespace on the Harvester cluster where VMs, Load Balancers, etc. should be created.
 	TargetNamespace string `json:"targetNamespace"`
+
+	// UpdateCloudProviderConfig if not empty, will trigger the generation of the cloud provider configuration.
+	// It needs a reference to a ConfigMap containing the cloud provider deployment manifests, that are used by a ClusterResourceSet.
+	// +optional
+	UpdateCloudProviderConfig UpdateCloudProviderConfig `json:"updateCloudProviderConfig,omitempty"`
 }
 
+// SecretKey is a reference to a Secret which stores Identity information for the Target Harvester Cluster.
 type SecretKey struct {
 	// Namespace is the namespace in which the required Identity Secret should be found.
 	Namespace string `json:"namespace"`
@@ -81,6 +99,7 @@ type SecretKey struct {
 	Name string `json:"name"`
 }
 
+// LoadBalancerConfig describes how the load balancer should be created in Harvester.
 type LoadBalancerConfig struct {
 	// IPAMType is the configuration of IP addressing for the control plane load balancer.
 	// This can take two values, either "dhcp" or "ippool".
@@ -144,6 +163,26 @@ type Listener struct {
 
 	// TargetPort is the port that the listener should forward traffic to.
 	BackendPort int32 `json:"backendPort"`
+}
+
+// UpdateCloudProviderConfig is a reference to a ConfigMap containing the cloud provider deployment manifests.
+// If you want to generate the cloud provider configuration, the cloud config will need a Harvester Endpoint. This is provider by `HarvesterCluster.Spec.ControlPlaneEndpoint`.
+// Beware this does not work with an endpoint that uses a Rancher proxy!
+type UpdateCloudProviderConfig struct {
+	// ManifestsConfigMapNamespace is the namespace in which the required ConfigMap should be found.
+	ManifestsConfigMapNamespace string `json:"manifestsConfigMapNamespace"`
+
+	// ManifestsConfigMapName is the name of the required ConfigMap.
+	ManifestsConfigMapName string `json:"manifestsConfigMapName"`
+
+	// ManifestConfigMapKey is the key in the ConfigMap that contains the cloud provider deployment manifests.
+	ManifestConfigMapKey string `json:"manifestConfigMapKey"`
+
+	// CloudConfigCredentialsSecretName is the name of the secret containing the cloud provider credentials.
+	CloudConfigCredentialsSecretName string `json:"cloudConfigCredentialsSecretName"`
+
+	// CloudConfigCredentialsSecretKey is the key in the secret that contains the cloud provider credentials.
+	CloudConfigCredentialsSecretKey string `json:"cloudConfigCredentialsSecretKey"`
 }
 
 // HarvesterClusterStatus defines the observed state of HarvesterCluster.

@@ -263,6 +263,8 @@ spec:
               volumes:
                 description: Volumes is a list of Volumes to attach to the VM
                 items:
+                  description: Volume defines a volume that should be attached to
+                    the VM.
                   properties:
                     bootOrder:
                       description: |-
