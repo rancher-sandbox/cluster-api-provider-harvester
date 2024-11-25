@@ -5,7 +5,7 @@ go 1.23
 toolchain go1.23.3
 
 require (
-	emperror.dev/errors v0.8.0
+	emperror.dev/errors v0.8.1
 	github.com/containernetworking/cni v1.2.3
 	github.com/containernetworking/plugins v1.6.0
 	github.com/harvester/harvester v1.2.1
