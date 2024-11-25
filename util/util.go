@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -187,4 +188,19 @@ func GenerateRFC1035Name(nameComponents []string) string {
 	}
 
 	return name
+}
+
+// ValidateB64Kubeconfig validates a base64 encoded kubeconfig.
+func ValidateB64Kubeconfig(kubeconfigB64 string) error {
+	kubeconfigBytes, err := base64.StdEncoding.DecodeString(kubeconfigB64)
+	if err != nil {
+		return err
+	}
+
+	clientConfigFromBinary, err := clientcmd.Load(kubeconfigBytes)
+	if err != nil {
+		return err
+	}
+
+	return clientcmd.Validate(*clientConfigFromBinary)
 }

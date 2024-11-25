@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"time"
@@ -71,11 +72,12 @@ const (
 	cpIPPoolDescriptionPrefix    = "IP Pool for the control plane's LB of cluster"
 	cpVMLabelKey                 = "harvestercluster/machinetype"
 	cpVMLabelValuePrefix         = "controlplane"
-	requeueTimeThirtySeconds     = 30 * time.Second
-	requeueTimeFiveMinutes       = 5 * time.Minute
-	requeueTimeThreeMinutes      = 3 * time.Minute
+	requeueTimeShort             = 30 * time.Second
+	requeueTimeMedium            = 5 * time.Minute
+	requeueTimeLong              = 3 * time.Minute
 	dhcpLbIP                     = "0.0.0.0"
 	failureThreshold             = 3
+	cloudProviderTargetNamespace = "kube-system"
 )
 
 // HarvesterClusterReconciler reconciles a HarvesterCluster object.
@@ -84,12 +86,13 @@ type HarvesterClusterReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// ClusterScope is a struct that contains the necessary data needed for a HarvesterCluster controller.
 type ClusterScope struct {
 	Cluster          *clusterv1.Cluster
 	HarvesterCluster *infrav1.HarvesterCluster
 	Logger           logr.Logger
 	Ctx              context.Context
-	HarvesterClient  *lbclient.Clientset
+	HarvesterClient  lbclient.Interface
 	ReconcileClient  client.Client
 }
 
@@ -98,7 +101,9 @@ type ClusterScope struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status;machinesets;machines;machines/status;machinepools;machinepools/status,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;update;patch;delete
 
+// Reconcile reads that state of the cluster for a HarvesterCluster object and makes changes based on the state read.
 func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling HarvesterCluster", "cluster-name", req.NamespacedName.Name, "cluster-namespace", req.NamespacedName.Namespace)
@@ -146,7 +151,7 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	var hvRESTConfig *rest.Config
 
 	if hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, &cluster); err != nil {
-		return ctrl.Result{RequeueAfter: requeueTimeThreeMinutes}, err
+		return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 	}
 
 	// get a Harvester Client
@@ -154,7 +159,7 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client from restConfig")
 
-		return ctrl.Result{RequeueAfter: requeueTimeThreeMinutes}, err
+		return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 	}
 
 	scope := &ClusterScope{
@@ -175,7 +180,7 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 const (
-	secretIdField = ".spec.identitySecret.name"
+	secretIdField = ".spec.identitySecret.name" //nolint:gosec
 )
 
 // SetupWithManager sets up the controller with the Manager.
@@ -296,67 +301,33 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 			if !apierrors.IsNotFound(err1) {
 				logger.Error(err1, "could not get the placeholder LoadBalancer")
 
-				return ctrl.Result{RequeueAfter: requeueTimeFiveMinutes}, err1
-			} else {
-				lbIP := dhcpLbIP
-				if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
-					lbIP, err = getIPFromIPPool(scope, lbNamespacedName)
-					if err != nil {
-						logger.Error(err, "could not get IP from IP Pool")
-
-						return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
-					}
-				}
-
-				placeholderSVC := &apiv1.Service{
-					ObjectMeta: v1.ObjectMeta{
-						Name:      lbName,
-						Namespace: scope.HarvesterCluster.Spec.TargetNamespace,
-						Labels: map[string]string{
-							"loadbalancer.harvesterhci.io/servicelb": "true",
-						},
-					},
-					Spec: apiv1.ServiceSpec{
-						AllocateLoadBalancerNodePorts: func() *bool { b := true; return &b }(), //nolint:nlreturn
-						Ports: []apiv1.ServicePort{
-							{
-								Name:       apiServerListener,
-								Port:       apiServerLBPort,
-								Protocol:   apiServerProtocol,
-								TargetPort: intstr.FromInt(apiServerBackendPort),
-							},
-						},
-						Type: apiv1.ServiceTypeLoadBalancer,
-						IPFamilies: []apiv1.IPFamily{
-							apiv1.IPv4Protocol,
-						},
-						IPFamilyPolicy: func() *apiv1.IPFamilyPolicyType {
-							policy := apiv1.IPFamilyPolicySingleStack
-
-							return &policy
-						}(),
-						LoadBalancerIP: lbIP,
-					},
-				}
-
-				_, err = scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Create(
-					scope.Ctx,
-					placeholderSVC,
-					v1.CreateOptions{})
-				if err != nil {
-					if !apierrors.IsAlreadyExists(err) {
-						logger.Error(err, "could not create the placeholder LoadBalancer")
-
-						return ctrl.Result{RequeueAfter: requeueTimeFiveMinutes}, err
-					} else {
-						logger.Info("placeholder LoadBalancer already exists, skipping ...")
-					}
-				}
-
-				res = ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}
-
-				return res, err
+				return ctrl.Result{RequeueAfter: requeueTimeMedium}, err1
 			}
+			lbIP := dhcpLbIP
+			if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
+				lbIP, err = getIPFromIPPool(scope, lbNamespacedName)
+				if err != nil {
+					logger.Error(err, "could not get IP from IP Pool")
+
+					return ctrl.Result{RequeueAfter: requeueTimeShort}, err
+				}
+			}
+
+			err = createPlaceholderSVC(lbName, scope, lbIP)
+			if err != nil {
+				if !apierrors.IsAlreadyExists(err) {
+					scope.Logger.Error(err, "could not create the placeholder LoadBalancer")
+
+					return ctrl.Result{Requeue: true}, err
+				} else {
+					scope.Logger.Info("placeholder LoadBalancer already exists, skipping ...")
+				}
+			}
+
+			res = ctrl.Result{RequeueAfter: requeueTimeShort}
+
+			return res, err
+
 		}
 
 		// Requeue if the placeholder LoadBalancer IP is empty
@@ -366,7 +337,7 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 			if scope.HarvesterCluster.Spec.LoadBalancerConfig.IPAMType == infrav1.POOL {
 				newLbIP, err := getIPFromIPPool(scope, lbNamespacedName)
 				if err != nil {
-					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+					return ctrl.Result{RequeueAfter: requeueTimeShort}, err
 				}
 
 				existingPlaceholderLB.Spec.LoadBalancerIP = newLbIP
@@ -376,15 +347,15 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 				if err != nil {
 					err = errors.Wrap(err, "could not update the placeholder LoadBalancer")
 
-					return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, err
+					return ctrl.Result{RequeueAfter: requeueTimeShort}, err
 				}
 
 				logger.Info("placeholder LoadBalancer IP updated successfully using IP Pools", "IP", newLbIP)
 
 				return ctrl.Result{Requeue: true}, nil
-			} else {
-				return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
 			}
+
+			return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 		}
 
 		// res = ctrl.Result{RequeueAfter: 5 * time.Minute}
@@ -399,20 +370,23 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		return res, err
 	}
 
+	// Reconcile Cloud Provider Config
+	r.reconcileCloudProviderConfig(scope)
+
 	// The following is executed only if there are ownedCPHarvesterMachines
 	if !conditions.IsTrue(scope.HarvesterCluster, infrav1.LoadBalancerReadyCondition) {
 		err := createLoadBalancerIfNotExists(scope)
 		if err != nil {
 			logger.V(1).Info("could not create the LoadBalancer, requeuing ...")
 
-			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil //nolint:nlreturn
 		}
 
 		lbIP, err := getLoadBalancerIP(scope.HarvesterCluster, scope.HarvesterClient)
 		if err != nil {
 			logger.Info("LoadBalancer IP is not yet available, requeuing ...")
 
-			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+			return ctrl.Result{RequeueAfter: requeueTimeShort}, nil //nolint:nlreturn
 		}
 
 		scope.HarvesterCluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{
@@ -430,6 +404,43 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	}
 
 	return res, err
+}
+
+func createPlaceholderSVC(lbName string, scope *ClusterScope, lbIP string) error {
+	placeholderSVC := &apiv1.Service{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      lbName,
+			Namespace: scope.HarvesterCluster.Spec.TargetNamespace,
+			Labels: map[string]string{
+				"loadbalancer.harvesterhci.io/servicelb": "true",
+			},
+		},
+		Spec: apiv1.ServiceSpec{
+			AllocateLoadBalancerNodePorts: func() *bool { b := true; return &b }(),
+			Ports: []apiv1.ServicePort{
+				{
+					Name:       apiServerListener,
+					Port:       apiServerLBPort,
+					Protocol:   apiServerProtocol,
+					TargetPort: intstr.FromInt(apiServerBackendPort),
+				},
+			},
+			Type: apiv1.ServiceTypeLoadBalancer,
+			IPFamilies: []apiv1.IPFamily{
+				apiv1.IPv4Protocol,
+			},
+			LoadBalancerIP: lbIP,
+		},
+	}
+
+	_, err := scope.HarvesterClient.CoreV1().Services(scope.HarvesterCluster.Spec.TargetNamespace).Create(
+		scope.Ctx,
+		placeholderSVC,
+		v1.CreateOptions{})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func checkValidIpPoolDefinition(ipPool infrav1.IpPool) bool {
@@ -531,12 +542,15 @@ func allocateIPFromPool(refPool *lbv1beta1.IPPool, lbNamespacedName string, scop
 	}
 
 	// Update Pool in Harvester with the new allocated IP
-	scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(context.TODO(), refPool, v1.UpdateOptions{})
+	_, err = scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(context.TODO(), refPool, v1.UpdateOptions{})
+	if err != nil {
+		return "", err
+	}
 
 	return ipObj.Address.IP.String(), nil
 }
 
-func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient *lbclient.Clientset) (string, error) {
+func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient lbclient.Interface) (string, error) {
 	createdLB, err := hvClient.LoadbalancerV1beta1().LoadBalancers(harvesterCluster.Spec.TargetNamespace).Get(
 		context.TODO(),
 		locutil.GenerateRFC1035Name([]string{harvesterCluster.Namespace, harvesterCluster.Name, "lb"}),
@@ -550,6 +564,76 @@ func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient *lbc
 	}
 
 	return createdLB.Status.Address, nil
+}
+
+func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *ClusterScope) error {
+	// Skip if the Cloud Provider Config is already ready
+	if conditions.IsTrue(scope.HarvesterCluster, infrav1.CloudProviderConfigReadyCondition) {
+		return nil
+	}
+
+	// Check if user provided the necessary information to generate the cloud provider config
+	updateCloudConfig := scope.HarvesterCluster.Spec.UpdateCloudProviderConfig
+	if (updateCloudConfig != infrav1.UpdateCloudProviderConfig{}) {
+		// Get the Cloud Provider Manifest from the referenced ConfigMap
+		if updateCloudConfig.ManifestsConfigMapName == "" || updateCloudConfig.ManifestsConfigMapNamespace == "" {
+			return errors.New("ManifestsConfigMapName and ManifestsConfigMapNamespace must be set")
+		}
+
+		referencedConfigMap := &apiv1.ConfigMap{}
+
+		err := r.Client.Get(context.TODO(), types.NamespacedName{
+			Name:      updateCloudConfig.ManifestsConfigMapName,
+			Namespace: updateCloudConfig.ManifestsConfigMapNamespace,
+		}, referencedConfigMap)
+
+		if err != nil {
+			return errors.Wrapf(err, "unable to get the referenced config map %s/%s", updateCloudConfig.ManifestsConfigMapNamespace, updateCloudConfig.ManifestsConfigMapName)
+		}
+
+		cloudConfigManifest, err := locutil.GetDataKeyFromConfigMap(referencedConfigMap, updateCloudConfig.ManifestConfigMapKey)
+		if err != nil {
+			return errors.Wrapf(err, "unable to get the data key %s from the referenced config map %s/%s", updateCloudConfig.ManifestConfigMapKey, updateCloudConfig.ManifestsConfigMapNamespace, updateCloudConfig.ManifestsConfigMapName)
+		}
+
+		// Generate the B64 Kubeconfig fpr the cloud provider
+		cloudProviderKubeconfigB64, err := locutil.GetCloudConfigB64(scope.HarvesterClient, scope.Cluster.Name, scope.HarvesterCluster.Spec.TargetNamespace, scope.HarvesterCluster.Spec.Server)
+		if err != nil {
+			return errors.Wrapf(err, "unable to generate the kubeconfig for the cloud provider")
+		}
+
+		cloudProviderKubeconfigBytes, err := base64.StdEncoding.DecodeString(cloudProviderKubeconfigB64)
+		if err != nil {
+			return errors.Wrapf(err, "unable to decode the kubeconfig for the cloud provider")
+		}
+
+		// Modify the cloudConfig Manifest to include the B64 Kubeconfig
+		modifiedManifests, err := locutil.ModifyYAMlString(
+			cloudConfigManifest,
+			updateCloudConfig.CloudConfigCredentialsSecretName,
+			cloudProviderTargetNamespace,
+			updateCloudConfig.CloudConfigCredentialsSecretKey,
+			cloudProviderKubeconfigBytes)
+		if err != nil {
+			return errors.Wrapf(err, "unable to modify the cloudConfig Manifest to include the B64 Kubeconfig")
+		}
+
+		// Update the ConfigMap with the modified cloudConfig Manifest
+		referencedConfigMap.Data[updateCloudConfig.ManifestConfigMapKey] = modifiedManifests
+
+		err = r.Client.Update(context.TODO(), referencedConfigMap)
+		if err != nil {
+			return errors.Wrapf(err, "unable to update the referenced config map %s/%s", updateCloudConfig.ManifestsConfigMapNamespace, updateCloudConfig.ManifestsConfigMapName)
+		}
+	}
+
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.CloudProviderConfigReadyCondition,
+		Status:  apiv1.ConditionTrue,
+		Reason:  infrav1.CloudProviderConfigGeneratedSuccessfullyReason,
+		Message: "Cloud Provider Config was generated successfully",
+	})
+	return nil
 }
 
 func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Context, cluster *infrav1.HarvesterCluster) (*rest.Config, error) {
@@ -673,7 +757,7 @@ func getListenersFromAPI(cluster *infrav1.HarvesterCluster) []lbv1beta1.Listener
 
 // createIPPoolIfNotExists is a function that creates an IP Pool in Harvester.
 func createIPPoolIfNotExists(cluster *infrav1.HarvesterCluster,
-	lbClient *lbclient.Clientset,
+	lbClient lbclient.Interface,
 	machineNetwork string,
 	targetVMNamespace string,
 ) (*lbv1beta1.IPPool, error) {
@@ -787,7 +871,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete Load Balancer in Harvester")
 
-			return ctrl.Result{RequeueAfter: requeueTimeThreeMinutes}, err
+			return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 		}
 
 		logger.Info("no Load Balancer to be deleted, skipping ...")
@@ -805,7 +889,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 			if !apierrors.IsNotFound(err) {
 				logger.Error(err, "unable to delete IP Pool in Harvester")
 
-				return ctrl.Result{RequeueAfter: requeueTimeThreeMinutes}, err
+				return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 			}
 
 			logger.Info("no IP Pool to be deleted, skipping ...")
@@ -823,7 +907,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete Load Balancer Service in Harvester")
 
-			return ctrl.Result{RequeueAfter: requeueTimeThreeMinutes}, err
+			return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 		}
 
 		logger.Info("no Load Balancer Service to be deleted, skipping ...")
@@ -839,7 +923,7 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to delete generated IP Pool in Harvester")
 
-			return ctrl.Result{RequeueAfter: requeueTimeThreeMinutes}, err
+			return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 		}
 
 		logger.Info("no IP Pool to be deleted, skipping ...")

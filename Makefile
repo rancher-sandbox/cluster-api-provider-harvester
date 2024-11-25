@@ -5,7 +5,7 @@ ENVTEST_K8S_VERSION = 1.26.0
 #
 # Go.
 #
-GO_VERSION ?= 1.22.3
+GO_VERSION ?= 1.23.3
 GO_CONTAINER_IMAGE ?= docker.io/library/golang:$(GO_VERSION)
 
 # Use GOPROXY environment variable if set

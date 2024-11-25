@@ -79,6 +79,7 @@ type HarvesterMachineSpec struct {
 	WorkloadAffinity *corev1.PodAffinity `json:"workloadAffinity,omitempty"`
 }
 
+// Volume defines a volume that should be attached to the VM.
 type Volume struct {
 	// VolumeType is the type of volume to attach.
 	// Choose between: "storageClass" or "image"

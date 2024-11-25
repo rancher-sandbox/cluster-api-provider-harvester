@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -136,7 +137,7 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if ownerMachine == nil {
 		logger.Info("Waiting for Machine Controller to set OwnerRef on HarvesterMachine")
 
-		return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 	}
 
 	ownerCluster, err := util.GetClusterFromMetadata(ctx, r.Client, ownerMachine.ObjectMeta)
@@ -321,7 +322,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		} else {
 			hvScope.HarvesterMachine.Status.Ready = false
 
-			return ctrl.Result{RequeueAfter: requeueTimeThirtySeconds}, nil
+			return ctrl.Result{RequeueAfter: requeueTimeShort}, nil
 		}
 	}
 
@@ -795,7 +796,7 @@ func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.Harvester
 	networks := []kubevirtv1.Network{}
 	for i, network := range harvesterMachine.Spec.Networks {
 		networks = append(networks, kubevirtv1.Network{
-			Name: "nic-" + fmt.Sprint(i+1),
+			Name: "nic-" + strconv.Itoa(i+1),
 			NetworkSource: kubevirtv1.NetworkSource{
 				Multus: &kubevirtv1.MultusNetwork{
 					NetworkName: network,
@@ -828,6 +829,7 @@ func getCloudInitData(hvScope *Scope) (string, error) {
 	return string(userData), nil
 }
 
+// ReconcileDelete deletes a HarvesterMachine with all its dependencies.
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
 	logger := log.FromContext(hvScope.Ctx)
 	logger.Info("Deleting HarvesterMachine ...")

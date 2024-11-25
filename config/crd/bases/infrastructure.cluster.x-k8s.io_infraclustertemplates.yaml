@@ -204,6 +204,38 @@ spec:
                         description: TargetNamespace is the namespace on the Harvester
                           cluster where VMs, Load Balancers, etc. should be created.
                         type: string
+                      updateCloudProviderConfig:
+                        description: |-
+                          UpdateCloudProviderConfig if not empty, will trigger the generation of the cloud provider configuration.
+                          It needs a reference to a ConfigMap containing the cloud provider deployment manifests, that are used by a ClusterResourceSet.
+                        properties:
+                          cloudConfigCredentialsSecretKey:
+                            description: CloudConfigCredentialsSecretKey is the key
+                              in the secret that contains the cloud provider credentials.
+                            type: string
+                          cloudConfigCredentialsSecretName:
+                            description: CloudConfigCredentialsSecretName is the name
+                              of the secret containing the cloud provider credentials.
+                            type: string
+                          manifestConfigMapKey:
+                            description: ManifestConfigMapKey is the key in the ConfigMap
+                              that contains the cloud provider deployment manifests.
+                            type: string
+                          manifestsConfigMapName:
+                            description: ManifestsConfigMapName is the name of the
+                              required ConfigMap.
+                            type: string
+                          manifestsConfigMapNamespace:
+                            description: ManifestsConfigMapNamespace is the namespace
+                              in which the required ConfigMap should be found.
+                            type: string
+                        required:
+                        - cloudConfigCredentialsSecretKey
+                        - cloudConfigCredentialsSecretName
+                        - manifestConfigMapKey
+                        - manifestsConfigMapName
+                        - manifestsConfigMapNamespace
+                        type: object
                     required:
                     - identitySecret
                     - loadBalancerConfig
