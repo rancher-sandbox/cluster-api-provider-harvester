@@ -3,7 +3,6 @@ package util
 import (
 	"fmt"
 
-	"emperror.dev/errors"
 	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v2"
 )
@@ -37,14 +36,14 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 
 					listSection, ok = resCloudInitObj[k].([]interface{})
 					if !ok {
-						return nil, errors.New("unable to cast list section to []interface{}")
+						return nil, fmt.Errorf("unable to cast list section to []interface{}")
 					}
 				}
 
 				// Append the values to the resulting list section
 				value, ok := v.([]interface{})
 				if !ok {
-					return nil, errors.New("unable to cast value to []interface{}")
+					return nil, fmt.Errorf("unable to cast value to []interface{}")
 				}
 
 				listSection = append(listSection, value...)
@@ -60,7 +59,7 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 
 	resultCloudInit, err := yaml.Marshal(resCloudInitObj)
 	if err != nil {
-		return nil, errors.Wrap(err, "unable to marshall cloud-init, input cloud-init is malformed")
+		return nil, fmt.Errorf("unable to marshall cloud-init, input cloud-init is malformed: %v", err)
 	}
 
 	resultCloudInit = []byte("#cloud-config\n" + string(resultCloudInit))
