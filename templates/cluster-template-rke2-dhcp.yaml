@@ -35,12 +35,19 @@ spec:
     listeners:
     - name: rke2-server
       port: 9345
-      protocol: TCP
+      protocol: TCk
       backendPort: 9345
   server: ${HARVESTER_ENDPOINT}
   identitySecret: 
     namespace: ${NAMESPACE}
     name: hv-identity-secret
+{UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
+    cloudConfigCredentialsSecretKey: cloud-config
+    cloudConfigCredentialsSecretName: cloud-config
+    manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
+    manifestsConfigMapName: harvester-csi-driver-addon
+    manifestsConfigMapNamespace: ${NAMESPACE}
+    }
 ---
 apiVersion: v1
 kind: Secret

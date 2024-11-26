@@ -16,10 +16,10 @@ spec:
   clusterNetwork:
     pods:
       cidrBlocks:
-      - ${POD_CIDR}
+      - ${POD_CIDR:-"10.42.0.0/16"}
     services:
       cidrBlocks:
-      - ${SERVICE_CIDR}
+      - ${SERVICE_CIDR:-"10.43.0.0/16"}
     serviceDomain: cluster.local
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1beta1
@@ -36,13 +36,20 @@ metadata:
   name: ${CLUSTER_NAME}-hv
   namespace: ${NAMESPACE}
 spec:
-  targetNamespace: default
+  targetNamespace: ${TARGET_HARVESTER_NAMESPACE}
   loadBalancerConfig:
     ipamType: dhcp
   server: ${HARVESTER_ENDPOINT} 
   identitySecret: 
     namespace: ${NAMESPACE}
     name: hv-identity-secret
+${UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
+    cloudConfigCredentialsSecretKey: cloud-config
+    cloudConfigCredentialsSecretName: cloud-config
+    manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
+    manifestsConfigMapName: harvester-csi-driver-addon
+    manifestsConfigMapNamespace: ${NAMESPACE}
+    }
 ---
 apiVersion: v1
 kind: Secret
@@ -58,7 +65,7 @@ metadata:
   namespace: ${NAMESPACE}
   name: ${CLUSTER_NAME}-control-plane
 spec:
-  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT:-3}
   kubeadmConfigSpec: 
     initConfiguration:
       nodeRegistration:
@@ -77,7 +84,7 @@ spec:
       kind: HarvesterMachineTemplate
       name: ${CLUSTER_NAME}-cp-machine
       namespace: ${NAMESPACE}
-  version: v1.26.6 
+  version: ${KUBERNETES_VERSION}
 ---
 apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: KubeadmConfigTemplate
@@ -99,7 +106,7 @@ metadata:
   name: ${CLUSTER_NAME}-workers
 spec:
   clusterName: ${CLUSTER_NAME}
-  replicas: ${WORKER_MACHINE_COUNT}
+  replicas: ${WORKER_MACHINE_COUNT:-2}
   selector:
     matchLabels:
       cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
@@ -117,7 +124,7 @@ spec:
         kind: HarvesterMachineTemplate
         name: ${CLUSTER_NAME}-wk-machine
         namespace: ${NAMESPACE}
-      version: v1.26.6
+      version: ${KUBERNETES_VERSION}
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
 kind: HarvesterMachineTemplate
@@ -129,14 +136,14 @@ spec:
     spec:
       cpu: 1
       memory: 4Gi
-      sshUser: ubuntu
+      sshUser: ${VM_SSH_USER:-"ubuntu"}
       sshKeyPair: ${SSH_KEYPAIR}  
       networks:
-      - default/untagged
+      - ${VM_NETWORK}
       volumes:
       - volumeType: image 
         imageName: ${VM_IMAGE_NAME}
-        volumeSize: 50Gi
+        volumeSize: ${VM_DISK_SIZE}
         bootOrder: 0
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
@@ -149,14 +156,14 @@ spec:
     spec:
       cpu: 2
       memory: 8Gi
-      sshUser: ubuntu
+      sshUser: ${VM_SSH_USER:-"ubuntu"}
       sshKeyPair: ${SSH_KEYPAIR}  
       networks:
-      - default/untagged
+      - ${VM_NETWORK}
       volumes:
       - volumeType: image 
         imageName: ${VM_IMAGE_NAME}
-        volumeSize: 50Gi
+        volumeSize: ${VM_DISK_SIZE}
         bootOrder: 0
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
