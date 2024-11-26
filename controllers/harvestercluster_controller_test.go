@@ -229,7 +229,7 @@ data:
 					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{
 						ManifestsConfigMapNamespace:      "test-hv",
 						ManifestsConfigMapName:           "harvester-csi-driver-addon",
-						ManifestConfigMapKey:             "harvester-cloud-provider-deploy.yaml",
+						ManifestsConfigMapKey:            "harvester-cloud-provider-deploy.yaml",
 						CloudConfigCredentialsSecretName: "cloud-config",
 						CloudConfigCredentialsSecretKey:  "cloud-config",
 					},

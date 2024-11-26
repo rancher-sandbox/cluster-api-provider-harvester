@@ -591,9 +591,9 @@ func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *Cluster
 			return errors.Wrapf(err, "unable to get the referenced config map %s/%s", updateCloudConfig.ManifestsConfigMapNamespace, updateCloudConfig.ManifestsConfigMapName)
 		}
 
-		cloudConfigManifest, err := locutil.GetDataKeyFromConfigMap(referencedConfigMap, updateCloudConfig.ManifestConfigMapKey)
+		cloudConfigManifest, err := locutil.GetDataKeyFromConfigMap(referencedConfigMap, updateCloudConfig.ManifestsConfigMapKey)
 		if err != nil {
-			return errors.Wrapf(err, "unable to get the data key %s from the referenced config map %s/%s", updateCloudConfig.ManifestConfigMapKey, updateCloudConfig.ManifestsConfigMapNamespace, updateCloudConfig.ManifestsConfigMapName)
+			return errors.Wrapf(err, "unable to get the data key %s from the referenced config map %s/%s", updateCloudConfig.ManifestsConfigMapKey, updateCloudConfig.ManifestsConfigMapNamespace, updateCloudConfig.ManifestsConfigMapName)
 		}
 
 		// Generate the B64 Kubeconfig fpr the cloud provider
@@ -619,7 +619,7 @@ func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *Cluster
 		}
 
 		// Update the ConfigMap with the modified cloudConfig Manifest
-		referencedConfigMap.Data[updateCloudConfig.ManifestConfigMapKey] = modifiedManifests
+		referencedConfigMap.Data[updateCloudConfig.ManifestsConfigMapKey] = modifiedManifests
 
 		err = r.Client.Update(context.TODO(), referencedConfigMap)
 		if err != nil {

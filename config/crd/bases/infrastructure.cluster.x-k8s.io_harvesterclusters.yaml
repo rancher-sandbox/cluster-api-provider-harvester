@@ -194,8 +194,8 @@ spec:
                     description: CloudConfigCredentialsSecretName is the name of the
                       secret containing the cloud provider credentials.
                     type: string
-                  manifestConfigMapKey:
-                    description: ManifestConfigMapKey is the key in the ConfigMap
+                  manifestsConfigMapKey:
+                    description: ManifestsConfigMapKey is the key in the ConfigMap
                       that contains the cloud provider deployment manifests.
                     type: string
                   manifestsConfigMapName:
@@ -209,7 +209,7 @@ spec:
                 required:
                 - cloudConfigCredentialsSecretKey
                 - cloudConfigCredentialsSecretName
-                - manifestConfigMapKey
+                - manifestsConfigMapKey
                 - manifestsConfigMapName
                 - manifestsConfigMapNamespace
                 type: object

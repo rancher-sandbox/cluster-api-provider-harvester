@@ -175,8 +175,8 @@ type UpdateCloudProviderConfig struct {
 	// ManifestsConfigMapName is the name of the required ConfigMap.
 	ManifestsConfigMapName string `json:"manifestsConfigMapName"`
 
-	// ManifestConfigMapKey is the key in the ConfigMap that contains the cloud provider deployment manifests.
-	ManifestConfigMapKey string `json:"manifestConfigMapKey"`
+	// ManifestsConfigMapKey is the key in the ConfigMap that contains the cloud provider deployment manifests.
+	ManifestsConfigMapKey string `json:"manifestsConfigMapKey"`
 
 	// CloudConfigCredentialsSecretName is the name of the secret containing the cloud provider credentials.
 	CloudConfigCredentialsSecretName string `json:"cloudConfigCredentialsSecretName"`
