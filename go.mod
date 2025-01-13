@@ -6,7 +6,7 @@ toolchain go1.23.3
 
 require (
 	github.com/containernetworking/cni v1.2.3
-	github.com/containernetworking/plugins v1.6.0
+	github.com/containernetworking/plugins v1.6.2
 	github.com/harvester/harvester v1.2.1
 	github.com/harvester/harvester-load-balancer v0.2.3
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.5
@@ -34,11 +34,11 @@ require (
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/rancher/eks-operator v1.1.5 // indirect
 	github.com/rancher/gke-operator v1.1.4 // indirect
-	github.com/safchain/ethtool v0.4.1 // indirect
+	github.com/safchain/ethtool v0.5.9 // indirect
 	github.com/vishvananda/netlink v1.3.0 // indirect
 	github.com/vishvananda/netns v0.0.4 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	sigs.k8s.io/knftables v0.0.17 // indirect
+	sigs.k8s.io/knftables v0.0.18 // indirect
 )
 
 require (
@@ -94,7 +94,7 @@ require (
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
-	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/sys v0.27.0 // indirect
 	golang.org/x/term v0.25.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
