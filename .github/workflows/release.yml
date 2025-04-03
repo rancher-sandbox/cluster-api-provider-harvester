@@ -69,15 +69,16 @@ jobs:
     - name: Update manifests
       run: |
         make release RELEASE_TAG=${{ env.TAG }} ORG=${{ env.ORG }} 
-    - name: Release
-      uses: softprops/action-gh-release@v2
-      with:
-        prerelease: false
-        draft: true
-        fail_on_unmatched_files: true
-        generate_release_notes: true
-        discussion_category_name: Announcements
-        name: ${{ env.TAG }}
-        files: |
-          out/metadata.yaml
-          out/components.yaml
+    # to be replaced with gh cli. see https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/104
+    # - name: Release
+      # uses: softprops/action-gh-release@v2
+      # with:
+        # prerelease: false
+        # draft: true
+        # fail_on_unmatched_files: true
+        # generate_release_notes: true
+        # discussion_category_name: Announcements
+        # name: ${{ env.TAG }}
+        # files: |
+          # out/metadata.yaml
+          # out/components.yaml
