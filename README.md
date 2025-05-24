@@ -60,7 +60,7 @@ Before the Harvester provider can be installed with `clusterctl`, it is necessar
 ```yaml
 providers:
   - name: "harvester"
-    url: "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/components.yaml"
+    url: "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/infrastructure-components.yaml"
     type: "InfrastructureProvider"
 ```
 
