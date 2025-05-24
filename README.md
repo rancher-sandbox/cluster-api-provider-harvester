@@ -54,15 +54,7 @@ CoreDNS is running at https://127.0.0.1:40819/api/v1/namespaces/kube-system/serv
 To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
 ```
 
-### Setting up clusterctl
-Before the Harvester provider can be installed with `clusterctl`, it is necessary to explain to `clusterctl` where to find it, which repository, which type of provider it is, etc. This can be done by creating or modifying the file `$HOME/.cluster-api/clusterctl.yaml`, and adding to it the following content:
-
-```yaml
-providers:
-  - name: "harvester"
-    url: "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/infrastructure-components.yaml"
-    type: "InfrastructureProvider"
-```
+### Install Harvester Provider to the KinD Cluster
 
 Now, the Harvester and RKE2 providers can be installed with the `clusterctl` command. In this particular case, our manifests will be using the `ResourceSet` feature gate for Cluster API, we will need to set the environment variable `EXP_CLUSTER_RESOURCE_SET` to `true` before running the `clusterctl init` command.
 
