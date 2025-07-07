@@ -81,4 +81,4 @@ jobs:
         # name: ${{ env.TAG }}
         # files: |
           # out/metadata.yaml
-          # out/components.yaml
+          # out/infrastructure-components.yaml
