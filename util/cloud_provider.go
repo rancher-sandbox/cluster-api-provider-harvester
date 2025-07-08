@@ -3,11 +3,12 @@ package util
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	re "regexp"
 	"strings"
 	"time"
+
+	"sigs.k8s.io/json"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -265,7 +266,7 @@ func GetSecrets(objects []runtime.RawExtension) ([]*corev1.Secret, []int, error)
 
 		var unstructuredObj unstructured.Unstructured
 
-		err := json.Unmarshal(obj.Raw, &unstructuredObj)
+		err := json.UnmarshalCaseSensitivePreserveInts(obj.Raw, &unstructuredObj)
 		if err != nil {
 			continue
 		}
@@ -294,7 +295,7 @@ func FindSecretByName(secrets []*corev1.Secret, name string, namespace string) (
 		}
 	}
 
-	return nil, 0, fmt.Errorf("secret %s not found in namespace %s", name, namespace)
+	return nil, 0, fmt.Errorf("secret %s/%s not found in the configMap of the resourceSet", namespace, name)
 }
 
 // SetSecretData sets the data of a Secret.
@@ -318,36 +319,69 @@ func ModifyYAMlString(yamlString string, secretName string, secretNamespace stri
 		return "", err
 	}
 
-	secrets, indexes, err := GetSecrets(objects)
+	secrets, _, err := GetSecrets(objects)
 	if err != nil {
 		return "", err
 	}
 
 	secret, index, err := FindSecretByName(secrets, secretName, secretNamespace)
 	if err != nil {
-		return "", err
+		// If the secret is not found (only possible reason for an error), create a new one
+		secret = &corev1.Secret{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Secret",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      secretName,
+				Namespace: secretNamespace,
+			},
+			Type: corev1.SecretTypeOpaque,
+		}
+		index = len(objects) // Append the new secret at the end of the list
+
 	}
 
 	SetSecretData(secret, key, value)
 
-	secretBytes, err := json.Marshal(secret)
+	secretBytes, err := yaml.Marshal(secret)
 	if err != nil {
 		return "", err
 	}
 
-	SetObjectByIndex(objects, indexes[index], runtime.RawExtension{
-		Object: secret,
-		Raw:    secretBytes,
-	})
+	// If the index is less than the length of the objects, we are updating an existing object
+	if index < len(objects) {
+		SetObjectByIndex(objects, index, runtime.RawExtension{
+			Object: secret,
+			Raw:    secretBytes,
+		})
+	}
 
-	var yamlStrings []string // nolint: prealloc
+	if index == len(objects) {
+		// If the index is equal to the length of the objects, it means we are appending a new object
+		objects = append(objects, runtime.RawExtension{
+			Object: secret,
+			Raw:    secretBytes,
+		})
+	}
+	// Convert the objects back to YAML
+	yamlString, err = serializeObjectsToYAML(objects)
+	if err != nil {
+		return "", err
+	}
+	return yamlString, nil
+
+}
+
+// serializeObjectsToYAML serializes a slice of runtime.RawExtension objects to a YAML string.
+func serializeObjectsToYAML(objects []runtime.RawExtension) (string, error) {
+	var yamlStrings []string
 
 	for _, obj := range objects {
 		yamlBytes, err := yaml.JSONToYAML(obj.Raw)
 		if err != nil {
 			return "", err
 		}
-
 		yamlStrings = append(yamlStrings, string(yamlBytes))
 	}
 

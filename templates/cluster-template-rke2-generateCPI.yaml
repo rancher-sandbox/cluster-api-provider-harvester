@@ -44,8 +44,6 @@ spec:
 ${UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
     cloudConfigCredentialsSecretKey: cloud-config
     cloudConfigCredentialsSecretName: cloud-config
-    manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
-    manifestsConfigMapName: harvester-csi-driver-addon
     manifestsConfigMapNamespace: ${NAMESPACE}
     }
 ---
@@ -165,7 +163,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: cloud-controller-manager-addon
-  strategy: ApplyOnce
+  strategy: Reconcile
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
@@ -179,7 +177,7 @@ spec:
   resources:
   - kind: ConfigMap
     name: harvester-csi-driver-addon
-  strategy: ApplyOnce
+  strategy: Reconcile
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet

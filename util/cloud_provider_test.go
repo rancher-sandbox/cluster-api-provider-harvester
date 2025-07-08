@@ -126,6 +126,45 @@ var _ = Describe("ChangeValueInConfigMapInYAML", func() {
 	})
 })
 
+var _ = Describe("AddSecretToConfigMap", func() {
+	It("Should return a YAML with an additional Secret", func() {
+
+		// Get the modified YAML string with the new secret
+		modifiedYAMLString, err := ModifyYAMlString(yamlString, "cloud-config", "test-hv", "cloud-config", []byte("new-value"))
+		Expect(err).To(BeNil())
+		Expect(modifiedYAMLString).To(Equal(`apiVersion: v1
+data:
+  username: aGVsbG8K
+kind: Secret
+metadata:
+  name: test-secret
+  namespace: default
+  type: Opaque
+
+---
+apiVersion: v1
+data:
+  key1: value1
+  key2: value2
+kind: ConfigMap
+metadata:
+  name: test-configmap
+  namespace: default
+
+---
+apiVersion: v1
+data:
+  cloud-config: bmV3LXZhbHVl
+kind: Secret
+metadata:
+  creationTimestamp: null
+  name: cloud-config
+  namespace: test-hv
+type: Opaque
+`))
+	})
+})
+
 type TestStruct struct {
 	Spec map[string][]byte `yaml:"spec"`
 }
