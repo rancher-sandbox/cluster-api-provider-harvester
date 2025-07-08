@@ -8,6 +8,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  TAG: ${{ github.ref_name }}
+  ORG: ${{ github.repository_owner }}
 
 jobs:
   build:
@@ -82,3 +84,15 @@ jobs:
         # files: |
           # out/metadata.yaml
           # out/infrastructure-components.yaml
+    - name: Create GitHub Release
+      if: ${{ startsWith(github.ref, 'refs/tags/') }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if gh release view ${{ github.ref_name }} > /dev/null; then
+          echo ${{ github.ref_name }} release exists
+        else
+          gh release create ${{ github.ref_name }} --draft --notes "Draft release for ${{ github.ref_name }}"
+        fi
+        gh release upload ${{ github.ref_name }} out/metadata.yaml
+        gh release upload ${{ github.ref_name }} out/infrastructure-components.yaml
