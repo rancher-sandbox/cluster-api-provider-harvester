@@ -41,7 +41,7 @@ spec:
   identitySecret: 
     namespace: ${NAMESPACE}
     name: hv-identity-secret
-{UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
+${UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
     cloudConfigCredentialsSecretKey: cloud-config
     cloudConfigCredentialsSecretName: cloud-config
     manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
