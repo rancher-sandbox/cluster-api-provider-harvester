@@ -27,15 +27,15 @@ import (
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	fakecorev1 "k8s.io/client-go/kubernetes/typed/core/v1/fake"
-	"k8s.io/client-go/testing"
 	rbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	fakerbacv1 "k8s.io/client-go/kubernetes/typed/rbac/v1/fake"
+	"k8s.io/client-go/testing"
 
 	clientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	catalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1"
 	fakecatalogv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/catalog.cattle.io/v1/fake"
-	clusterv1alpha4 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4"
-	fakeclusterv1alpha4 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1alpha4/fake"
+	clusterv1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1beta1"
+	fakeclusterv1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/cluster.x-k8s.io/v1beta1/fake"
 	harvesterhciv1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/harvesterhci.io/v1beta1"
 	fakeharvesterhciv1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/harvesterhci.io/v1beta1/fake"
 	k8scnicncfiov1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/k8s.cni.cncf.io/v1"
@@ -113,9 +113,9 @@ func (c *Clientset) CatalogV1() catalogv1.CatalogV1Interface {
 	return &fakecatalogv1.FakeCatalogV1{Fake: &c.Fake}
 }
 
-// ClusterV1alpha4 retrieves the ClusterV1alpha4Client
-func (c *Clientset) ClusterV1alpha4() clusterv1alpha4.ClusterV1alpha4Interface {
-	return &fakeclusterv1alpha4.FakeClusterV1alpha4{Fake: &c.Fake}
+// Clusterv1beta1 retrieves the Clusterv1beta1Client
+func (c *Clientset) Clusterv1beta1() clusterv1beta1.Clusterv1beta1Interface {
+	return &fakeclusterv1beta1.FakeClusterv1beta1{Fake: &c.Fake}
 }
 
 // HarvesterhciV1beta1 retrieves the HarvesterhciV1beta1Client

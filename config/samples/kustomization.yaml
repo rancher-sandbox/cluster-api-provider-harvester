@@ -1,0 +1,7 @@
+## Append samples of your project ##
+resources:
+- infrastructure_v1alpha1_harvestermachine.yaml
+- infrastructure_v1alpha1_harvestercluster.yaml
+- infrastructure_v1alpha1_harvestermachinetemplate.yaml
+- infrastructure_v1alpha1_harvesterclustertemplate.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

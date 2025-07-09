@@ -227,38 +227,6 @@ type HarvesterClusterList struct {
 	Items           []HarvesterCluster `json:"items"`
 }
 
-// HarvesterClusterTemplateSpec defines the desired state of HarvesterClusterTemplate.
-type HarvesterClusterTemplateSpec struct {
-	Template HarvesterClusterTemplateResource `json:"template"`
-}
-
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:path=infraclustertemplates,scope=Namespaced,categories=cluster-api,shortName=ict
-// +kubebuilder:storageversion
-
-// HarvesterClusterTemplate is the Schema for the infraclustertemplates API.
-type HarvesterClusterTemplate struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec HarvesterClusterTemplateSpec `json:"spec,omitempty"`
-}
-
-type HarvesterClusterTemplateResource struct {
-	// Standard object's metadata.
-	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.
-	// +optional
-	ObjectMeta clusterv1.ObjectMeta `json:"metadata,omitempty"`
-	Spec       HarvesterClusterSpec `json:"spec"`
-}
-
-// HarvesterClusterTemplateList contains a list of HarvesterClusterTemplates.
-type HarvesterClusterTemplateList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []HarvesterClusterTemplate `json:"items"`
-}
-
 func init() {
 	SchemeBuilder.Register(&HarvesterCluster{}, &HarvesterClusterList{})
 }

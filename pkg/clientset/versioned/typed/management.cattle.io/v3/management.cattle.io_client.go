@@ -38,19 +38,12 @@ type ManagementV3Interface interface {
 	CatalogsGetter
 	CatalogTemplatesGetter
 	CatalogTemplateVersionsGetter
-	CisBenchmarkVersionsGetter
-	CisConfigsGetter
 	CloudCredentialsGetter
 	ClustersGetter
-	ClusterAlertsGetter
-	ClusterAlertGroupsGetter
-	ClusterAlertRulesGetter
 	ClusterCatalogsGetter
 	ClusterLoggingsGetter
-	ClusterMonitorGraphsGetter
 	ClusterRegistrationTokensGetter
 	ClusterRoleTemplateBindingsGetter
-	ClusterScansGetter
 	ClusterTemplatesGetter
 	ClusterTemplateRevisionsGetter
 	ComposeConfigsGetter
@@ -71,27 +64,19 @@ type ManagementV3Interface interface {
 	KontainerDriversGetter
 	LocalProvidersGetter
 	ManagedChartsGetter
-	MonitorMetricsGetter
 	MultiClusterAppsGetter
 	MultiClusterAppRevisionsGetter
 	NodesGetter
 	NodeDriversGetter
 	NodePoolsGetter
 	NodeTemplatesGetter
-	NotifiersGetter
 	OIDCProvidersGetter
 	OpenLdapProvidersGetter
-	PodSecurityPolicyTemplatesGetter
-	PodSecurityPolicyTemplateProjectBindingsGetter
 	PreferencesGetter
 	PrincipalsGetter
 	ProjectsGetter
-	ProjectAlertsGetter
-	ProjectAlertGroupsGetter
-	ProjectAlertRulesGetter
 	ProjectCatalogsGetter
 	ProjectLoggingsGetter
-	ProjectMonitorGraphsGetter
 	ProjectNetworkPoliciesGetter
 	ProjectRoleTemplateBindingsGetter
 	RancherUserNotificationsGetter
@@ -151,32 +136,12 @@ func (c *ManagementV3Client) CatalogTemplateVersions(namespace string) CatalogTe
 	return newCatalogTemplateVersions(c, namespace)
 }
 
-func (c *ManagementV3Client) CisBenchmarkVersions(namespace string) CisBenchmarkVersionInterface {
-	return newCisBenchmarkVersions(c, namespace)
-}
-
-func (c *ManagementV3Client) CisConfigs(namespace string) CisConfigInterface {
-	return newCisConfigs(c, namespace)
-}
-
 func (c *ManagementV3Client) CloudCredentials(namespace string) CloudCredentialInterface {
 	return newCloudCredentials(c, namespace)
 }
 
 func (c *ManagementV3Client) Clusters() ClusterInterface {
 	return newClusters(c)
-}
-
-func (c *ManagementV3Client) ClusterAlerts(namespace string) ClusterAlertInterface {
-	return newClusterAlerts(c, namespace)
-}
-
-func (c *ManagementV3Client) ClusterAlertGroups(namespace string) ClusterAlertGroupInterface {
-	return newClusterAlertGroups(c, namespace)
-}
-
-func (c *ManagementV3Client) ClusterAlertRules(namespace string) ClusterAlertRuleInterface {
-	return newClusterAlertRules(c, namespace)
 }
 
 func (c *ManagementV3Client) ClusterCatalogs(namespace string) ClusterCatalogInterface {
@@ -187,20 +152,12 @@ func (c *ManagementV3Client) ClusterLoggings(namespace string) ClusterLoggingInt
 	return newClusterLoggings(c, namespace)
 }
 
-func (c *ManagementV3Client) ClusterMonitorGraphs(namespace string) ClusterMonitorGraphInterface {
-	return newClusterMonitorGraphs(c, namespace)
-}
-
 func (c *ManagementV3Client) ClusterRegistrationTokens(namespace string) ClusterRegistrationTokenInterface {
 	return newClusterRegistrationTokens(c, namespace)
 }
 
 func (c *ManagementV3Client) ClusterRoleTemplateBindings(namespace string) ClusterRoleTemplateBindingInterface {
 	return newClusterRoleTemplateBindings(c, namespace)
-}
-
-func (c *ManagementV3Client) ClusterScans(namespace string) ClusterScanInterface {
-	return newClusterScans(c, namespace)
 }
 
 func (c *ManagementV3Client) ClusterTemplates(namespace string) ClusterTemplateInterface {
@@ -283,10 +240,6 @@ func (c *ManagementV3Client) ManagedCharts(namespace string) ManagedChartInterfa
 	return newManagedCharts(c, namespace)
 }
 
-func (c *ManagementV3Client) MonitorMetrics(namespace string) MonitorMetricInterface {
-	return newMonitorMetrics(c, namespace)
-}
-
 func (c *ManagementV3Client) MultiClusterApps(namespace string) MultiClusterAppInterface {
 	return newMultiClusterApps(c, namespace)
 }
@@ -311,24 +264,12 @@ func (c *ManagementV3Client) NodeTemplates(namespace string) NodeTemplateInterfa
 	return newNodeTemplates(c, namespace)
 }
 
-func (c *ManagementV3Client) Notifiers(namespace string) NotifierInterface {
-	return newNotifiers(c, namespace)
-}
-
 func (c *ManagementV3Client) OIDCProviders() OIDCProviderInterface {
 	return newOIDCProviders(c)
 }
 
 func (c *ManagementV3Client) OpenLdapProviders() OpenLdapProviderInterface {
 	return newOpenLdapProviders(c)
-}
-
-func (c *ManagementV3Client) PodSecurityPolicyTemplates() PodSecurityPolicyTemplateInterface {
-	return newPodSecurityPolicyTemplates(c)
-}
-
-func (c *ManagementV3Client) PodSecurityPolicyTemplateProjectBindings(namespace string) PodSecurityPolicyTemplateProjectBindingInterface {
-	return newPodSecurityPolicyTemplateProjectBindings(c, namespace)
 }
 
 func (c *ManagementV3Client) Preferences(namespace string) PreferenceInterface {
@@ -343,28 +284,12 @@ func (c *ManagementV3Client) Projects(namespace string) ProjectInterface {
 	return newProjects(c, namespace)
 }
 
-func (c *ManagementV3Client) ProjectAlerts(namespace string) ProjectAlertInterface {
-	return newProjectAlerts(c, namespace)
-}
-
-func (c *ManagementV3Client) ProjectAlertGroups(namespace string) ProjectAlertGroupInterface {
-	return newProjectAlertGroups(c, namespace)
-}
-
-func (c *ManagementV3Client) ProjectAlertRules(namespace string) ProjectAlertRuleInterface {
-	return newProjectAlertRules(c, namespace)
-}
-
 func (c *ManagementV3Client) ProjectCatalogs(namespace string) ProjectCatalogInterface {
 	return newProjectCatalogs(c, namespace)
 }
 
 func (c *ManagementV3Client) ProjectLoggings(namespace string) ProjectLoggingInterface {
 	return newProjectLoggings(c, namespace)
-}
-
-func (c *ManagementV3Client) ProjectMonitorGraphs(namespace string) ProjectMonitorGraphInterface {
-	return newProjectMonitorGraphs(c, namespace)
 }
 
 func (c *ManagementV3Client) ProjectNetworkPolicies(namespace string) ProjectNetworkPolicyInterface {

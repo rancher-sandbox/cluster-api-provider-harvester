@@ -36,7 +36,6 @@ type HarvesterMachineTemplateResource struct {
 }
 
 //+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
 
 // HarvesterMachineTemplate is the Schema for the harvestermachinetemplates API.
 type HarvesterMachineTemplate struct {
