@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM --platform=$BUILDPLATFORM registry.suse.com/bci/golang:1.23 AS builder
+FROM --platform=$BUILDPLATFORM registry.suse.com/bci/golang:1.24.4 AS builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
@@ -10,9 +10,9 @@ COPY go.sum go.sum
 RUN go mod download
 
 # Copy the go source
-COPY main.go main.go
+COPY cmd/ cmd/
 COPY api/ api/
-COPY controllers/ controllers/
+COPY internal/ internal/
 COPY pkg/ pkg/
 COPY util util/
 
@@ -24,7 +24,7 @@ COPY util util/
 ARG TARGETOS
 ARG TARGETARCH
 ARG LDFLAGS
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
 FROM registry.suse.com/bci/bci-micro:15.6
 WORKDIR /
