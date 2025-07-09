@@ -1,109 +1,109 @@
-# Options for analysis running.
+version: "2"
 run:
-  go: "1.22"
-  skip-files:
-    - "zz_generated.*\\.go$"
-    - "vendored_openapi\\.go$"
-    - ".*_test\\.go$"
+  go: "1.23"
   allow-parallel-runners: true
-issues:
-  include:
-    - EXC0012
-    - EXC0014
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - testpackage
-        - gochecknoglobals
-    - path: controlplane/api/v1alpha1/*
-      linters:
-        - gochecknoglobals
-    - source: "^//\\+kubebuilder:"
-      linters:
-        - lll
-    - path: _webhook\.go
-      linters:
-        - dupl
-        - wrapcheck
-    - text: var-naming
-      linters:
-        - revive
-    - text: ST1003
-      linters: 
-        - stylecheck
-    - text: G114    # Needs further discussion to confirm disabling 
-      linters:
-        - gosec  
-    - text: G402    # Needs futher discussion
-      path: api/v1alpha1
-      linters:
-        - gosec
-    - text: unexported-return
-      path: pkg/harvester
-      linters:
-        - revive
-linters-settings:
-  funlen:
-    lines: 110
-    statements: 60
-  lll:
-    line-length: 150
-  mnd:
-    ignored-numbers:
-      - "5"
-      - "4"
-      - "3"
-  goimports:
-    local-prefixes: github.com/rancher-sandbox/cluster-api-provider-harvester
-  gci:
-    custom-order: true
-    #local-prefixes: github.com/rancher-sandbox/cluster-api-provider-harvester
-    sections:
-      - "standard" 
-      - "blank"
-      - "dot"
-      - "default"
-      - "prefix(sigs.k8s.io/cluster-api)"
-      - "prefix(github.com/rancher-sandbox/cluster-api-provider-harvester)"
 linters:
-  enable-all: true
+  default: all
   disable:
-    - nolintlint
-    - tagliatelle
-    - exhaustruct
-    - exhaustive
-    - exhaustivestruct
-    - maligned
-    - funlen
-    - wrapcheck
-    - goerr113  # this one should probably be re-enabled soon
-    - paralleltest
-    - varnamelen
+    - containedctx
     - cyclop
+    - depguard
+    - err113
+    - exhaustive
+    - exhaustruct
+    - funlen
     - gochecknoglobals
     - gochecknoinits
-    - nonamedreturns
+    - gocognit
     - gocritic
-    - ireturn     # Needs further discussion
-    - maintidx    # Needs further discussion
-    - nestif      # Needs further discussion
-    - gocognit    # Needs further discussion
-    - containedctx # Needs further discussion
-    # The following are all deprecated linters
-    - deadcode
-    - ifshort
-    - varcheck
-    - scopelint
-    - interfacer
-    - structcheck
-    - golint
-    - nosnakecase
-    # Disabled because of generics
+    - gomoddirectives
+    - ireturn
+    - maintidx
+    - nestif
+    - nolintlint
+    - nonamedreturns
+    - paralleltest
     - rowserrcheck
     - sqlclosecheck
+    - tagliatelle
+    - varnamelen
     - wastedassign
-    - depguard
-    - typecheck
-    - gomoddirectives
-
-    
+    - wrapcheck
+  settings:
+    funlen:
+      lines: 110
+      statements: 60
+    lll:
+      line-length: 150
+    mnd:
+      ignored-numbers:
+        - "5"
+        - "4"
+        - "3"
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - gochecknoglobals
+          - testpackage
+        path: _test\.go
+      - linters:
+          - gochecknoglobals
+        path: controlplane/api/v1alpha1/*
+      - linters:
+          - lll
+        source: '^//\+kubebuilder:'
+      - linters:
+          - dupl
+          - wrapcheck
+        path: _webhook\.go
+      - linters:
+          - revive
+        text: var-naming
+      - linters:
+          - staticcheck
+        text: ST1003
+      - linters:
+          - gosec
+        text: G114
+      - linters:
+          - gosec
+        path: api/v1alpha1
+        text: G402
+      - linters:
+          - revive
+        path: pkg/harvester
+        text: unexported-return
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - blank
+        - dot
+        - default
+        - prefix(sigs.k8s.io/cluster-api)
+        - prefix(github.com/rancher-sandbox/cluster-api-provider-harvester)
+      custom-order: true
+    goimports:
+      local-prefixes:
+        - github.com/rancher-sandbox/cluster-api-provider-harvester
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
