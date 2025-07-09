@@ -58,7 +58,7 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 
 	req, err := http.NewRequest(http.MethodGet, healthcheckUrl, nil)
 	if err != nil {
-		return false, errors.Wrapf(err, "http request couldn't be create for url: "+healthcheckUrl)
+		return false, errors.Wrapf(err, "%s", "http request couldn't be create for url: "+healthcheckUrl)
 	}
 
 	req.Header.Add("Authorization", "Bearer "+config.AuthInfos[currentUser].Token)

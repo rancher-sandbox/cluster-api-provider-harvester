@@ -44,8 +44,6 @@ import (
 	fakekubevirtv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/kubevirt.io/v1/fake"
 	longhornv1beta2 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/longhorn.io/v1beta2"
 	fakelonghornv1beta2 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/longhorn.io/v1beta2/fake"
-	managementv3 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/management.cattle.io/v3"
-	fakemanagementv3 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/management.cattle.io/v3/fake"
 	monitoringv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/monitoring.coreos.com/v1"
 	fakemonitoringv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/monitoring.coreos.com/v1/fake"
 	networkingv1 "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/typed/networking.k8s.io/v1"
@@ -136,11 +134,6 @@ func (c *Clientset) KubevirtV1() kubevirtv1.KubevirtV1Interface {
 // LonghornV1beta2 retrieves the LonghornV1beta2Client
 func (c *Clientset) LonghornV1beta2() longhornv1beta2.LonghornV1beta2Interface {
 	return &fakelonghornv1beta2.FakeLonghornV1beta2{Fake: &c.Fake}
-}
-
-// ManagementV3 retrieves the ManagementV3Client
-func (c *Clientset) ManagementV3() managementv3.ManagementV3Interface {
-	return &fakemanagementv3.FakeManagementV3{Fake: &c.Fake}
 }
 
 // MonitoringV1 retrieves the MonitoringV1Client
