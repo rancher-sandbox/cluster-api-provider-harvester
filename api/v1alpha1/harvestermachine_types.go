@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	capiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -33,7 +32,7 @@ const (
 
 const (
 	// MachineCreatedCondition documents that the machine has been created.
-	MachineCreatedCondition capiv1beta1.ConditionType = "MachineCreated"
+	MachineCreatedCondition clusterv1.ConditionType = "MachineCreated"
 
 	// MachineNotFoundReason documents that the machine was not found.
 	MachineNotFoundReason = "MachineNotFound"
@@ -51,7 +50,7 @@ type HarvesterMachineSpec struct {
 	FailureDomain string `json:"failureDomain,omitempty"`
 
 	// CPU is the number of CPU to assign to the VM.
-	CPU int `json:"cpu"`
+	CPU uint32 `json:"cpu"`
 
 	// Memory is the memory size to assign to the VM (should be similar to pod.spec.containers.resources.limits).
 	Memory string `json:"memory"`
@@ -113,11 +112,11 @@ type HarvesterMachineStatus struct {
 	// Ready is true when the provider resource is ready.
 	Ready bool `json:"ready,omitempty"`
 
-	Conditions []capiv1beta1.Condition `json:"conditions,omitempty"`
+	Conditions []clusterv1.Condition `json:"conditions,omitempty"`
 
-	FailureReason  string                       `json:"failureReason,omitempty"`
-	FailureMessage string                       `json:"failureMessage,omitempty"`
-	Addresses      []capiv1beta1.MachineAddress `json:"addresses,omitempty"`
+	FailureReason  string                     `json:"failureReason,omitempty"`
+	FailureMessage string                     `json:"failureMessage,omitempty"`
+	Addresses      []clusterv1.MachineAddress `json:"addresses,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -138,7 +137,8 @@ type HarvesterMachine struct {
 type HarvesterMachineList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []HarvesterMachine `json:"items"`
+
+	Items []HarvesterMachine `json:"items"`
 }
 
 func init() {

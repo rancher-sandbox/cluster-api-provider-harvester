@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,7 +20,11 @@ import (
 	"context"
 	"os"
 
-	"github.com/go-logr/logr"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,11 +33,6 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	hvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
@@ -43,6 +42,7 @@ var _ = Describe("Extract Server from Kubeconfig", func() {
 	var kubeconfig []byte
 
 	BeforeEach(func() {
+		//nolint:lll
 		kubeconfig = []byte(`apiVersion: v1
 clusters:
 - cluster:
@@ -71,9 +71,9 @@ users:
 })
 
 var _ = Describe("Modify Cloud Provider Manifest", func() {
-
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
+	//nolint:lll
 	manifest := `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -199,12 +199,12 @@ data:
 		}).Build()
 	var r *HarvesterClusterReconciler
 	var scope *ClusterScope
-	var log logr.Logger = log.FromContext(context.TODO())
+	log := log.FromContext(context.TODO())
 	BeforeEach(func() {
 		hvConfig, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 		hvClient, err := hvclient.NewForConfig(hvConfig)
-		Expect(err).To(BeNil())
+		Expect(err).ToNot(HaveOccurred())
 
 		r = &HarvesterClusterReconciler{
 			Client: fakeClient,
@@ -240,16 +240,12 @@ data:
 			},
 			HarvesterClient: hvClient,
 		}
-
 	})
 
 	It("Should modify the cloud provider manifest", func() {
-
 		Expect(r.reconcileCloudProviderConfig(scope)).To(Succeed())
 		newCM := &corev1.ConfigMap{}
 		Expect(fakeClient.Get(context.TODO(), types.NamespacedName{Namespace: "test-hv", Name: "harvester-csi-driver-addon"}, newCM)).To(Succeed())
 		Expect(newCM.Data["harvester-cloud-provider-deploy.yaml"]).To(Not(Equal(manifest)))
-
 	})
-
 })

@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ limitations under the License.
 package versioned
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 
 	lbv1 "github.com/harvester/harvester-load-balancer/pkg/generated/clientset/versioned/typed/loadbalancer.harvesterhci.io/v1beta1"
@@ -194,7 +194,7 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	configShallowCopy := *c
 	if configShallowCopy.RateLimiter == nil && configShallowCopy.QPS > 0 {
 		if configShallowCopy.Burst <= 0 {
-			return nil, fmt.Errorf("burst is required to be greater than 0 when RateLimiter is not set and QPS is set to greater than 0")
+			return nil, errors.New("burst is required to be greater than 0 when RateLimiter is not set and QPS is set to greater than 0")
 		}
 		configShallowCopy.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(configShallowCopy.QPS, configShallowCopy.Burst)
 	}

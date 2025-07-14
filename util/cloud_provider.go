@@ -1,13 +1,32 @@
+/*
+Copyright 2025 SUSE.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package util
 
 import (
 	"context"
 	"encoding/base64"
-	"fmt"
 	"net"
 	re "regexp"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
+	"sigs.k8s.io/json"
+	"sigs.k8s.io/yaml"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -18,9 +37,6 @@ import (
 	machineryyaml "k8s.io/apimachinery/pkg/util/yaml"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	clientcmdlatest "k8s.io/client-go/tools/clientcmd/api/latest"
-
-	"sigs.k8s.io/json"
-	"sigs.k8s.io/yaml"
 
 	lbclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 )
@@ -114,7 +130,7 @@ func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string,
 
 	serviceAccountUID := string(sa.UID)
 	serviceAccountName := sa.Name
-	secretName := fmt.Sprintf("%s-token", serviceAccountName)
+	secretName := serviceAccountName + "-token"
 
 	// Create a secret for the service account
 	_, err = hvClient.CoreV1().Secrets(namespace).Create(context.Background(), &corev1.Secret{
@@ -149,19 +165,20 @@ func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string,
 	// Get Endpoint from Service
 	vipSVC, err := hvClient.CoreV1().Services("kube-system").Get(context.Background(), "ingress-expose", metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("Unable to compute the Harvester Endpoint: problem in getting the ingress-expose service: %v", err)
+		return "", errors.Wrap(err, "unable to compute the Harvester Endpoint: problem in getting the ingress-expose service")
 	}
 
 	vipIP := vipSVC.Annotations["kube-vip.io/loadbalancerIPs"]
 
-	if ok, err := re.MatchString(`\d+\.\d+\.\d+\.\d+`, vipIP); ok && err == nil {
+	ok, err := re.MatchString(`\d+\.\d+\.\d+\.\d+`, vipIP)
+	if ok && err == nil {
 		harvesterServerURL = net.JoinHostPort(vipIP, "6443")
-		harvesterServerURL = fmt.Sprintf("https://%s", harvesterServerURL)
+		harvesterServerURL = "https://" + harvesterServerURL
 	}
 
 	kubeconfig, err := buildKubeconfigFromSecret(secret, namespace, harvesterServerURL)
 	if err != nil {
-		return "", fmt.Errorf("unable to build a kubeconfig from secret %s", saName)
+		return "", errors.Errorf("unable to build a kubeconfig from secret %s", saName)
 	}
 
 	return base64.StdEncoding.EncodeToString([]byte(kubeconfig)), nil
@@ -171,12 +188,12 @@ func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string,
 func buildKubeconfigFromSecret(secret *corev1.Secret, namespace string, harvesterServerURL string) (string, error) {
 	token, ok := secret.Data[corev1.ServiceAccountTokenKey]
 	if !ok {
-		return "", fmt.Errorf("token not found in secret")
+		return "", errors.New("token not found in secret")
 	}
 
 	ca, ok := secret.Data[corev1.ServiceAccountRootCAKey]
 	if !ok {
-		return "", fmt.Errorf("ca.crt not found in secret")
+		return "", errors.New("ca.crt not found in secret")
 	}
 
 	kubeconfigObject := &clientcmdapi.Config{
@@ -203,12 +220,12 @@ func buildKubeconfigFromSecret(secret *corev1.Secret, namespace string, harveste
 
 	jsonConfig, err := runtime.Encode(clientcmdlatest.Codec, kubeconfigObject)
 	if err != nil {
-		return "", fmt.Errorf("unable to encode kubeconfig object")
+		return "", errors.New("unable to encode kubeconfig object")
 	}
 
 	yamlConfig, err := yaml.JSONToYAML(jsonConfig)
 	if err != nil {
-		return "", fmt.Errorf("unable to convert JSON to YAML: %v", err)
+		return "", errors.Wrap(err, "unable to convert JSON to YAML")
 	}
 
 	return string(yamlConfig), nil
@@ -218,7 +235,7 @@ func buildKubeconfigFromSecret(secret *corev1.Secret, namespace string, harveste
 func GetDataKeyFromConfigMap(configMap *corev1.ConfigMap, key string) (string, error) {
 	data, ok := configMap.Data[key]
 	if !ok {
-		return "", fmt.Errorf("key %s not found in configmap %s", key, configMap.Name)
+		return "", errors.Errorf("key %s not found in configmap %s", key, configMap.Name)
 	}
 
 	return data, nil
@@ -297,7 +314,7 @@ func FindSecretByName(secrets []*corev1.Secret, name string, namespace string) (
 		}
 	}
 
-	return nil, 0, fmt.Errorf("secret %s/%s not found in the configMap of the resourceSet", namespace, name)
+	return nil, 0, errors.Errorf("secret %s/%s not found in the configMap of the resourceSet", namespace, name)
 }
 
 // SetSecretData sets the data of a Secret.
@@ -370,6 +387,7 @@ func ModifyYAMlString(yamlString string, secretName string, secretNamespace stri
 	if err != nil {
 		return "", err
 	}
+
 	return yamlString, nil
 }
 

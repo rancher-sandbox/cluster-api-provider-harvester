@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -107,7 +107,8 @@ func (c *HarvesterhciV1beta1Client) VirtualMachineTemplateVersions(namespace str
 // where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*HarvesterhciV1beta1Client, error) {
 	config := *c
-	if err := setConfigDefaults(&config); err != nil {
+	err := setConfigDefaults(&config)
+	if err != nil {
 		return nil, err
 	}
 	httpClient, err := rest.HTTPClientFor(&config)
@@ -121,7 +122,8 @@ func NewForConfig(c *rest.Config) (*HarvesterhciV1beta1Client, error) {
 // Note the http client provided takes precedence over the configured transport values.
 func NewForConfigAndClient(c *rest.Config, h *http.Client) (*HarvesterhciV1beta1Client, error) {
 	config := *c
-	if err := setConfigDefaults(&config); err != nil {
+	err := setConfigDefaults(&config)
+	if err != nil {
 		return nil, err
 	}
 	client, err := rest.RESTClientForConfigAndClient(&config, h)

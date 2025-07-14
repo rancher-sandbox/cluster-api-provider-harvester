@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -122,7 +122,7 @@ type LoadBalancerConfig struct {
 	Description string `json:"description,omitempty"`
 }
 
-// IPPAMType describes the way the LoadBalancer IP should be created, using DHCP or using an IPPool defined in Harvester.
+// IPAMType describes the way the LoadBalancer IP should be created, using DHCP or using an IPPool defined in Harvester.
 // +kubebuilder:validation:Enum:=dhcp;pool
 type IPAMType string
 
@@ -166,7 +166,8 @@ type Listener struct {
 }
 
 // UpdateCloudProviderConfig is a reference to a ConfigMap containing the cloud provider deployment manifests.
-// If you want to generate the cloud provider configuration, the cloud config will need a Harvester Endpoint. This is provider by `HarvesterCluster.Spec.ControlPlaneEndpoint`.
+// If you want to generate the cloud provider configuration, the cloud config will need a Harvester Endpoint.
+// This is provider by `HarvesterCluster.Spec.ControlPlaneEndpoint`.
 // Beware this does not work with an endpoint that uses a Rancher proxy!
 type UpdateCloudProviderConfig struct {
 	// ManifestsConfigMapNamespace is the namespace in which the required ConfigMap should be found.
@@ -224,7 +225,8 @@ type HarvesterCluster struct {
 type HarvesterClusterList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []HarvesterCluster `json:"items"`
+
+	Items []HarvesterCluster `json:"items"`
 }
 
 func init() {

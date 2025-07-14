@@ -20,7 +20,6 @@ require (
 	github.com/rancher/rancher/pkg/apis v0.0.0
 	github.com/rancher/system-upgrade-controller/pkg/apis v0.0.0-20250701000733-99a03a0d61aa
 	github.com/zach-klippenstein/goregen v0.0.0-20160303162051-795b5e3961ea
-	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6
 	gopkg.in/yaml.v2 v2.4.0
 	k8s.io/api v0.33.2
 	k8s.io/apimachinery v0.33.2

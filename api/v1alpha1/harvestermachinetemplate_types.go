@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -51,7 +51,8 @@ type HarvesterMachineTemplate struct {
 type HarvesterMachineTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []HarvesterMachineTemplate `json:"items"`
+
+	Items []HarvesterMachineTemplate `json:"items"`
 }
 
 func init() {

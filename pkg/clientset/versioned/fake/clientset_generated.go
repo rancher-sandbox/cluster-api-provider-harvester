@@ -1,5 +1,5 @@
 /*
-Copyright 2023 Rancher Labs, Inc.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -64,7 +64,8 @@ import (
 func NewSimpleClientset(objects ...runtime.Object) *Clientset {
 	o := testing.NewObjectTracker(scheme, codecs.UniversalDecoder())
 	for _, obj := range objects {
-		if err := o.Add(obj); err != nil {
+		err := o.Add(obj)
+		if err != nil {
 			panic(err)
 		}
 	}

@@ -1,14 +1,31 @@
+/*
+Copyright 2025 SUSE.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package util
 
 import (
-	"fmt"
+	"errors"
+	"slices"
 
-	"golang.org/x/exp/slices"
 	"gopkg.in/yaml.v2"
 )
 
 var cloudInitListSections = []string{"packages", "runcmd", "ssh_authorized_keys", "groups", "users", "write_files", "bootcmd"}
 
+// MergeCloudInitData merges multiple cloud-init data strings into a single cloud-init data string.
 func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 	var resultCloudInit []byte
 
@@ -21,7 +38,7 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 
 		err := yaml.Unmarshal([]byte(cloudInit), &cloudInitObj)
 		if err != nil {
-			return nil, fmt.Errorf("unable to unmarshall cloud-init, input cloud-init is malformed: %w", err)
+			return nil, errors.Join(errors.New("unable to unmarshall cloud-init, input cloud-init is malformed"), err)
 		}
 
 		// For each cloud-init object we iterate over all the keys and values
@@ -36,14 +53,14 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 
 					listSection, ok = resCloudInitObj[k].([]interface{})
 					if !ok {
-						return nil, fmt.Errorf("unable to cast list section to []interface{}")
+						return nil, errors.New("unable to cast list section to []interface{}")
 					}
 				}
 
 				// Append the values to the resulting list section
 				value, ok := v.([]interface{})
 				if !ok {
-					return nil, fmt.Errorf("unable to cast value to []interface{}")
+					return nil, errors.New("unable to cast value to []interface{}")
 				}
 
 				listSection = append(listSection, value...)
@@ -59,7 +76,7 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 
 	resultCloudInit, err := yaml.Marshal(resCloudInitObj)
 	if err != nil {
-		return nil, fmt.Errorf("unable to marshall cloud-init, input cloud-init is malformed: %v", err)
+		return nil, errors.Join(errors.New("unable to marshall cloud-init, input cloud-init is malformed"), err)
 	}
 
 	resultCloudInit = []byte("#cloud-config\n" + string(resultCloudInit))

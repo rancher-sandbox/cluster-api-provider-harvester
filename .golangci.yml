@@ -29,7 +29,13 @@ linters:
     - varnamelen
     - wastedassign
     - wrapcheck
+    - wsl
   settings:
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+      case-max-lines: 0
     funlen:
       lines: 110
       statements: 60
@@ -65,6 +71,10 @@ linters:
           - revive
         text: var-naming
       - linters:
+          - revive
+        text: dot-imports
+        path: _test.go
+      - linters:
           - staticcheck
         text: ST1003
       - linters:
@@ -95,8 +105,9 @@ formatters:
         - blank
         - dot
         - default
+        - prefix(k8s.io)
         - prefix(sigs.k8s.io/cluster-api)
-        - prefix(github.com/rancher-sandbox/cluster-api-provider-harvester)
+        - localmodule
       custom-order: true
     goimports:
       local-prefixes:

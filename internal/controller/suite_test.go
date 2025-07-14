@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,10 +19,6 @@ package controller
 import (
 	"testing"
 
-	"k8s.io/client-go/rest"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -30,10 +26,10 @@ import (
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
-var (
-	cfg       *rest.Config
-	k8sClient client.Client
-)
+// var (
+// 	cfg       *rest.Config
+// 	k8sClient client.Client
+// )
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)

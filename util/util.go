@@ -1,3 +1,19 @@
+/*
+Copyright 2025 SUSE.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package util
 
 import (
@@ -5,7 +21,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -13,30 +28,33 @@ import (
 
 	"github.com/pkg/errors"
 	regen "github.com/zach-klippenstein/goregen"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	hvclientset "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 )
 
 const (
+	// ConfigSecretDataKey is the key in the Kubeconfig secret that contains the kubeconfig.
 	ConfigSecretDataKey = "kubeconfig"
 	maximumLabelLength  = 63
 )
 
+// Healthcheck checks if the Harvester server is healthy by querying the /healthz endpoint.
 func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	httpTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
-		return false, fmt.Errorf("unable to assert http.DefaultTransport as *http.Transport")
+		return false, errors.New("unable to assert http.DefaultTransport as *http.Transport")
 	}
 
-	httpTransport.TLSClientConfig = &tls.Config{}
+	httpTransport.TLSClientConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
 
 	currentCluster := config.Contexts[config.CurrentContext].Cluster
 	currentUser := config.Contexts[config.CurrentContext].AuthInfo
@@ -49,16 +67,17 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	// fmt.Println("serverCA :" + string(serverCAstring))
 	ok = systemTrustedCertificates.AppendCertsFromPEM(serverCAstring)
 	if !ok {
-		return false, fmt.Errorf("unable to append CA to Cert pool")
+		return false, errors.New("unable to append CA to Cert pool")
 	}
 
 	httpTransport.TLSClientConfig = &tls.Config{
-		RootCAs: systemTrustedCertificates,
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    systemTrustedCertificates,
 	}
 
 	healthcheckUrl := config.Clusters[currentCluster].Server + "/healthz"
 
-	req, err := http.NewRequest(http.MethodGet, healthcheckUrl, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, healthcheckUrl, nil)
 	if err != nil {
 		return false, errors.Wrapf(err, "%s", "http request couldn't be create for url: "+healthcheckUrl)
 	}
@@ -66,6 +85,7 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 	req.Header.Add("Authorization", "Bearer "+config.AuthInfos[currentUser].Token)
 
 	httpClient := http.Client{}
+
 	resp, err := httpClient.Do(req)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return false, errors.Wrapf(err, "error during querying Harvester Server")
@@ -86,9 +106,10 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 		return true, nil
 	}
 
-	return false, fmt.Errorf("healthcheck did not respond with 'ok' string")
+	return false, errors.New("healthcheck did not respond with 'ok' string")
 }
 
+// GetSecretForHarvesterConfig retrieves the secret containing the Harvester configuration for the given cluster.
 func GetSecretForHarvesterConfig(ctx context.Context, cluster *infrav1.HarvesterCluster, cl client.Client) (*corev1.Secret, error) {
 	secret := &corev1.Secret{}
 	secretKey := client.ObjectKey(cluster.Spec.IdentitySecret)
@@ -98,6 +119,8 @@ func GetSecretForHarvesterConfig(ctx context.Context, cluster *infrav1.Harvester
 	return secret, err
 }
 
+// GetHarvesterClientFromSecret returns a Harvester client from the given secret.
+// The secret should contain a base64 encoded kubeconfig in the "kubeconfig" key.
 func GetHarvesterClientFromSecret(secret *corev1.Secret) (*hvclientset.Clientset, error) {
 	hvRESTConfig, err := clientcmd.RESTConfigFromKubeConfig(secret.Data[ConfigSecretDataKey])
 	if err != nil {
@@ -141,26 +164,26 @@ func CheckNamespacedName(name string) bool {
 }
 
 // GetNamespacedName returns the namespace and name from the given string in the format of "namespace/name".
-func GetNamespacedName(name string, alternativeTargetNS string) (error, types.NamespacedName) {
+func GetNamespacedName(name string, alternativeTargetNS string) (types.NamespacedName, error) {
 	// If the given string is in the format of "namespace/name", return the namespace and name from the string.
 	if CheckNamespacedName(name) {
 		s := strings.Split(name, "/")
 
-		return nil, types.NamespacedName{
+		return types.NamespacedName{
 			Namespace: s[0],
 			Name:      s[1],
-		}
+		}, nil
 	}
 
 	if !regexp.MustCompile(`^[a-z0-9-\.]+$`).MatchString(name) {
-		return fmt.Errorf("malformed reference, should be <NAMESPACE>/<NAME>"), types.NamespacedName{}
+		return types.NamespacedName{}, errors.New("malformed reference, should be <NAMESPACE>/<NAME>")
 	}
 
 	// Else, return the namespace from the ownerObject and the name from the string.
-	return nil, types.NamespacedName{
+	return types.NamespacedName{
 		Namespace: alternativeTargetNS,
 		Name:      name,
-	}
+	}, nil
 }
 
 // GenerateRFC1035Name generates a name that is RFC-1035 compliant from an array of strings separated by dashes.

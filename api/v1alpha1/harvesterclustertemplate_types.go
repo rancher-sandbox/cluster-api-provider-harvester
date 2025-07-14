@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,10 +22,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// / HarvesterClusterTemplateSpec defines the desired state of HarvesterClusterTemplate.
+// HarvesterClusterTemplateSpec defines the desired state of HarvesterClusterTemplate.
 type HarvesterClusterTemplateSpec struct {
 	Template HarvesterClusterTemplateResource `json:"template"`
 }
@@ -45,6 +42,7 @@ type HarvesterClusterTemplate struct {
 	Status HarvesterClusterStatus `json:"status,omitempty"`
 }
 
+// HarvesterClusterTemplateResource defines the template resource for HarvesterCluster.
 type HarvesterClusterTemplateResource struct {
 	// Standard object's metadata.
 	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.
@@ -59,7 +57,8 @@ type HarvesterClusterTemplateResource struct {
 type HarvesterClusterTemplateList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []HarvesterClusterTemplate `json:"items"`
+
+	Items []HarvesterClusterTemplate `json:"items"`
 }
 
 func init() {

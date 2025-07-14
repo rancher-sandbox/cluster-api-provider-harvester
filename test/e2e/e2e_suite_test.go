@@ -1,5 +1,5 @@
 /*
-Copyright 2025.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+//notlint:forbidigo
 package e2e
 
 import (
@@ -34,7 +35,7 @@ var (
 	// These variables are useful if CertManager is already installed, avoiding
 	// re-installation and conflicts.
 	skipCertManagerInstall = os.Getenv("CERT_MANAGER_INSTALL_SKIP") == "true"
-	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster
+	// isCertManagerAlreadyInstalled will be set true when CertManager CRDs be found on the cluster.
 	isCertManagerAlreadyInstalled = false
 
 	// projectImage is the name of the image which will be build and loaded
@@ -48,17 +49,19 @@ var (
 // CertManager.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
+
 	_, _ = fmt.Fprintf(GinkgoWriter, "Starting cluster-api-provider-harvester integration test suite\n")
+
 	RunSpecs(t, "e2e suite")
 }
 
 var _ = BeforeSuite(func() {
 	By("building the manager(Operator) image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectImage))
+	cmd := exec.Command("make", "docker-build", "IMG="+projectImage) //nolint:gosec
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager(Operator) image")
 
-	// TODO(user): If you want to change the e2e test vendor from Kind, ensure the image is
+	// NOTE: If you want to change the e2e test vendor from Kind, ensure the image is
 	// built and available before running the tests. Also, remove the following block.
 	By("loading the manager(Operator) image on Kind")
 	err = utils.LoadImageToKindClusterWithName(projectImage)

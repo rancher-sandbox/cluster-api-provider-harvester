@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package controller contains the HarvesterMachine controller logic.
 package controller
 
 import (
@@ -27,6 +28,13 @@ import (
 	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	"github.com/pkg/errors"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -43,13 +51,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	harvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
@@ -90,6 +91,7 @@ const (
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters,verbs=get;list
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=clusters;machines,verbs=get;list;watch
 
+// Reconcile reconciles the HarvesterMachine object.
 func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res ctrl.Result, rerr error) {
 	logger := log.FromContext(ctx)
 	ctx = ctrl.LoggerInto(ctx, logger)
@@ -97,7 +99,9 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	logger.Info("Reconciling HarvesterMachine ...")
 
 	hvMachine := &infrav1.HarvesterMachine{}
-	if err := r.Get(ctx, req.NamespacedName, hvMachine); err != nil {
+
+	err := r.Get(ctx, req.NamespacedName, hvMachine)
+	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info("harvestermachine not found")
 
@@ -117,10 +121,11 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Always attempt to Patch the HarvesterMachine object and status after each reconciliation.
 	defer func() {
-		if err := patchHelper.Patch(ctx,
+		err := patchHelper.Patch(ctx,
 			hvMachine,
 		// conditions.WithOwnedConditions( []clusterv1.ConditionType{ clusterv1.ReadyCondition}),
-		); err != nil {
+		)
+		if err != nil {
 			logger.Error(err, "failed to patch HarvesterMachine")
 
 			if rerr == nil {
@@ -150,7 +155,7 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if ownerCluster == nil {
-		logger.Info(fmt.Sprintf("Please associate this machine with a cluster using the label %s: <name of cluster>", clusterv1.ClusterNameLabel))
+		logger.Info("Please associate this machine with a cluster using the label " + clusterv1.ClusterNameLabel + ": <name of cluster>")
 
 		return ctrl.Result{}, nil
 	}
@@ -197,9 +202,9 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if !hvMachine.DeletionTimestamp.IsZero() {
 		return r.ReconcileDelete(hvScope)
-	} else {
-		return r.ReconcileNormal(&hvScope) //nolint:contextcheck
 	}
+
+	return r.ReconcileNormal(&hvScope) //nolint:contextcheck
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -224,6 +229,7 @@ func (r *HarvesterMachineReconciler) SetupWithManager(ctx context.Context, mgr c
 		Complete(r)
 }
 
+// ReconcileNormal reconciles the HarvesterMachine object.
 func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconcile.Result, rerr error) {
 	logger := log.FromContext(hvScope.Ctx)
 
@@ -349,7 +355,8 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			conditions.MarkTrue(hvClusterCopy, infrav1.InitMachineCreatedCondition)
 			hvClusterCopy.Status.Ready = hvScope.HarvesterCluster.Status.Ready
 
-			if err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster)); err != nil {
+			err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster))
+			if err != nil {
 				logger.Error(err, "failed to update HarvesterCluster Conditions with InitMachineCreatedCondition")
 			}
 		}
@@ -560,9 +567,9 @@ func buildPVCAnnotationFromImageID(
 func getImageFromHarvesterMachine(imageVolumes []infrav1.Volume, hvScope *Scope) (image *harvesterv1beta1.VirtualMachineImage, err error) {
 	vmImageNamespacedString := imageVolumes[0].ImageName
 
-	err, vmImageNamespacedName := locutil.GetNamespacedName(vmImageNamespacedString, hvScope.HarvesterCluster.Spec.TargetNamespace)
+	vmImageNamespacedName, err := locutil.GetNamespacedName(vmImageNamespacedString, hvScope.HarvesterCluster.Spec.TargetNamespace)
 	if err != nil {
-		return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf("ImageName is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format")
+		return &harvesterv1beta1.VirtualMachineImage{}, errors.New("ImageName is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format")
 	}
 
 	foundImages, err := hvScope.HarvesterClient.HarvesterhciV1beta1().VirtualMachineImages(vmImageNamespacedName.Namespace).List(
@@ -594,9 +601,9 @@ func buildVMTemplate(hvScope *Scope,
 
 	keyName := hvScope.HarvesterMachine.Spec.SSHKeyPair
 
-	err, keyPairFullName := locutil.GetNamespacedName(keyName, hvScope.HarvesterCluster.Spec.TargetNamespace)
+	keyPairFullName, err := locutil.GetNamespacedName(keyName, hvScope.HarvesterCluster.Spec.TargetNamespace)
 	if err != nil {
-		return nil, fmt.Errorf("SSHKeyPair is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format or simple DNS name without slash")
+		return nil, errors.New("SSHKeyPair is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format or simple DNS name without slash")
 	}
 
 	sshKey, err = hvScope.HarvesterClient.HarvesterhciV1beta1().KeyPairs(keyPairFullName.Namespace).Get(
@@ -727,9 +734,9 @@ runcmd:
 			},
 			Domain: kubevirtv1.DomainSpec{
 				CPU: &kubevirtv1.CPU{
-					Cores:   uint32(hvScope.HarvesterMachine.Spec.CPU),
-					Sockets: uint32(hvScope.HarvesterMachine.Spec.CPU),
-					Threads: uint32(hvScope.HarvesterMachine.Spec.CPU),
+					Cores:   hvScope.HarvesterMachine.Spec.CPU,
+					Sockets: hvScope.HarvesterMachine.Spec.CPU,
+					Threads: hvScope.HarvesterMachine.Spec.CPU,
 				},
 				Devices: kubevirtv1.Devices{
 					Inputs: []kubevirtv1.Input{

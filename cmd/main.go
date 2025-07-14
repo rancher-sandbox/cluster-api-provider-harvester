@@ -1,5 +1,5 @@
 /*
-Copyright 2024.
+Copyright 2025 SUSE.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,25 +14,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package main is the entry point for the controller manager.
 package main
 
 import (
 	"flag"
 	"os"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metrics "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	infrastructurev1alpha1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/internal/controller"
@@ -57,6 +60,7 @@ func init() {
 
 func main() {
 	var metricsAddr string
+
 	var metricsOptions metrics.Options
 
 	var enableLeaderElection bool
@@ -99,36 +103,41 @@ func main() {
 	// Setup the context to be used for the controller and manager
 	ctx := ctrl.SetupSignalHandler()
 
-	if err = (&controller.HarvesterMachineReconciler{
+	err = (&controller.HarvesterMachineReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(ctx, mgr); err != nil {
+	}).SetupWithManager(ctx, mgr)
+	if err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HarvesterMachine")
 		os.Exit(1)
 	}
 
-	if err = (&controller.HarvesterClusterReconciler{
+	err = (&controller.HarvesterClusterReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(ctx, mgr); err != nil {
+	}).SetupWithManager(ctx, mgr)
+	if err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HarvesterCluster")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	err = mgr.AddHealthzCheck("healthz", healthz.Ping)
+	if err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
 
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	err = mgr.AddReadyzCheck("readyz", healthz.Ping)
+	if err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
 
 	setupLog.Info("starting manager")
 
-	if err := mgr.Start(ctx); err != nil {
+	err = mgr.Start(ctx)
+	if err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
