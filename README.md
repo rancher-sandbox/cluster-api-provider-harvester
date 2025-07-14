@@ -19,7 +19,8 @@ Cluster API Provider Harvester is compliant with the `clusterctl` contract, whic
 
 In order to use this provider, you need to have a management cluster available to you and have your current KUBECONFIG context set to talk to that cluster. If you do not have a cluster available to you, you can create a `kind` cluster. These are the steps needed to achieve that:
 1. Ensure kind is installed (https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
-2. Create a special `kind` configuration file if you intend to use the Docker infrastructure provider:
+2. Ensure `clusterctl` (more information [here](https://cluster-api.sigs.k8s.io/user/quick-start#install-clusterctl)) and `kubectl` (more information [here](https://kubernetes.io/docs/tasks/tools/#kubectl)) are installed.
+3. Create a special `kind` configuration file if you intend to use the Docker infrastructure provider:
 
 ```bash
 cat > kind-cluster-with-extramounts.yaml <<EOF
@@ -61,7 +62,7 @@ Now, the Harvester and RKE2 providers can be installed with the `clusterctl` com
 ```bash
 export EXP_CLUSTER_RESOURCE_SET=true
 
-$ clusterctl init --infrastructure harvester --control-plane rke2 --bootstrap rke2
+$ clusterctl init --infrastructure harvester-harvester --control-plane rke2 --bootstrap rke2
 Fetching providers
 Installing cert-manager Version="v1.14.5"
 Waiting for cert-manager to be available...
