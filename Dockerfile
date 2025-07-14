@@ -26,7 +26,7 @@ ARG TARGETARCH
 ARG LDFLAGS
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
 
-FROM registry.suse.com/bci/bci-micro:15.6
+FROM registry.suse.com/bci/bci-micro:15.7
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
