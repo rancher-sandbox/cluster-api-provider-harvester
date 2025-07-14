@@ -7,7 +7,7 @@ toolchain go1.24.4
 require (
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.7.1
-	github.com/go-logr/logr v1.4.2
+	github.com/go-logr/logr v1.4.3
 	github.com/harvester/harvester v1.3.2
 	github.com/harvester/harvester-load-balancer v1.5.1
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
