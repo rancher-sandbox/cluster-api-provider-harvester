@@ -5,13 +5,16 @@ import (
 	"os"
 	"strings"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
 	"sigs.k8s.io/yaml"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 )
 
 var (

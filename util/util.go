@@ -13,10 +13,12 @@ import (
 
 	"github.com/pkg/errors"
 	regen "github.com/zach-klippenstein/goregen"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
@@ -65,7 +67,6 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 
 	httpClient := http.Client{}
 	resp, err := httpClient.Do(req)
-
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return false, errors.Wrapf(err, "error during querying Harvester Server")
 	}

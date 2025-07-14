@@ -23,6 +23,7 @@ import (
 	"time"
 
 	v1 "github.com/rancher/rancher/pkg/apis/catalog.cattle.io/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"

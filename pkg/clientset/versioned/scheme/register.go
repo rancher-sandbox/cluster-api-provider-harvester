@@ -27,6 +27,8 @@ import (
 	catalogv1 "github.com/rancher/rancher/pkg/apis/catalog.cattle.io/v1"
 	managementv3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	upgradev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+
 	networkingv1 "k8s.io/api/networking/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,7 +36,6 @@ import (
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	serializer "k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )

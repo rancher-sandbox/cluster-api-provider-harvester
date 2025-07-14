@@ -19,11 +19,12 @@ package controller
 import (
 	"testing"
 
+	"k8s.io/client-go/rest"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"k8s.io/client-go/rest"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to

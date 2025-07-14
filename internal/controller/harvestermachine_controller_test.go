@@ -1,10 +1,10 @@
 package controller
 
 import (
+	kubevirtv1 "kubevirt.io/api/core/v1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 )

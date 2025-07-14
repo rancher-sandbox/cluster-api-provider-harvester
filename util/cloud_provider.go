@@ -4,11 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net"
 	re "regexp"
 	"strings"
 	"time"
-
-	"sigs.k8s.io/json"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -19,6 +18,8 @@ import (
 	machineryyaml "k8s.io/apimachinery/pkg/util/yaml"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	clientcmdlatest "k8s.io/client-go/tools/clientcmd/api/latest"
+
+	"sigs.k8s.io/json"
 	"sigs.k8s.io/yaml"
 
 	lbclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
@@ -154,7 +155,8 @@ func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string,
 	vipIP := vipSVC.Annotations["kube-vip.io/loadbalancerIPs"]
 
 	if ok, err := re.MatchString(`\d+\.\d+\.\d+\.\d+`, vipIP); ok && err == nil {
-		harvesterServerURL = fmt.Sprintf("https://%s:6443", vipIP)
+		harvesterServerURL = net.JoinHostPort(vipIP, "6443")
+		harvesterServerURL = fmt.Sprintf("https://%s", harvesterServerURL)
 	}
 
 	kubeconfig, err := buildKubeconfigFromSecret(secret, namespace, harvesterServerURL)
@@ -339,7 +341,6 @@ func ModifyYAMlString(yamlString string, secretName string, secretNamespace stri
 			Type: corev1.SecretTypeOpaque,
 		}
 		index = len(objects) // Append the new secret at the end of the list
-
 	}
 
 	SetSecretData(secret, key, value)
@@ -370,18 +371,18 @@ func ModifyYAMlString(yamlString string, secretName string, secretNamespace stri
 		return "", err
 	}
 	return yamlString, nil
-
 }
 
 // serializeObjectsToYAML serializes a slice of runtime.RawExtension objects to a YAML string.
 func serializeObjectsToYAML(objects []runtime.RawExtension) (string, error) {
-	var yamlStrings []string
+	yamlStrings := []string{}
 
 	for _, obj := range objects {
 		yamlBytes, err := yaml.JSONToYAML(obj.Raw)
 		if err != nil {
 			return "", err
 		}
+
 		yamlStrings = append(yamlStrings, string(yamlBytes))
 	}
 

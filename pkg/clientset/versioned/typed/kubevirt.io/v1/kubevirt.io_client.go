@@ -21,8 +21,9 @@ package v1
 import (
 	"net/http"
 
-	rest "k8s.io/client-go/rest"
 	v1 "kubevirt.io/api/core/v1"
+
+	rest "k8s.io/client-go/rest"
 
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
 )

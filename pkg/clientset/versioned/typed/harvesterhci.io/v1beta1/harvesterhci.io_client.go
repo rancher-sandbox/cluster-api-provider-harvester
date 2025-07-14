@@ -22,6 +22,7 @@ import (
 	"net/http"
 
 	v1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
+
 	rest "k8s.io/client-go/rest"
 
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/scheme"
