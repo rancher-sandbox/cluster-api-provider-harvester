@@ -41,6 +41,7 @@ spec:
             properties:
               cpu:
                 description: CPU is the number of CPU to assign to the VM.
+                format: int32
                 type: integer
               failureDomain:
                 description: FailureDomain defines the zone or failure domain where

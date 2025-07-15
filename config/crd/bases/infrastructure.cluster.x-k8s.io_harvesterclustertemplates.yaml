@@ -45,6 +45,8 @@ spec:
             description: Spec is the specification for the template resource
             properties:
               template:
+                description: HarvesterClusterTemplateResource defines the template
+                  resource for HarvesterCluster.
                 properties:
                   metadata:
                     description: |-

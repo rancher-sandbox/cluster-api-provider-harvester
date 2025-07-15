@@ -5,6 +5,7 @@ resources:
 - bases/infrastructure.cluster.x-k8s.io_harvestermachines.yaml
 - bases/infrastructure.cluster.x-k8s.io_harvesterclusters.yaml
 - bases/infrastructure.cluster.x-k8s.io_harvestermachinetemplates.yaml
+- bases/infrastructure.cluster.x-k8s.io_harvesterclustertemplates.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
 patchesStrategicMerge:
