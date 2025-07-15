@@ -56,6 +56,15 @@ const (
 	CloudProviderConfigGenerationFailedReason = "The Cloud Provider configuration generation failed"
 	// CloudProviderConfigGeneratedSuccessfullyReason documents the reason why the cloud provider configuration was generated.
 	CloudProviderConfigGeneratedSuccessfullyReason = "The Cloud Provider configuration was generated successfully"
+
+	// InfrastructureReadyCondition documents that all infrastructure components are provisioned.
+	InfrastructureReadyCondition clusterv1.ConditionType = "InfrastructureReady"
+	// InfrastructureProvisioningInProgressReason documents that infrastructure provisioning is in progress.
+	InfrastructureProvisioningInProgressReason = "InfrastructureProvisioningInProgress"
+	// InfrastructureProvisioningFailedReason documents that infrastructure provisioning has failed.
+	InfrastructureProvisioningFailedReason = "InfrastructureProvisioningFailed"
+	// InfrastructureReadyReason documents that all infrastructure components are ready.
+	InfrastructureReadyReason = "InfrastructureReady"
 )
 
 const (

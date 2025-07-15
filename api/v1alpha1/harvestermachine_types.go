@@ -36,6 +36,15 @@ const (
 
 	// MachineNotFoundReason documents that the machine was not found.
 	MachineNotFoundReason = "MachineNotFound"
+
+	// VMProvisioningReadyCondition documents VM creation and provisioning status.
+	VMProvisioningReadyCondition clusterv1.ConditionType = "VMProvisioningReady"
+	// VMProvisioningInProgressReason documents that VM provisioning is in progress.
+	VMProvisioningInProgressReason = "VMProvisioningInProgress"
+	// VMProvisioningFailedReason documents that VM provisioning has failed.
+	VMProvisioningFailedReason = "VMProvisioningFailed"
+	// VMProvisioningReadyReason documents that VM provisioning is complete.
+	VMProvisioningReadyReason = "VMProvisioningReady"
 )
 
 // HarvesterMachineSpec defines the desired state of HarvesterMachine.

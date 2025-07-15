@@ -20,6 +20,7 @@ package controller
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"time"
 
@@ -348,11 +349,26 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		return ctrl.Result{RequeueAfter: requeueTimeLong}, err
 	}
 
+	// Set InfrastructureReady condition to in progress
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.InfrastructureReadyCondition,
+		Status:  apiv1.ConditionFalse,
+		Reason:  infrav1.InfrastructureProvisioningInProgressReason,
+		Message: "Infrastructure provisioning in progress",
+	})
+
 	// The following is executed only if there are ownedCPHarvesterMachines
 	if !conditions.IsTrue(scope.HarvesterCluster, infrav1.LoadBalancerReadyCondition) {
 		err := createLoadBalancerIfNotExists(scope)
 		if err != nil {
 			logger.V(1).Info("could not create the LoadBalancer, requeuing ...")
+
+			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				Type:    infrav1.InfrastructureReadyCondition,
+				Status:  apiv1.ConditionFalse,
+				Reason:  infrav1.InfrastructureProvisioningFailedReason,
+				Message: fmt.Sprintf("Failed to create LoadBalancer: %v", err),
+			})
 
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, err //nolint:nlreturn
 		}
@@ -360,6 +376,13 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		lbIP, err := getLoadBalancerIP(scope.HarvesterCluster, scope.HarvesterClient)
 		if err != nil {
 			logger.Info("LoadBalancer IP is not yet available, requeuing ...")
+
+			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				Type:    infrav1.InfrastructureReadyCondition,
+				Status:  apiv1.ConditionFalse,
+				Reason:  infrav1.InfrastructureProvisioningInProgressReason,
+				Message: "Waiting for LoadBalancer IP to be available",
+			})
 
 			return ctrl.Result{RequeueAfter: requeueTimeShort}, err //nolint:nlreturn
 		}
@@ -370,12 +393,34 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		}
 
 		scope.HarvesterCluster.Status.Ready = true
-		scope.HarvesterCluster.Status.Conditions = append(scope.HarvesterCluster.Status.Conditions, clusterv1.Condition{
-			Type:   infrav1.LoadBalancerReadyCondition,
-			Status: apiv1.ConditionTrue,
+
+		// Set LoadBalancerReady condition
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.LoadBalancerReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  "LoadBalancerReady",
+			Message: "LoadBalancer is ready with assigned IP",
+		})
+
+		// Set InfrastructureReady condition
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.InfrastructureReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  infrav1.InfrastructureReadyReason,
+			Message: "All infrastructure components are ready",
 		})
 
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+	}
+
+	// If LoadBalancer is already ready, set InfrastructureReady as well
+	if conditions.IsTrue(scope.HarvesterCluster, infrav1.LoadBalancerReadyCondition) {
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.InfrastructureReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  infrav1.InfrastructureReadyReason,
+			Message: "All infrastructure components are ready",
+		})
 	}
 
 	return res, err

@@ -257,8 +257,23 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 		hvScope.HarvesterMachine.Status.Ready = false
 
+		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+			Type:    infrav1.InfrastructureReadyCondition,
+			Status:  v1.ConditionFalse,
+			Reason:  infrav1.InfrastructureProvisioningInProgressReason,
+			Message: "Waiting for cluster infrastructure to be ready",
+		})
+
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
+
+	// Set InfrastructureReady condition when cluster infrastructure is ready
+	conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+		Type:    infrav1.InfrastructureReadyCondition,
+		Status:  v1.ConditionTrue,
+		Reason:  infrav1.InfrastructureReadyReason,
+		Message: "Cluster infrastructure is ready",
+	})
 
 	// Return early if no userdata secret is referenced in ownerMachine
 	if hvScope.Machine.Spec.Bootstrap.DataSecretName == nil {
@@ -284,6 +299,14 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 	if (existingVM != nil) && (existingVM.Name == hvScope.HarvesterMachine.Name) {
 		vmExists = true
+
+		// Set VMProvisioningReady condition for existing VM
+		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+			Type:    infrav1.VMProvisioningReadyCondition,
+			Status:  v1.ConditionTrue,
+			Reason:  infrav1.VMProvisioningReadyReason,
+			Message: "VM already exists and is provisioned",
+		})
 
 		if *existingVM.Spec.Running {
 			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
@@ -339,9 +362,24 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 		hvScope.HarvesterMachine.Status.Ready = false
 
+		// Set VMProvisioningReady condition to in progress
+		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+			Type:    infrav1.VMProvisioningReadyCondition,
+			Status:  v1.ConditionFalse,
+			Reason:  infrav1.VMProvisioningInProgressReason,
+			Message: "VM provisioning in progress",
+		})
+
 		_, err = createVMFromHarvesterMachine(hvScope)
 		if err != nil {
 			logger.Error(err, "unable to create VM from HarvesterMachine information")
+
+			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+				Type:    infrav1.VMProvisioningReadyCondition,
+				Status:  v1.ConditionFalse,
+				Reason:  infrav1.VMProvisioningFailedReason,
+				Message: fmt.Sprintf("Failed to create VM: %v", err),
+			})
 
 			return ctrl.Result{}, err
 		}
