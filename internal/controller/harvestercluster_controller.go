@@ -231,6 +231,14 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		return ctrl.Result{}, nil
 	}
 
+	// Set TargetNamespaceReady condition to in progress
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.TargetNamespaceReadyCondition,
+		Status:  apiv1.ConditionFalse,
+		Reason:  "TargetNamespaceChecking",
+		Message: "Checking if target namespace exists",
+	})
+
 	// Check if TargetNamespace exists, if not create it
 	_, err = scope.HarvesterClient.CoreV1().Namespaces().Get(context.TODO(), scope.HarvesterCluster.Spec.TargetNamespace, v1.GetOptions{})
 	if err != nil {
@@ -242,10 +250,41 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 			}, v1.CreateOptions{})
 			if err != nil {
 				logger.Error(err, "unable to create TargetNamespace")
+
+				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+					Type:    infrav1.TargetNamespaceReadyCondition,
+					Status:  apiv1.ConditionFalse,
+					Reason:  infrav1.TargetNamespaceNotReadyReason,
+					Message: fmt.Sprintf("Failed to create target namespace: %v", err),
+				})
+			} else {
+				logger.Error(err, "unable to get TargetNamespace in Harvester, problem with the HarvesterClient")
+
+				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+					Type:    infrav1.TargetNamespaceReadyCondition,
+					Status:  apiv1.ConditionFalse,
+					Reason:  infrav1.TargetNamespaceNotReadyReason,
+					Message: fmt.Sprintf("Unable to access target namespace: %v", err),
+				})
 			}
 		} else {
 			logger.Error(err, "unable to get TargetNamespace in Harvester, problem with the HarvesterClient")
+
+			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				Type:    infrav1.TargetNamespaceReadyCondition,
+				Status:  apiv1.ConditionFalse,
+				Reason:  infrav1.TargetNamespaceNotReadyReason,
+				Message: fmt.Sprintf("Unable to access target namespace: %v", err),
+			})
 		}
+	} else {
+		// Target namespace exists and is accessible
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.TargetNamespaceReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  infrav1.TargetNamespaceReadyReason,
+			Message: "Target namespace exists and is accessible",
+		})
 	}
 
 	// Initializing return values
@@ -748,11 +787,26 @@ func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *Cluster
 func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Context, cluster *infrav1.HarvesterCluster) (*rest.Config, error) {
 	logger := log.FromContext(ctx)
 
+	// Set HarvesterConnectionReady condition to in progress
+	conditions.Set(cluster, &clusterv1.Condition{
+		Type:    infrav1.HarvesterConnectionReadyCondition,
+		Status:  apiv1.ConditionFalse,
+		Reason:  "HarvesterConnectionInProgress",
+		Message: "Attempting to connect to Harvester",
+	})
+
 	secret, err := locutil.GetSecretForHarvesterConfig(ctx, cluster, r.Client)
 	if (err != nil || secret == &apiv1.Secret{}) {
 		cluster.Status.FailureReason = "IdentitySecretUnavailable"
 		cluster.Status.FailureMessage = "unable to find the IdentitySecret for Harvester"
 		cluster.Status.Ready = false
+
+		conditions.Set(cluster, &clusterv1.Condition{
+			Type:    infrav1.HarvesterConnectionReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.HarvesterAuthenticationFailedReason,
+			Message: fmt.Sprintf("Failed to get IdentitySecret: %v", err),
+		})
 
 		return &rest.Config{}, errors.Wrapf(err, "unable to find the IdentitySecret for Harvester %s", ctx)
 	}
@@ -764,6 +818,13 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 		cluster.Status.FailureReason = "MalformedIdentitySecret"
 		cluster.Status.FailureMessage = err.Error()
 		cluster.Status.Ready = false
+
+		conditions.Set(cluster, &clusterv1.Condition{
+			Type:    infrav1.HarvesterConnectionReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.HarvesterAuthenticationFailedReason,
+			Message: fmt.Sprintf("Invalid kubeconfig: %v", err),
+		})
 
 		return &rest.Config{}, err
 	}
@@ -777,12 +838,26 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client config for Harvester")
 
+		conditions.Set(cluster, &clusterv1.Condition{
+			Type:    infrav1.HarvesterConnectionReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.HarvesterConnectionFailedReason,
+			Message: fmt.Sprintf("Failed to create REST config: %v", err),
+		})
+
 		return &rest.Config{}, err
 	}
 
 	hvClient, err := kubeclient.NewForConfig(hvRESTConfig)
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client from restConfig")
+
+		conditions.Set(cluster, &clusterv1.Condition{
+			Type:    infrav1.HarvesterConnectionReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.HarvesterConnectionFailedReason,
+			Message: fmt.Sprintf("Failed to create Kubernetes client: %v", err),
+		})
 
 		return &rest.Config{}, err
 	}
@@ -791,14 +866,36 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if err != nil {
 		logger.Error(err, "Harvester deployment not found on target Kubernetes cluster")
 
+		conditions.Set(cluster, &clusterv1.Condition{
+			Type:    infrav1.HarvesterConnectionReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.HarvesterConnectionFailedReason,
+			Message: fmt.Sprintf("Harvester deployment not found: %v", err),
+		})
+
 		return &rest.Config{}, err
 	}
 
 	if !isHarvesterAvailable(harvesterDeployment.Status.Conditions) {
 		logger.Error(err, "harvester cluster is unavailable")
 
-		return &rest.Config{}, err
+		conditions.Set(cluster, &clusterv1.Condition{
+			Type:    infrav1.HarvesterConnectionReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.HarvesterConnectionFailedReason,
+			Message: "Harvester cluster is unavailable",
+		})
+
+		return &rest.Config{}, errors.New("harvester cluster is unavailable")
 	}
+
+	// Set HarvesterConnectionReady condition to true
+	conditions.Set(cluster, &clusterv1.Condition{
+		Type:    infrav1.HarvesterConnectionReadyCondition,
+		Status:  apiv1.ConditionTrue,
+		Reason:  infrav1.HarvesterConnectionReadyReason,
+		Message: "Successfully connected and authenticated to Harvester API",
+	})
 
 	return hvRESTConfig, nil
 }

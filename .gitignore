@@ -35,3 +35,7 @@ tilt-provider.json
 
 # All environment variables should be added to .env file
 *.env
+
+# Aider files
+.aider.*
+conditions-adding.md

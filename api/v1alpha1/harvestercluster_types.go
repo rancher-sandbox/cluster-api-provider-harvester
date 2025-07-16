@@ -65,6 +65,22 @@ const (
 	InfrastructureProvisioningFailedReason = "InfrastructureProvisioningFailed"
 	// InfrastructureReadyReason documents that all infrastructure components are ready.
 	InfrastructureReadyReason = "InfrastructureReady"
+
+	// TargetNamespaceReadyCondition indicates the target namespace in Harvester exists and is accessible.
+	TargetNamespaceReadyCondition clusterv1.ConditionType = "TargetNamespaceReady"
+	// TargetNamespaceNotReadyReason documents that the target namespace does not exist or is not accessible.
+	TargetNamespaceNotReadyReason = "TargetNamespaceNotReady"
+	// TargetNamespaceReadyReason documents that the target namespace exists and is accessible.
+	TargetNamespaceReadyReason = "TargetNamespaceReady"
+
+	// HarvesterConnectionReadyCondition indicates successful connection/authentication to Harvester API.
+	HarvesterConnectionReadyCondition clusterv1.ConditionType = "HarvesterConnectionReady"
+	// HarvesterConnectionFailedReason documents that connection to Harvester API failed.
+	HarvesterConnectionFailedReason = "HarvesterConnectionFailed"
+	// HarvesterAuthenticationFailedReason documents that authentication to Harvester API failed.
+	HarvesterAuthenticationFailedReason = "HarvesterAuthenticationFailed"
+	// HarvesterConnectionReadyReason documents that connection and authentication to Harvester API is successful.
+	HarvesterConnectionReadyReason = "HarvesterConnectionReady"
 )
 
 const (
