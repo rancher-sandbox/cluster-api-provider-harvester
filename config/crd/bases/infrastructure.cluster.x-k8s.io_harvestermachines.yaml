@@ -752,6 +752,14 @@ spec:
                 type: string
               failureReason:
                 type: string
+              initialization:
+                description: Initialization is an object that defines the initialization
+                  of the VM on Harvester.
+                properties:
+                  provisioned:
+                    description: Provisioned shows if the VM has been provisioned.
+                    type: boolean
+                type: object
               ready:
                 description: Ready is true when the provider resource is ready.
                 type: boolean

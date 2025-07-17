@@ -1,0 +1,623 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}
+  labels:
+    ccm: external
+    csi: external
+    cni: external
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+      - ${POD_CIDR:="10.244.0.0/16"}
+    services:
+      cidrBlocks:
+      - ${SERVICE_CIDR:="10.96.0.0/12"}
+    serviceDomain: cluster.local
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+    kind: TalosControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    kind: HarvesterCluster
+    name: ${CLUSTER_NAME}-hv
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterCluster
+metadata:
+  name: ${CLUSTER_NAME}-hv
+  namespace: ${NAMESPACE}
+spec:
+  targetNamespace: ${TARGET_HARVESTER_NAMESPACE}
+  loadBalancerConfig:
+    ipamType: ${IPAM_TYPE:-"dhcp"}
+    ${IP_POOL_NAME:+ipPoolRef: ${IP_POOL_NAME}}
+    ${IP_POOL_SUBNET:+ipPool:}
+    ${IP_POOL_SUBNET:+  subnet: ${IP_POOL_SUBNET}}
+    ${IP_POOL_GATEWAY:+  gateway: ${IP_POOL_GATEWAY}}
+    ${IP_POOL_VM_NETWORK:+  vmNetwork: ${IP_POOL_VM_NETWORK}}
+    ${IP_POOL_RANGE_START:+  rangeStart: ${IP_POOL_RANGE_START}}
+    ${IP_POOL_RANGE_END:+  rangeEnd: ${IP_POOL_RANGE_END}}
+  server: ${HARVESTER_ENDPOINT}
+  identitySecret:
+    namespace: ${NAMESPACE}
+    name: hv-identity-secret
+  ${UPDATE_CLOUD_PROVIDER:-updateCloudProviderConfig:
+    cloudConfigCredentialsSecretKey: cloud-config
+    cloudConfigCredentialsSecretName: cloud-config
+    manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
+    manifestsConfigMapName: harvester-csi-driver-addon
+    manifestsConfigMapNamespace: ${NAMESPACE}
+  }
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: ${NAMESPACE}
+  name: hv-identity-secret
+type: Opaque
+data:
+  kubeconfig: ${HARVESTER_KUBECONFIG_B64}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha3
+kind: TalosControlPlane
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  version: ${KUBERNETES_VERSION}
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT:-3}
+  infrastructureTemplate:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    kind: HarvesterMachineTemplate
+    name: ${CLUSTER_NAME}-cp-machine
+    namespace: ${NAMESPACE}
+  controlPlaneConfig:
+    init:
+      generateType: init
+      talosVersion: ${TALOS_VERSION}
+    controlPlane:
+      generateType: controlplane
+      talosVersion: ${TALOS_VERSION}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+kind: TalosConfigTemplate
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-worker
+spec:
+  template:
+    spec:
+      generateType: join
+      talosVersion: ${TALOS_VERSION}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-workers
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT:-2}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  template:
+    spec:
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1alpha3
+          kind: TalosConfigTemplate
+          name: ${CLUSTER_NAME}-worker
+      clusterName: ${CLUSTER_NAME}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        kind: HarvesterMachineTemplate
+        name: ${CLUSTER_NAME}-wk-machine
+      version: ${KUBERNETES_VERSION}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-cp-machine
+spec:
+  template:
+    spec:
+      cpu: ${CONTROL_PLANE_CPU:-2}
+      memory: ${CONTROL_PLANE_MEMORY:-4Gi}
+      sshUser: ${VM_SSH_USER:-"talos"}
+      sshKeyPair: ${SSH_KEYPAIR}
+      networks:
+      - ${VM_NETWORK}
+      volumes:
+      - volumeType: image
+        imageName: ${VM_IMAGE_NAME}
+        volumeSize: ${CONTROL_PLANE_DISK_SIZE:-20Gi}
+        bootOrder: 0
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 1
+          preference:
+            matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: DoesNotExist
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-wk-machine
+spec:
+  template:
+    spec:
+      cpu: ${WORKER_CPU:-2}
+      memory: ${WORKER_MEMORY:-4Gi}
+      sshUser: ${VM_SSH_USER:-"talos"}
+      sshKeyPair: ${SSH_KEYPAIR}
+      networks:
+      - ${VM_NETWORK}
+      volumes:
+      - volumeType: image
+        imageName: ${VM_IMAGE_NAME}
+        volumeSize: ${WORKER_DISK_SIZE:-20Gi}
+        bootOrder: 0
+      nodeAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 1
+          preference:
+            matchExpressions:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: ${CLUSTER_NAME}-cni-crs
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      cni: external
+  resources:
+  - kind: ConfigMap
+    name: ${CLUSTER_NAME}-cni
+  strategy: Reconcile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${CLUSTER_NAME}-cni
+  namespace: ${NAMESPACE}
+data:
+  cni.yaml: |
+    # Cilium CNI for Talos
+    apiVersion: helm.cattle.io/v1
+    kind: HelmChart
+    metadata:
+      name: cilium
+      namespace: kube-system
+    spec:
+      chart: cilium
+      repo: https://helm.cilium.io/
+      version: ${CILIUM_VERSION:-1.14.2}
+      targetNamespace: kube-system
+      bootstrap: true
+      valuesContent: |
+        ipam:
+          mode: kubernetes
+        kubeProxyReplacement: strict
+        k8sServiceHost: ${CLUSTER_NAME}-control-plane.${NAMESPACE}.svc.cluster.local
+        k8sServicePort: 6443
+        operator:
+          replicas: 1
+        securityContext:
+          capabilities:
+            ciliumAgent:
+            - CHOWN
+            - KILL
+            - NET_ADMIN
+            - NET_RAW
+            - IPC_LOCK
+            - SYS_ADMIN
+            - SYS_RESOURCE
+            - DAC_OVERRIDE
+            - FOWNER
+            - SETGID
+            - SETUID
+            ciliumOperator:
+            - NET_ADMIN
+            - SYS_RESOURCE
+            - KILL
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: ${CLUSTER_NAME}-ccm-crs
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      ccm: external
+  resources:
+  - kind: ConfigMap
+    name: ${CLUSTER_NAME}-ccm
+  strategy: Reconcile
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: ${CLUSTER_NAME}-csi-crs
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      csi: external
+  resources:
+  - kind: ConfigMap
+    name: ${CLUSTER_NAME}-csi
+  strategy: Reconcile
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${CLUSTER_NAME}-ccm
+  namespace: ${NAMESPACE}
+data:
+  ccm.yaml: |
+    # Harvester Cloud Controller Manager for Talos
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: kube-system
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: harvester-cloud-provider
+      namespace: kube-system
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: cloud-provider
+          app.kubernetes.io/name: harvester-cloud-provider
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cloud-provider
+            app.kubernetes.io/name: harvester-cloud-provider
+        spec:
+          containers:
+          - name: harvester-cloud-provider
+            image: rancher/harvester-cloud-provider:${HARVESTER_CLOUD_PROVIDER_VERSION:-v0.2.0}
+            args:
+            - --cloud-config=/etc/kubernetes/cloud-config
+            volumeMounts:
+            - name: cloud-config
+              mountPath: /etc/kubernetes
+              readOnly: true
+          serviceAccountName: harvester-cloud-controller-manager
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+            operator: Exists
+          - effect: NoSchedule
+            key: node.cloudprovider.kubernetes.io/uninitialized
+            operator: Equal
+            value: "true"
+          volumes:
+          - name: cloud-config
+            secret:
+              secretName: cloud-config
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: harvester-cloud-controller-manager
+      namespace: kube-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: harvester-cloud-controller-manager
+    rules:
+    - apiGroups: [""]
+      resources: ["services", "nodes", "events"]
+      verbs: ["get", "list", "watch", "create", "update", "patch"]
+    - apiGroups: [""]
+      resources: ["services/status"]
+      verbs: ["update", "patch"]
+    - apiGroups: [""]
+      resources: ["nodes/status"]
+      verbs: ["patch", "update"]
+    - apiGroups: ["coordination.k8s.io"]
+      resources: ["leases"]
+      verbs: ["get", "create", "update"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: harvester-cloud-controller-manager
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: harvester-cloud-controller-manager
+    subjects:
+    - kind: ServiceAccount
+      name: harvester-cloud-controller-manager
+      namespace: kube-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ${CLUSTER_NAME}-csi
+  namespace: ${NAMESPACE}
+data:
+  csi.yaml: |
+    # Harvester CSI Driver for Talos
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: kube-system
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: harvester-csi
+      namespace: kube-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: harvester-csi
+    rules:
+    - apiGroups: [""]
+      resources: ["persistentvolumes"]
+      verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
+    - apiGroups: [""]
+      resources: ["persistentvolumeclaims"]
+      verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
+    - apiGroups: [""]
+      resources: ["persistentvolumeclaims/status"]
+      verbs: ["patch", "update"]
+    - apiGroups: ["storage.k8s.io"]
+      resources: ["storageclasses"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["events"]
+      verbs: ["get", "list", "watch", "create", "update", "patch"]
+    - apiGroups: ["storage.k8s.io"]
+      resources: ["csidrivers"]
+      verbs: ["get", "list", "watch", "create", "update", "patch"]
+    - apiGroups: ["storage.k8s.io"]
+      resources: ["csinodes"]
+      verbs: ["get", "list", "watch"]
+    - apiGroups: [""]
+      resources: ["nodes"]
+      verbs: ["get", "list", "watch"]
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: harvester-csi
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: harvester-csi
+    subjects:
+    - kind: ServiceAccount
+      name: harvester-csi
+      namespace: kube-system
+    ---
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      name: harvester-csi-plugin
+      namespace: kube-system
+    spec:
+      selector:
+        matchLabels:
+          app: harvester-csi-plugin
+      template:
+        metadata:
+          labels:
+            app: harvester-csi-plugin
+        spec:
+          containers:
+          - name: node-driver-registrar
+            image: longhornio/csi-node-driver-registrar:${CSI_NODE_DRIVER_REGISTRAR_VERSION:-v2.5.0}
+            args:
+            - --v=5
+            - --csi-address=$(ADDRESS)
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/kubernetes.io/csi/driver.harvesterhci.io/csi.sock
+            env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            securityContext:
+              privileged: true
+            volumeMounts:
+            - name: socket-dir
+              mountPath: /csi/
+            - name: registration-dir
+              mountPath: /registration
+          - name: harvester-csi-plugin
+            image: rancher/harvester-csi-driver:${HARVESTER_CSI_DRIVER_VERSION:-v0.1.16}
+            args:
+            - --nodeid=$(NODE_ID)
+            - --endpoint=$(CSI_ENDPOINT)
+            - --kubeconfig=/etc/csi/cloud-config
+            env:
+            - name: NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            securityContext:
+              privileged: true
+              capabilities:
+                add: ["SYS_ADMIN"]
+            volumeMounts:
+            - name: cloud-config
+              mountPath: /etc/csi
+              readOnly: true
+            - name: socket-dir
+              mountPath: /csi/
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+            - name: host-dev
+              mountPath: /dev
+            - name: host-sys
+              mountPath: /sys
+            - name: host
+              mountPath: /rootfs
+              mountPropagation: Bidirectional
+          serviceAccountName: harvester-csi
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+            operator: Exists
+          - effect: NoSchedule
+            key: kubevirt.io/drain
+            operator: Exists
+          volumes:
+          - name: cloud-config
+            secret:
+              secretName: cloud-config
+          - name: socket-dir
+            hostPath:
+              path: /var/lib/kubelet/plugins/kubernetes.io/csi/driver.harvesterhci.io
+              type: DirectoryOrCreate
+          - name: registration-dir
+            hostPath:
+              path: /var/lib/kubelet/plugins_registry
+              type: Directory
+          - name: pods-mount-dir
+            hostPath:
+              path: /var/lib/kubelet/pods
+              type: DirectoryOrCreate
+          - name: host-dev
+            hostPath:
+              path: /dev
+          - name: host-sys
+            hostPath:
+              path: /sys
+          - name: host
+            hostPath:
+              path: /
+          - name: lib-modules
+            hostPath:
+              path: /lib/modules
+              readOnly: true
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: csi-controller
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: csi-controller
+      template:
+        metadata:
+          labels:
+            app: csi-controller
+        spec:
+          containers:
+          - name: csi-provisioner
+            image: longhornio/csi-provisioner:${CSI_PROVISIONER_VERSION:-v3.4.0}
+            args:
+            - --v=5
+            - --csi-address=$(ADDRESS)
+            - --timeout=2m5s
+            - --enable-leader-election
+            - --leader-election-type=leases
+            - --leader-election-namespace=$(POD_NAMESPACE)
+            env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            volumeMounts:
+            - name: socket-dir
+              mountPath: /csi/
+          - name: csi-attacher
+            image: longhornio/csi-attacher:${CSI_ATTACHER_VERSION:-v4.2.0}
+            args:
+            - --v=5
+            - --csi-address=$(ADDRESS)
+            - --timeout=2m5s
+            - --leader-election
+            - --leader-election-namespace=$(POD_NAMESPACE)
+            env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            volumeMounts:
+            - name: socket-dir
+              mountPath: /csi/
+          - name: harvester-csi-plugin
+            image: rancher/harvester-csi-driver:${HARVESTER_CSI_DRIVER_VERSION:-v0.1.16}
+            args:
+            - --endpoint=$(CSI_ENDPOINT)
+            - --kubeconfig=/etc/csi/cloud-config
+            env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            volumeMounts:
+            - name: cloud-config
+              mountPath: /etc/csi
+              readOnly: true
+            - name: socket-dir
+              mountPath: /csi/
+          serviceAccountName: harvester-csi
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+            operator: Exists
+          - effect: NoSchedule
+            key: kubevirt.io/drain
+            operator: Exists
+          volumes:
+          - name: cloud-config
+            secret:
+              secretName: cloud-config
+          - name: socket-dir
+            emptyDir: {}
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: CSIDriver
+    metadata:
+      name: driver.harvesterhci.io
+    spec:
+      attachRequired: true
+      fsGroupPolicy: ReadWriteOnceWithFSType
+      podInfoOnMount: true
+      volumeLifecycleModes:
+      - Persistent
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: harvester
+    allowVolumeExpansion: true
+    provisioner: driver.harvesterhci.io
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate

@@ -39,3 +39,4 @@ tilt-provider.json
 # Aider files
 .aider.*
 conditions-adding.md
+.aider*

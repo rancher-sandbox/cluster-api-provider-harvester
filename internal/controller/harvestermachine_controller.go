@@ -85,6 +85,16 @@ const (
 	listImagesSelector     = "spec.displayName"
 )
 
+var (
+	machineInitializationProvisioned = infrav1.Initialization{
+		Provisioned: true,
+	}
+
+	machineInitializationNotProvisioned = infrav1.Initialization{
+		Provisioned: false,
+	}
+)
+
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines/finalizers,verbs=update
@@ -238,6 +248,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		logger.Info("Reconciliation is paused for this object")
 
 		hvScope.HarvesterMachine.Status.Ready = false
+		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 		return ctrl.Result{}, nil
 	}
@@ -247,6 +258,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		controllerutil.AddFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer)
 
 		hvScope.HarvesterMachine.Status.Ready = false
+		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 		return ctrl.Result{}, nil
 	}
@@ -256,6 +268,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		logger.Info("Waiting for Infrastructure to be ready ... ")
 
 		hvScope.HarvesterMachine.Status.Ready = false
+		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
 			Type:    infrav1.InfrastructureReadyCondition,
@@ -280,6 +293,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		logger.Info("Waiting for Machine's Userdata to be set ... ")
 
 		hvScope.HarvesterMachine.Status.Ready = false
+		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
@@ -293,6 +307,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		logger.Error(err, "unable to check existence of VM from Harvester")
 
 		hvScope.HarvesterMachine.Status.Ready = false
+		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 		return ctrl.Result{}, err
 	}
@@ -312,6 +327,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
 			if err != nil {
 				hvScope.HarvesterMachine.Status.Ready = false
+				hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 				if apierrors.IsNotFound(err) {
 					logger.Info("VM is not running yet, waiting for it to be ready")
@@ -325,24 +341,35 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			}
 
 			hvScope.HarvesterMachine.Status.Addresses = ipAddresses
-			hvScope.HarvesterMachine.Status.Ready = false
 
 			if len(ipAddresses) == 0 && hvScope.HarvesterMachine.Status.Ready {
 				hvScope.HarvesterMachine.Status.Ready = false
+				hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 				return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 			}
 
+			if len(ipAddresses) > 0 && !hvScope.HarvesterMachine.Status.Ready {
+				logger.Info("VM is running, IP addresses found", "addresses", ipAddresses)
+				hvScope.HarvesterMachine.Status.Ready = true
+				hvScope.HarvesterMachine.Status.Initialization = machineInitializationProvisioned
+				conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.VMProvisioningReadyCondition)
+
+				return ctrl.Result{Requeue: true}, nil
+			}
+
 			if hvScope.HarvesterMachine.Spec.ProviderID == "" {
-				providerID, _ := getProviderIDFromWorkloadCluster(hvScope, existingVM)
+				providerID, err := getProviderIDFromWorkloadCluster(hvScope, existingVM)
+				if err != nil {
+					providerID = "harvester://" + string(existingVM.UID)
+				}
 
 				if providerID != "" {
 					hvScope.HarvesterMachine.Spec.ProviderID = providerID
 					hvScope.HarvesterMachine.Status.Ready = true
+					hvScope.HarvesterMachine.Status.Initialization = machineInitializationProvisioned
 				} else {
 					logger.Info("Waiting for ProviderID to be set on Node resource in Workload Cluster ...")
-
-					hvScope.HarvesterMachine.Status.Ready = false
 
 					return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 				}
@@ -435,10 +462,6 @@ func getProviderIDFromWorkloadCluster(hvScope *Scope, existingVM *kubevirtv1.Vir
 		return "", err
 	}
 
-	if node.Spec.ProviderID == "" {
-		return "harvester://" + string(existingVM.UID), nil
-	}
-
 	return node.Spec.ProviderID, nil
 }
 
@@ -482,6 +505,9 @@ func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harv
 	}
 
 	for _, nic := range vmInstance.Status.Interfaces {
+		if nic.IP == "" {
+			continue
+		}
 		ipAddresses = append(ipAddresses, clusterv1.MachineAddress{
 			Type:    clusterv1.MachineExternalIP,
 			Address: nic.IP,

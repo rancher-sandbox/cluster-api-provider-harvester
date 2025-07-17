@@ -116,6 +116,12 @@ type Volume struct {
 // +kubebuilder:Validation:Enum:=storageClass,image
 type VolumeType string
 
+// Initialization is an object that defines the initialization of the VM on Harvester.
+type Initialization struct {
+	// Provisioned shows if the VM has been provisioned.
+	Provisioned bool `json:"provisioned,omitempty"`
+}
+
 // HarvesterMachineStatus defines the observed state of HarvesterMachine.
 type HarvesterMachineStatus struct {
 	// Ready is true when the provider resource is ready.
@@ -126,6 +132,7 @@ type HarvesterMachineStatus struct {
 	FailureReason  string                     `json:"failureReason,omitempty"`
 	FailureMessage string                     `json:"failureMessage,omitempty"`
 	Addresses      []clusterv1.MachineAddress `json:"addresses,omitempty"`
+	Initialization Initialization             `json:"initialization,omitempty"`
 }
 
 //+kubebuilder:object:root=true
