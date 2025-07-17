@@ -39,13 +39,6 @@ spec:
   targetNamespace: ${TARGET_HARVESTER_NAMESPACE}
   loadBalancerConfig:
     ipamType: ${IPAM_TYPE:-"dhcp"}
-    ${IP_POOL_NAME:+ipPoolRef: ${IP_POOL_NAME}}
-    ${IP_POOL_SUBNET:+ipPool:}
-    ${IP_POOL_SUBNET:+  subnet: ${IP_POOL_SUBNET}}
-    ${IP_POOL_GATEWAY:+  gateway: ${IP_POOL_GATEWAY}}
-    ${IP_POOL_VM_NETWORK:+  vmNetwork: ${IP_POOL_VM_NETWORK}}
-    ${IP_POOL_RANGE_START:+  rangeStart: ${IP_POOL_RANGE_START}}
-    ${IP_POOL_RANGE_END:+  rangeEnd: ${IP_POOL_RANGE_END}}
   server: ${HARVESTER_ENDPOINT}
   identitySecret:
     namespace: ${NAMESPACE}
@@ -53,8 +46,8 @@ spec:
   ${UPDATE_CLOUD_PROVIDER:-updateCloudProviderConfig:
     cloudConfigCredentialsSecretKey: cloud-config
     cloudConfigCredentialsSecretName: cloud-config
-    manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
-    manifestsConfigMapName: harvester-csi-driver-addon
+    manifestsConfigMapKey: csi.yaml
+    manifestsConfigMapName: ${CLUSTER_NAME}-csi
     manifestsConfigMapNamespace: ${NAMESPACE}
   }
 ---
