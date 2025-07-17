@@ -3,6 +3,10 @@ changelog:
     - title: 🚀 Enhancements
       labels:
         - kind/feature
+    - title: 👒 Dependency bumps
+      labels:
+        - area/dependency
+        - area/build-and-release
     - title: 🐛 Bugs
       labels:
         - kind/bug
