@@ -351,6 +351,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 			if len(ipAddresses) > 0 && !hvScope.HarvesterMachine.Status.Ready {
 				logger.Info("VM is running, IP addresses found", "addresses", ipAddresses)
+
 				hvScope.HarvesterMachine.Status.Ready = true
 				hvScope.HarvesterMachine.Status.Initialization = machineInitializationProvisioned
 				conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.VMProvisioningReadyCondition)
@@ -359,7 +360,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			}
 
 			if hvScope.HarvesterMachine.Spec.ProviderID == "" {
-				providerID, err := getProviderIDFromWorkloadCluster(hvScope, existingVM)
+				providerID, err := getProviderIDFromWorkloadCluster(hvScope)
 				if err != nil {
 					providerID = "harvester://" + string(existingVM.UID)
 				}
@@ -440,7 +441,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 	return ctrl.Result{}, nil
 }
 
-func getProviderIDFromWorkloadCluster(hvScope *Scope, existingVM *kubevirtv1.VirtualMachine) (string, error) {
+func getProviderIDFromWorkloadCluster(hvScope *Scope) (string, error) {
 	var workloadConfig *rest.Config
 
 	workloadConfig, err := getWorkloadClusterConfig(hvScope)
@@ -508,6 +509,7 @@ func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harv
 		if nic.IP == "" {
 			continue
 		}
+
 		ipAddresses = append(ipAddresses, clusterv1.MachineAddress{
 			Type:    clusterv1.MachineExternalIP,
 			Address: nic.IP,
@@ -541,7 +543,7 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 
 	// Supposing that the imageName field in HarvesterMachine.Spec.Volumes has the format "<NAMESPACE>/<NAME>",
 	// we use the following to get vmImageNS and vmImageName
-	imageVolumes := locutil.Filter[infrav1.Volume](hvScope.HarvesterMachine.Spec.Volumes, hasVMIMageName)
+	imageVolumes := locutil.Filter(hvScope.HarvesterMachine.Spec.Volumes, hasVMIMageName)
 
 	vmImage, err := getImageFromHarvesterMachine(imageVolumes, hvScope)
 	if err != nil {
