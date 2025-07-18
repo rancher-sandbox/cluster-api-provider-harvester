@@ -9,7 +9,7 @@ metadata:
   namespace: ${NAMESPACE}
   name: ${CLUSTER_NAME} 
   labels:
-${RANCHER_TURTLES_LABEL}
+${RANCHER_TURTLES_LABEL:""}
     ccm: external
     csi: external
     cni: external
@@ -42,13 +42,6 @@ spec:
   identitySecret: 
     namespace: ${NAMESPACE}
     name: hv-identity-secret
-{UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
-    cloudConfigCredentialsSecretKey: cloud-config
-    cloudConfigCredentialsSecretName: cloud-config
-    manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
-    manifestsConfigMapName: harvester-csi-driver-addon
-    manifestsConfigMapNamespace: ${NAMESPACE}
-    }
 ---
 apiVersion: v1
 kind: Secret
