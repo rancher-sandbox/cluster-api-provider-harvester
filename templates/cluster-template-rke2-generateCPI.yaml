@@ -4,12 +4,12 @@ metadata:
   name: ${NAMESPACE}
 ---
 apiVersion: cluster.x-k8s.io/v1beta2
-kind: Cluster 
+kind: Cluster
 metadata:
   namespace: ${NAMESPACE}
-  name: ${CLUSTER_NAME} 
+  name: ${CLUSTER_NAME}
   labels:
-${RANCHER_TURTLES_LABEL}
+    ${RANCHER_TURTLES_LABEL:-cluster-api.cattle.io/rancher-auto-import: false}
     ccm: external
     csi: external
     cni: external
@@ -38,10 +38,10 @@ spec:
       protocol: TCP
       backendPort: 9345
   server: ${HARVESTER_ENDPOINT}
-  identitySecret: 
+  identitySecret:
     namespace: ${NAMESPACE}
     name: hv-identity-secret
-${UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig: 
+${UPDATE_CLOUD_PROVIDER:-  updateCloudProviderConfig:
     cloudConfigCredentialsSecretKey: cloud-config
     cloudConfigCredentialsSecretName: cloud-config
     manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
@@ -54,7 +54,7 @@ kind: Secret
 metadata:
   namespace: ${NAMESPACE}
   name: hv-identity-secret
-data: 
+data:
   kubeconfig: ${HARVESTER_KUBECONFIG_B64}
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
@@ -116,18 +116,18 @@ metadata:
   namespace: ${NAMESPACE}
   name: ${CLUSTER_NAME}-wk-machine
 spec:
-  template: 
+  template:
     spec:
-      cpu: 1
-      memory: 4Gi
-      sshUser: ubuntu
-      sshKeyPair: ${SSH_KEYPAIR}  
+      cpu: ${WORKER_VM_CPU_COUNT:-2}
+      memory: ${WORKER_VM_MEMORY:-4Gi}
+      sshUser: ${VM_USER:-ubuntu}
+      sshKeyPair: ${SSH_KEYPAIR}
       networks:
       - ${VM_NETWORK}
       volumes:
-      - volumeType: image 
+      - volumeType: image
         imageName: ${VM_IMAGE_NAME}
-        volumeSize: ${VM_DISK_SIZE}
+        volumeSize: ${VM_DISK_SIZE:50Gi}
         bootOrder: 0
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
@@ -136,18 +136,18 @@ metadata:
   namespace: ${NAMESPACE}
   name: ${CLUSTER_NAME}-cp-machine
 spec:
-  template: 
+  template:
     spec:
-      cpu: 2
-      memory: 8Gi
-      sshUser: ubuntu
-      sshKeyPair: ${SSH_KEYPAIR}  
+      cpu: ${CONTROL_PLANE_VM_CPU_COUNT:-2}
+      memory: ${CONTROL_PLANE_VM_MEMORY:-4Gi}
+      sshUser: ${VM_USER:-ubuntu}
+      sshKeyPair: ${SSH_KEYPAIR}
       networks:
       - ${VM_NETWORK}
       volumes:
-      - volumeType: image 
+      - volumeType: image
         imageName: ${VM_IMAGE_NAME}
-        volumeSize: ${VM_DISK_SIZE}
+        volumeSize: ${VM_DISK_SIZE:50Gi}
         bootOrder: 0
 ---
 apiVersion: addons.cluster.x-k8s.io/v1beta2

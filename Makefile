@@ -33,7 +33,7 @@ REGISTRY ?= ghcr.io
 ORG ?= rancher-sandbox
 IMAGE_NAME ?= cluster-api-provider-harvester
 # Image URL to use all building/pushing image targets
-IMG ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME)
+IMG ?= $(REGISTRY)/$(IMAGE_NAME)
 
 # Allow overriding the imagePullPolicy
 PULL_POLICY ?= Always
