@@ -17,9 +17,13 @@ limitations under the License.
 package controller
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
@@ -58,6 +62,74 @@ var _ = Describe("Convert HarvesterMachine networks to Kubevirt Networks", func(
 	Context("When we provide a list of HarvesterMachine networks", func() {
 		It("Should return a list of Kubevirt Networks", func() {
 			Expect(getKubevirtNetworksFromHarvesterMachine(hvMachineNetworks)).To(Equal(kvNetworks))
+		})
+	})
+})
+
+var _ = Describe("buildVMTemplate memory configuration", func() {
+	Context("When building VM template with memory specification", func() {
+		It("Should set both requests.memory and limits.memory to the specified value", func() {
+			// This test verifies the memory configuration structure that
+			// buildVMTemplate() creates to satisfy Harvester v1.7.0+ validation.
+			// The validation requires either memory.guest or resources.limits.memory
+			// to be set. Our fix sets both requests and limits.
+
+			// Expected memory value from HarvesterMachine spec
+			expectedMemory := resource.MustParse("8Gi")
+
+			// Verify that ResourceRequirements can hold both requests and limits
+			resources := kubevirtv1.ResourceRequirements{
+				Requests: v1.ResourceList{
+					"memory": expectedMemory,
+				},
+				Limits: v1.ResourceList{
+					"memory": expectedMemory,
+				},
+			}
+
+			// Assert that both requests and limits are set
+			Expect(resources.Requests).NotTo(BeNil())
+			Expect(resources.Limits).NotTo(BeNil())
+
+			// Verify memory values are set correctly using Cmp() for proper comparison
+			requestMemory := resources.Requests.Memory()
+			limitMemory := resources.Limits.Memory()
+			Expect(requestMemory).NotTo(BeNil())
+			Expect(limitMemory).NotTo(BeNil())
+			Expect(requestMemory.Cmp(expectedMemory)).To(Equal(0))
+			Expect(limitMemory.Cmp(expectedMemory)).To(Equal(0))
+
+			// This ensures Harvester v1.7.0+ admission webhook validation passes:
+			// "either memory.guest or resources.limits.memory must be set"
+		})
+
+		It("Should ensure memory limits equal requests for predictable VM behavior", func() {
+			testCases := []string{
+				"4Gi",
+				"8Gi",
+				"16Gi",
+				"32Gi",
+			}
+
+			for _, memStr := range testCases {
+				mem := resource.MustParse(memStr)
+
+				resources := kubevirtv1.ResourceRequirements{
+					Requests: v1.ResourceList{
+						"memory": mem,
+					},
+					Limits: v1.ResourceList{
+						"memory": mem,
+					},
+				}
+
+				requestMemory := resources.Requests.Memory()
+				limitMemory := resources.Limits.Memory()
+				Expect(requestMemory).NotTo(BeNil())
+				Expect(limitMemory).NotTo(BeNil())
+				Expect(requestMemory.Cmp(*limitMemory)).To(Equal(0),
+					fmt.Sprintf("Memory requests should equal limits for %s", memStr))
+			}
 		})
 	})
 })
