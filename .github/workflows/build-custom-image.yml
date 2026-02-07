@@ -38,7 +38,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/berget-ai/${{ env.IMAGE_NAME }}
+          images: ghcr.io/berget-ai/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=v0.1.6-memory-fix
             type=sha,prefix=
