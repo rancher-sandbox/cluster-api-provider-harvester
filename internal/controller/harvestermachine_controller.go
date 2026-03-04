@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strconv"
 	"time"
 
@@ -66,14 +67,15 @@ type HarvesterMachineReconciler struct {
 
 // Scope stores context data for the reconciler.
 type Scope struct {
-	Ctx              context.Context
-	Cluster          *clusterv1.Cluster
-	Machine          *clusterv1.Machine
-	HarvesterCluster *infrav1.HarvesterCluster
-	HarvesterMachine *infrav1.HarvesterMachine
-	HarvesterClient  *harvclient.Clientset
-	ReconcilerClient client.Client
-	Logger           *logr.Logger
+	Ctx                    context.Context
+	Cluster                *clusterv1.Cluster
+	Machine                *clusterv1.Machine
+	HarvesterCluster       *infrav1.HarvesterCluster
+	HarvesterMachine       *infrav1.HarvesterMachine
+	HarvesterClient        *harvclient.Clientset
+	ReconcilerClient       client.Client
+	Logger                 *logr.Logger
+	EffectiveNetworkConfig *infrav1.NetworkConfig
 }
 
 const (
@@ -296,6 +298,41 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+	}
+
+	// Resolve effective network config: cluster-level pool allocation or machine-level static config
+	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil && hvScope.HarvesterMachine.Spec.NetworkConfig == nil {
+		// Allocate IP from cluster-level VM IP pool
+		if err := r.allocateVMIP(hvScope); err != nil {
+			logger.Error(err, "failed to allocate VM IP from pool")
+
+			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+				Type:    infrav1.VMIPAllocatedCondition,
+				Status:  v1.ConditionFalse,
+				Reason:  infrav1.VMIPAllocationFailedReason,
+				Message: fmt.Sprintf("Failed to allocate VM IP: %v", err),
+			})
+
+			return ctrl.Result{RequeueAfter: requeueTimeShort}, err
+		}
+
+		vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
+		hvScope.EffectiveNetworkConfig = &infrav1.NetworkConfig{
+			Address:    hvScope.HarvesterMachine.Status.AllocatedIPAddress,
+			Gateway:    vmNetCfg.Gateway,
+			DNSServers: vmNetCfg.DNSServers,
+			DNSSearch:  vmNetCfg.DNSSearch,
+		}
+
+		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+			Type:    infrav1.VMIPAllocatedCondition,
+			Status:  v1.ConditionTrue,
+			Reason:  infrav1.VMIPAllocatedReason,
+			Message: fmt.Sprintf("Allocated IP %s from pool", hvScope.HarvesterMachine.Status.AllocatedIPAddress),
+		})
+	} else if hvScope.HarvesterMachine.Spec.NetworkConfig != nil {
+		// Use machine-level static network config
+		hvScope.EffectiveNetworkConfig = hvScope.HarvesterMachine.Spec.NetworkConfig
 	}
 
 	vmExists := false
@@ -716,16 +753,55 @@ runcmd:
 		return nil, err
 	}
 
+	// Build cloud-init secret data with lowercase keys (required by KubeVirt)
+	secretData := map[string][]byte{
+		"userdata": finalCloudInit,
+	}
+
+	// Build network-config v1 format if EffectiveNetworkConfig is set
+	if hvScope.EffectiveNetworkConfig != nil {
+		netCfg := hvScope.EffectiveNetworkConfig
+		subnetMask := "255.255.0.0" // default
+
+		if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
+			subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
+		}
+
+		// Build network-config v1 format (required for SLES)
+		networkConfigV1 := fmt.Sprintf(`version: 1
+config:
+  - type: physical
+    name: eth0
+    subnets:
+      - type: static
+        address: %s
+        netmask: %s
+        gateway: %s
+  - type: nameserver
+    address:
+`, netCfg.Address, subnetMask, netCfg.Gateway)
+
+		for _, dns := range netCfg.DNSServers {
+			networkConfigV1 += fmt.Sprintf("      - %s\n", dns)
+		}
+
+		if len(netCfg.DNSSearch) > 0 {
+			networkConfigV1 += "    search:\n"
+			for _, search := range netCfg.DNSSearch {
+				networkConfigV1 += fmt.Sprintf("      - %s\n", search)
+			}
+		}
+
+		secretData["networkdata"] = []byte(networkConfigV1)
+	}
+
 	// create cloud-init secret for reference in Harvester.
 	cloudInitSecret := &v1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      hvScope.HarvesterMachine.Name + "-cloud-init",
 			Namespace: hvScope.HarvesterCluster.Spec.TargetNamespace,
 		},
-		Data: map[string][]byte{
-			//"userData": []byte(cloudInitUserData + cloudInitBase + cloudInitSSHSection),
-			"userData": finalCloudInit,
-		},
+		Data: secretData,
 	}
 
 	hvScope.Logger.V(5).Info("cloud-init final value is " + string(finalCloudInit)) //nolint:mnd
@@ -751,6 +827,59 @@ runcmd:
 		}
 	}
 
+	// Build volumes list: disk-0 PVC + cloud-init disk
+	volumes := []kubevirtv1.Volume{
+		{
+			Name: "disk-0",
+			VolumeSource: kubevirtv1.VolumeSource{
+				PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+					PersistentVolumeClaimVolumeSource: v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: pvcName,
+					},
+				},
+			},
+		},
+		{
+			Name: "cloudinitdisk",
+			VolumeSource: kubevirtv1.VolumeSource{
+				CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
+					UserDataSecretRef: &v1.LocalObjectReference{
+						Name: hvScope.HarvesterMachine.Name + "-cloud-init",
+					},
+					NetworkDataSecretRef: &v1.LocalObjectReference{
+						Name: hvScope.HarvesterMachine.Name + "-cloud-init",
+					},
+				},
+			},
+		},
+	}
+
+	// Build disks list
+	disks := []kubevirtv1.Disk{
+		{
+			Name: "disk-0",
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: "virtio",
+				},
+			},
+		},
+		{
+			Name: "cloudinitdisk",
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: "virtio",
+				},
+			},
+		},
+	}
+
+	// Build network interfaces
+	interfaces := buildNetworkInterfaces(hvScope.HarvesterMachine)
+
+	// Build affinity with user-specified NodeAffinity and WorkloadAffinity
+	affinity := buildAffinity(hvScope)
+
 	vmTemplate = &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
@@ -763,41 +892,7 @@ runcmd:
 		Spec: kubevirtv1.VirtualMachineInstanceSpec{
 			Hostname: hvScope.HarvesterMachine.Name,
 			Networks: getKubevirtNetworksFromHarvesterMachine(hvScope.HarvesterMachine),
-
-			// Networks: []kubevirtv1.Network{
-
-			// 	{
-			// 		Name: "nic-1",
-
-			// 		NetworkSource: kubevirtv1.NetworkSource{
-			// 			Multus: &kubevirtv1.MultusNetwork{
-			// 				NetworkName: "vlan1",
-			// 			},
-			// 		},
-			// 	},
-			// },
-			Volumes: []kubevirtv1.Volume{
-				{
-					Name: "disk-0",
-					VolumeSource: kubevirtv1.VolumeSource{
-						PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
-							PersistentVolumeClaimVolumeSource: v1.PersistentVolumeClaimVolumeSource{
-								ClaimName: pvcName,
-							},
-						},
-					},
-				},
-				{
-					Name: "cloudinitdisk",
-					VolumeSource: kubevirtv1.VolumeSource{
-						CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
-							UserDataSecretRef: &v1.LocalObjectReference{
-								Name: hvScope.HarvesterMachine.Name + "-cloud-init",
-							},
-						},
-					},
-				},
-			},
+			Volumes:  volumes,
 			Domain: kubevirtv1.DomainSpec{
 				CPU: &kubevirtv1.CPU{
 					Cores:   hvScope.HarvesterMachine.Spec.CPU,
@@ -812,31 +907,8 @@ runcmd:
 							Name: "tablet",
 						},
 					},
-					Interfaces: []kubevirtv1.Interface{
-						{
-							Name:                   "nic-1",
-							Model:                  "virtio",
-							InterfaceBindingMethod: kubevirtv1.DefaultBridgeNetworkInterface().InterfaceBindingMethod,
-						},
-					},
-					Disks: []kubevirtv1.Disk{
-						{
-							Name: "disk-0",
-							DiskDevice: kubevirtv1.DiskDevice{
-								Disk: &kubevirtv1.DiskTarget{
-									Bus: "virtio",
-								},
-							},
-						},
-						{
-							Name: "cloudinitdisk",
-							DiskDevice: kubevirtv1.DiskDevice{
-								Disk: &kubevirtv1.DiskTarget{
-									Bus: "virtio",
-								},
-							},
-						},
-					},
+					Interfaces: interfaces,
+					Disks:      disks,
 				},
 				Resources: kubevirtv1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -844,18 +916,40 @@ runcmd:
 					},
 				},
 			},
-			Affinity: &v1.Affinity{
-				PodAntiAffinity: &v1.PodAntiAffinity{
-					PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
-						{
-							Weight: int32(1),
-							PodAffinityTerm: v1.PodAffinityTerm{
-								TopologyKey: "kubernetes.io/hostname",
-								LabelSelector: &metav1.LabelSelector{
-									MatchLabels: map[string]string{
-										"harvesterhci.io/vmNamePrefix": hvScope.HarvesterMachine.Name,
-									},
-								},
+			Affinity: affinity,
+		},
+	}
+
+	return vmTemplate, nil
+}
+
+// buildNetworkInterfaces creates kubevirt Interface specs for each network.
+func buildNetworkInterfaces(machine *infrav1.HarvesterMachine) []kubevirtv1.Interface {
+	interfaces := make([]kubevirtv1.Interface, 0, len(machine.Spec.Networks))
+
+	for i := range machine.Spec.Networks {
+		interfaces = append(interfaces, kubevirtv1.Interface{
+			Name:                   "nic-" + strconv.Itoa(i+1),
+			Model:                  "virtio",
+			InterfaceBindingMethod: kubevirtv1.DefaultBridgeNetworkInterface().InterfaceBindingMethod,
+		})
+	}
+
+	return interfaces
+}
+
+// buildAffinity merges user-specified NodeAffinity and WorkloadAffinity with default PodAntiAffinity.
+func buildAffinity(hvScope *Scope) *v1.Affinity {
+	affinity := &v1.Affinity{
+		PodAntiAffinity: &v1.PodAntiAffinity{
+			PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{
+				{
+					Weight: int32(1),
+					PodAffinityTerm: v1.PodAffinityTerm{
+						TopologyKey: "kubernetes.io/hostname",
+						LabelSelector: &metav1.LabelSelector{
+							MatchLabels: map[string]string{
+								"harvesterhci.io/vmNamePrefix": hvScope.HarvesterMachine.Name,
 							},
 						},
 					},
@@ -864,7 +958,17 @@ runcmd:
 		},
 	}
 
-	return vmTemplate, nil
+	// Merge user-specified NodeAffinity
+	if hvScope.HarvesterMachine.Spec.NodeAffinity != nil {
+		affinity.NodeAffinity = hvScope.HarvesterMachine.Spec.NodeAffinity
+	}
+
+	// Merge user-specified WorkloadAffinity (PodAffinity)
+	if hvScope.HarvesterMachine.Spec.WorkloadAffinity != nil {
+		affinity.PodAffinity = hvScope.HarvesterMachine.Spec.WorkloadAffinity
+	}
+
+	return affinity
 }
 
 func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.HarvesterMachine) []kubevirtv1.Network {
@@ -904,10 +1008,119 @@ func getCloudInitData(hvScope *Scope) (string, error) {
 	return string(userData), nil
 }
 
+// allocateVMIP allocates an IP from the cluster-level VM IP pool for this machine.
+// It is idempotent: if an IP is already allocated, it returns early.
+func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
+	machine := hvScope.HarvesterMachine
+	logger := hvScope.Logger
+
+	// Return early if already allocated (idempotent)
+	if machine.Status.AllocatedIPAddress != "" {
+		logger.V(3).Info("VM IP already allocated", "ip", machine.Status.AllocatedIPAddress)
+		return nil
+	}
+
+	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
+	if vmNetCfg == nil {
+		return fmt.Errorf("VMNetworkConfig is nil on HarvesterCluster")
+	}
+
+	poolRef := vmNetCfg.IPPoolRef
+	if poolRef == "" {
+		return fmt.Errorf("VMNetworkConfig.IPPoolRef is empty, ensure reconcileVMIPPool has run")
+	}
+
+	// Get the pool from Harvester
+	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+		context.TODO(), poolRef, metav1.GetOptions{})
+	if err != nil {
+		return errors.Wrapf(err, "failed to get VM IP pool %s", poolRef)
+	}
+
+	// Check for existing allocation in pool
+	machineID := machine.Namespace + "/" + machine.Name
+	if pool.Status.Allocated != nil {
+		for ip, id := range pool.Status.Allocated {
+			if id == machineID {
+				machine.Status.AllocatedIPAddress = ip
+				logger.Info("Found existing IP allocation in pool", "ip", ip)
+				return nil
+			}
+		}
+	}
+
+	// Allocate new IP
+	allocatedIP, err := locutil.AllocateVMIPFromPool(pool, machineID)
+	if err != nil {
+		return errors.Wrap(err, "failed to allocate IP from VM IP pool")
+	}
+
+	// Update pool in Harvester
+	_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
+		context.TODO(), pool, metav1.UpdateOptions{})
+	if err != nil {
+		return errors.Wrap(err, "failed to update VM IP pool after allocation")
+	}
+
+	machine.Status.AllocatedIPAddress = allocatedIP
+	logger.Info("Allocated VM IP from pool", "ip", allocatedIP, "machine", machine.Name)
+
+	return nil
+}
+
+// releaseVMIP releases the allocated IP back to the pool during machine deletion.
+// Errors are logged as warnings but do not block deletion.
+func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
+	machine := hvScope.HarvesterMachine
+	logger := hvScope.Logger
+
+	if machine.Status.AllocatedIPAddress == "" {
+		return
+	}
+
+	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
+	if vmNetCfg == nil || vmNetCfg.IPPoolRef == "" {
+		logger.Info("No VMNetworkConfig/IPPoolRef, skipping IP release")
+		return
+	}
+
+	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+		context.TODO(), vmNetCfg.IPPoolRef, metav1.GetOptions{})
+	if err != nil {
+		logger.Info("Warning: failed to get VM IP pool for release, skipping", "error", err)
+		return
+	}
+
+	store := locutil.NewStore(pool)
+	ip := net.ParseIP(machine.Status.AllocatedIPAddress)
+
+	if ip == nil {
+		logger.Info("Warning: failed to parse allocated IP for release", "ip", machine.Status.AllocatedIPAddress)
+		return
+	}
+
+	if err := store.Release(ip); err != nil {
+		logger.Info("Warning: failed to release IP from pool", "error", err, "ip", machine.Status.AllocatedIPAddress)
+		return
+	}
+
+	_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
+		context.TODO(), pool, metav1.UpdateOptions{})
+	if err != nil {
+		logger.Info("Warning: failed to update pool after IP release", "error", err)
+		return
+	}
+
+	logger.Info("Released VM IP back to pool", "ip", machine.Status.AllocatedIPAddress, "machine", machine.Name)
+}
+
 // ReconcileDelete deletes a HarvesterMachine with all its dependencies.
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
 	logger := log.FromContext(hvScope.Ctx)
 	logger.Info("Deleting HarvesterMachine ...")
+
+	// Release allocated IP back to pool before deletion
+	r.releaseVMIP(&hvScope)
 
 	err := hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
 		hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.DeleteOptions{})

@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: harvesterclusters.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -213,6 +213,69 @@ spec:
                 - manifestsConfigMapKey
                 - manifestsConfigMapName
                 - manifestsConfigMapNamespace
+                type: object
+              vmNetworkConfig:
+                description: VMNetworkConfig is the network configuration for VMs
+                  that use static IPs from a pool.
+                properties:
+                  dnsSearch:
+                    description: DNSSearch is a list of DNS search domains.
+                    items:
+                      type: string
+                    type: array
+                  dnsServers:
+                    description: DNSServers is a list of DNS server IP addresses.
+                    items:
+                      type: string
+                    type: array
+                  gateway:
+                    description: Gateway is the gateway IP address for the VM network.
+                    type: string
+                  ipPool:
+                    description: |-
+                      IPPool defines a new IPPool to create in Harvester for VM IP allocation.
+                      Mutually exclusive with IPPoolRef.
+                    properties:
+                      gateway:
+                        description: |-
+                          Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet.
+                          e.g. 172.17.1.1.
+                        type: string
+                      rangeEnd:
+                        description: RangeEnd is the last IP Address that should be
+                          used by the IP Pool.
+                        type: string
+                      rangeStart:
+                        description: RangeStart is the first IP Address that should
+                          be used by the IP Pool.
+                        type: string
+                      subnet:
+                        description: |-
+                          Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address.
+                          e.g. 172.17.1.0/24.
+                        type: string
+                      vmNetwork:
+                        description: |-
+                          VMNetwork is the name of an existing VM Network in Harvester where the IPPool should exist.
+                          The reference can have the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterCluster.
+                        type: string
+                    required:
+                    - gateway
+                    - subnet
+                    - vmNetwork
+                    type: object
+                  ipPoolRef:
+                    description: |-
+                      IPPoolRef is a reference to an existing IPPool in Harvester for VM IP allocation.
+                      Mutually exclusive with IPPool.
+                    type: string
+                  subnetMask:
+                    description: SubnetMask is the subnet mask for the VM network
+                      (e.g. "255.255.0.0").
+                    type: string
+                required:
+                - gateway
+                - subnetMask
                 type: object
             required:
             - identitySecret

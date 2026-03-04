@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/netip"
 
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/types"
 	cnip "github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/plugins/plugins/ipam/host-local/backend/allocator"
@@ -279,4 +280,51 @@ func ipToInt(ip net.IP) *big.Int {
 	}
 
 	return big.NewInt(0).SetBytes(ip.To16())
+}
+
+// AllocateVMIPFromPool allocates an IP address from the given IPPool for the given machineID.
+// It first tries to reuse a historically allocated IP for the same machineID, then allocates a new one.
+func AllocateVMIPFromPool(pool *lbv1beta1.IPPool, machineID string) (string, error) {
+	rangeSlice := make([]allocator.Range, 0)
+
+	ranges := pool.Spec.Ranges
+	for i := range ranges {
+		element, err := MakeRange(&ranges[i])
+		if err != nil {
+			return "", errors.Wrapf(err, "failed to parse range %d", i)
+		}
+
+		rangeSlice = append(rangeSlice, *element)
+	}
+
+	rangeSet := allocator.RangeSet(rangeSlice)
+	store := NewStore(pool)
+	a := allocator.NewIPAllocator(&rangeSet, store, 0)
+
+	var ipObj *current.IPConfig
+	var err error
+
+	// Try to reuse historical allocation first
+	if pool.Status.AllocatedHistory != nil {
+		for k, v := range pool.Status.AllocatedHistory {
+			if machineID == v {
+				ipObj, err = a.Get(machineID, "", net.ParseIP(k))
+				if err != nil {
+					return "", errors.Wrapf(err, "failed to reuse historical IP %s", k)
+				}
+
+				break
+			}
+		}
+	}
+
+	// If no historical IP found, allocate a new one
+	if ipObj == nil {
+		ipObj, err = a.Get(machineID, "", nil)
+		if err != nil {
+			return "", errors.Wrap(err, "failed to allocate new IP from pool")
+		}
+	}
+
+	return ipObj.Address.IP.String(), nil
 }

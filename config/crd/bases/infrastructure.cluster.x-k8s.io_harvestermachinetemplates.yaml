@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.18.0
+    controller-gen.kubebuilder.io/version: v0.16.5
   name: harvestermachinetemplates.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -60,6 +60,32 @@ spec:
                         description: Memory is the memory size to assign to the VM
                           (should be similar to pod.spec.containers.resources.limits).
                         type: string
+                      networkConfig:
+                        description: |-
+                          NetworkConfig is the static network configuration for this specific machine.
+                          If set, this takes precedence over the cluster-level VMNetworkConfig IP pool allocation.
+                        properties:
+                          address:
+                            description: Address is the static IP address for the
+                              VM (e.g. "172.16.3.40").
+                            type: string
+                          dnsSearch:
+                            description: DNSSearch is a list of DNS search domains.
+                            items:
+                              type: string
+                            type: array
+                          dnsServers:
+                            description: DNSServers is a list of DNS server IP addresses.
+                            items:
+                              type: string
+                            type: array
+                          gateway:
+                            description: Gateway is the gateway IP address.
+                            type: string
+                        required:
+                        - address
+                        - gateway
+                        type: object
                       networks:
                         description: |-
                           Networks is a list of Networks to attach to the VM.

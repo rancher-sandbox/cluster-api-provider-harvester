@@ -81,6 +81,13 @@ const (
 	HarvesterAuthenticationFailedReason = "HarvesterAuthenticationFailed"
 	// HarvesterConnectionReadyReason documents that connection and authentication to Harvester API is successful.
 	HarvesterConnectionReadyReason = "HarvesterConnectionReady"
+
+	// VMIPPoolReadyCondition documents the status of the VM IP pool for static IP allocation.
+	VMIPPoolReadyCondition clusterv1.ConditionType = "VMIPPoolReady"
+	// VMIPPoolCreationFailedReason documents that the VM IP pool creation failed.
+	VMIPPoolCreationFailedReason = "VMIPPoolCreationFailed"
+	// VMIPPoolReadyReason documents that the VM IP pool is ready.
+	VMIPPoolReadyReason = "VMIPPoolReady"
 )
 
 const (
@@ -113,6 +120,37 @@ type HarvesterClusterSpec struct {
 	// It needs a reference to a ConfigMap containing the cloud provider deployment manifests, that are used by a ClusterResourceSet.
 	// +optional
 	UpdateCloudProviderConfig UpdateCloudProviderConfig `json:"updateCloudProviderConfig,omitempty"`
+
+	// VMNetworkConfig is the network configuration for VMs that use static IPs from a pool.
+	// +optional
+	VMNetworkConfig *VMNetworkConfig `json:"vmNetworkConfig,omitempty"`
+}
+
+// VMNetworkConfig describes the network configuration for VM static IP allocation.
+type VMNetworkConfig struct {
+	// IPPoolRef is a reference to an existing IPPool in Harvester for VM IP allocation.
+	// Mutually exclusive with IPPool.
+	// +optional
+	IPPoolRef string `json:"ipPoolRef,omitempty"`
+
+	// IPPool defines a new IPPool to create in Harvester for VM IP allocation.
+	// Mutually exclusive with IPPoolRef.
+	// +optional
+	IPPool *IpPool `json:"ipPool,omitempty"`
+
+	// Gateway is the gateway IP address for the VM network.
+	Gateway string `json:"gateway"`
+
+	// SubnetMask is the subnet mask for the VM network (e.g. "255.255.0.0").
+	SubnetMask string `json:"subnetMask"`
+
+	// DNSServers is a list of DNS server IP addresses.
+	// +optional
+	DNSServers []string `json:"dnsServers,omitempty"`
+
+	// DNSSearch is a list of DNS search domains.
+	// +optional
+	DNSSearch []string `json:"dnsSearch,omitempty"`
 }
 
 // SecretKey is a reference to a Secret which stores Identity information for the Target Harvester Cluster.
