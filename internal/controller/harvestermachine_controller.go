@@ -1114,6 +1114,28 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 	logger.Info("Released VM IP back to pool", "ip", machine.Status.AllocatedIPAddress, "machine", machine.Name)
 }
 
+// removeEtcdMemberIfControlPlane removes the etcd member for a control-plane machine
+// from the workload cluster before VM deletion. This prevents stale etcd members from
+// blocking replacement nodes from joining the cluster.
+// Errors are logged as warnings but do not block deletion.
+func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Scope) {
+	logger := hvScope.Logger
+
+	// Skip if not a control-plane machine
+	if _, ok := hvScope.HarvesterMachine.Labels[clusterv1.MachineControlPlaneLabel]; !ok {
+		return
+	}
+
+	workloadConfig, err := getWorkloadClusterConfig(hvScope)
+	if err != nil {
+		logger.Info("Warning: failed to get workload cluster config for etcd cleanup, skipping",
+			"error", err)
+		return
+	}
+
+	locutil.RemoveEtcdMember(hvScope.Ctx, *logger, workloadConfig, hvScope.HarvesterMachine.Name)
+}
+
 // ReconcileDelete deletes a HarvesterMachine with all its dependencies.
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
 	logger := log.FromContext(hvScope.Ctx)
@@ -1121,6 +1143,9 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 
 	// Release allocated IP back to pool before deletion
 	r.releaseVMIP(&hvScope)
+
+	// Remove etcd member from workload cluster before VM deletion (control-plane only)
+	r.removeEtcdMemberIfControlPlane(&hvScope)
 
 	err := hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
 		hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.DeleteOptions{})
