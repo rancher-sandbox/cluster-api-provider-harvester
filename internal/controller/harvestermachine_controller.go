@@ -475,7 +475,34 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 	hvScope.HarvesterMachine.Status.Ready = true
 
+	// Initialize workload cluster node: set providerID and remove uninitialized taint.
+	// This bypasses the cloud-provider bootstrap chicken-and-egg problem.
+	r.initializeWorkloadNode(hvScope)
+
 	return ctrl.Result{}, nil
+}
+
+// initializeWorkloadNode sets the providerID and removes the cloud-provider
+// uninitialized taint on the workload cluster node corresponding to this machine.
+// Errors are logged as warnings but do not block reconciliation.
+func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
+	if hvScope.HarvesterMachine.Spec.ProviderID == "" {
+		return
+	}
+
+	workloadConfig, err := getWorkloadClusterConfig(hvScope)
+	if err != nil {
+		// Workload cluster not ready yet, will retry on next reconcile
+		return
+	}
+
+	locutil.InitializeWorkloadNode(
+		hvScope.Ctx,
+		*hvScope.Logger,
+		workloadConfig,
+		hvScope.HarvesterMachine.Name,
+		hvScope.HarvesterMachine.Spec.ProviderID,
+	)
 }
 
 func getProviderIDFromWorkloadCluster(hvScope *Scope) (string, error) {
