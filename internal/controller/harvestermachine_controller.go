@@ -896,8 +896,8 @@ config:
 			Domain: kubevirtv1.DomainSpec{
 				CPU: &kubevirtv1.CPU{
 					Cores:   hvScope.HarvesterMachine.Spec.CPU,
-					Sockets: hvScope.HarvesterMachine.Spec.CPU,
-					Threads: hvScope.HarvesterMachine.Spec.CPU,
+					Sockets: 1,
+					Threads: 1,
 				},
 				Devices: kubevirtv1.Devices{
 					Inputs: []kubevirtv1.Input{
