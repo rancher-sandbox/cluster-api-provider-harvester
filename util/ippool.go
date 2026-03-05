@@ -74,9 +74,14 @@ func (s *Store) Reserve(id, _ string, ip net.IP, _ string) (bool, error) {
 		}
 	}
 
-	if s.Status.AllocatedHistory != nil {
-		s.Status.AllocatedHistory[ipStr] = id
+	// Add to Allocated map
+	if s.Status.Allocated == nil {
+		s.Status.Allocated = make(map[string]string)
 	}
+
+	s.Status.Allocated[ipStr] = id
+	s.Status.LastAllocated = ipStr
+	s.Status.Available--
 
 	return true, nil
 }
