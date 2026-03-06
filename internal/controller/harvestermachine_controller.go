@@ -938,6 +938,9 @@ config:
 					Interfaces: interfaces,
 					Disks:      disks,
 				},
+				Memory: &kubevirtv1.Memory{
+					Guest: quantityPtr(resource.MustParse(hvScope.HarvesterMachine.Spec.Memory)),
+				},
 				Resources: kubevirtv1.ResourceRequirements{
 					Requests: v1.ResourceList{
 						"memory": resource.MustParse(hvScope.HarvesterMachine.Spec.Memory),
@@ -1259,4 +1262,9 @@ func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvS
 
 		logger.Info("Deleted orphaned PVC", "pvc", pvc.Name)
 	}
+}
+
+// quantityPtr returns a pointer to a resource.Quantity.
+func quantityPtr(q resource.Quantity) *resource.Quantity {
+	return &q
 }
