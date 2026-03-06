@@ -1,0 +1,44 @@
+# CAPHV Helm chart values
+
+image:
+  repository: ghcr.io/rancher-sandbox/cluster-api-provider-harvester
+  tag: v0.2.0
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 1024Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+# Enable validating webhooks for HarvesterMachine and HarvesterCluster
+webhooks:
+  enabled: false
+  # cert-manager Certificate secretName for webhook TLS
+  certSecretName: caphv-webhook-tls
+  # Create cert-manager Issuer + Certificate automatically
+  certManager:
+    enabled: false
+
+# Leader election for HA deployments
+leaderElect: true
+
+# Metrics configuration
+metrics:
+  bindAddress: "127.0.0.1:8080"
+
+# Health probe bind address
+healthProbe:
+  bindAddress: ":8081"
+
+# Service account
+serviceAccount:
+  create: true
+  name: caphv-controller-manager
+
+# Namespace (overridden by helm install -n)
+namespace: caphv-system
