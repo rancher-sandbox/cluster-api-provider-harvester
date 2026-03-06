@@ -760,6 +760,7 @@ try to specify the namespace using the format <NAMESPACE>/<NAME>`,
 	cloudInitBase := `package_update: true
 packages:
   - qemu-guest-agent
+  - iptables
 runcmd:
   - - systemctl
     - enable
