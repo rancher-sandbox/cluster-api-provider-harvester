@@ -23,7 +23,9 @@ import (
 
 var _ = Describe("MergeCloudInitStrings", func() {
 	var cloudinit1 string
+
 	var cloudinit2 string
+
 	var cloudinit3 string
 
 	BeforeEach(func() {
@@ -48,6 +50,7 @@ runcmd:
 	It("Should show the right resulting cloud-init", func() {
 		mergedCloudInit, err := MergeCloudInitData(cloudinit1, cloudinit2, cloudinit3)
 		Expect(err).ToNot(HaveOccurred())
+
 		mergedCloudInitString := string(mergedCloudInit)
 		_, err = GinkgoWriter.Write(mergedCloudInit)
 		Expect(err).NotTo(HaveOccurred())

@@ -30,11 +30,11 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 	var resultCloudInit []byte
 
 	// resCloudInitObj will be an object that stores the result of merging all the cloud-init objects
-	resCloudInitObj := make(map[string]interface{})
+	resCloudInitObj := make(map[string]any)
 
 	// First of all we iterate over all the cloud-init objects
 	for _, cloudInit := range cloudInits {
-		cloudInitObj := make(map[string]interface{})
+		cloudInitObj := make(map[string]any)
 
 		err := yaml.Unmarshal([]byte(cloudInit), &cloudInitObj)
 		if err != nil {
@@ -45,22 +45,22 @@ func MergeCloudInitData(cloudInits ...string) ([]byte, error) {
 		for k, v := range cloudInitObj {
 			// If the key is a list section, we append the values to the resulting list key
 			if slices.Contains(cloudInitListSections, k) {
-				listSection := []interface{}{}
+				listSection := []any{}
 
 				// Get the current list section from the resulting cloud-init object if it exists
 				if resCloudInitObj[k] != nil {
 					var ok bool
 
-					listSection, ok = resCloudInitObj[k].([]interface{})
+					listSection, ok = resCloudInitObj[k].([]any)
 					if !ok {
-						return nil, errors.New("unable to cast list section to []interface{}")
+						return nil, errors.New("unable to cast list section to []any")
 					}
 				}
 
 				// Append the values to the resulting list section
-				value, ok := v.([]interface{})
+				value, ok := v.([]any)
 				if !ok {
-					return nil, errors.New("unable to cast value to []interface{}")
+					return nil, errors.New("unable to cast value to []any")
 				}
 
 				listSection = append(listSection, value...)

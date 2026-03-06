@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package controller contains the HarvesterMachine controller logic.
 package controller
 
 import (
@@ -86,6 +85,7 @@ const (
 	hvAnnotationSSH        = "harvesterhci.io/sshNames"
 	hvAnnotationImageID    = "harvesterhci.io/imageId"
 	listImagesSelector     = "spec.displayName"
+	requeueDelay           = 10 * time.Second
 )
 
 var (
@@ -214,7 +214,7 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !hvMachine.DeletionTimestamp.IsZero() {
-		return r.ReconcileDelete(hvScope)
+		return r.ReconcileDelete(hvScope) //nolint:contextcheck
 	}
 
 	return r.ReconcileNormal(&hvScope) //nolint:contextcheck
@@ -304,17 +304,18 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 	// Resolve effective network config: cluster-level pool allocation or machine-level static config
 	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil && hvScope.HarvesterMachine.Spec.NetworkConfig == nil {
 		// Allocate IP from cluster-level VM IP pool
-		if err := r.allocateVMIP(hvScope); err != nil {
-			logger.Error(err, "failed to allocate VM IP from pool")
+		allocErr := r.allocateVMIP(hvScope)
+		if allocErr != nil {
+			logger.Error(allocErr, "failed to allocate VM IP from pool")
 
 			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
 				Type:    infrav1.VMIPAllocatedCondition,
 				Status:  v1.ConditionFalse,
 				Reason:  infrav1.VMIPAllocationFailedReason,
-				Message: fmt.Sprintf("Failed to allocate VM IP: %v", err),
+				Message: fmt.Sprintf("Failed to allocate VM IP: %v", allocErr),
 			})
 
-			return ctrl.Result{RequeueAfter: requeueTimeShort}, err
+			return ctrl.Result{RequeueAfter: requeueTimeShort}, allocErr
 		}
 
 		vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
@@ -486,6 +487,8 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 // initializeWorkloadNode sets the providerID and removes the cloud-provider
 // uninitialized taint on the workload cluster node corresponding to this machine.
 // Errors are logged as warnings but do not block reconciliation.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 	if hvScope.HarvesterMachine.Spec.ProviderID == "" {
 		return
@@ -631,8 +634,8 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 	targetNS := hvScope.HarvesterCluster.Spec.TargetNamespace
 
 	// Build PVC list for all volumes
-	var pvcs []*v1.PersistentVolumeClaim
-	var disks []diskInfo
+	pvcs := make([]*v1.PersistentVolumeClaim, 0, len(hvScope.HarvesterMachine.Spec.Volumes))
+	disks := make([]diskInfo, 0, len(hvScope.HarvesterMachine.Spec.Volumes))
 
 	for i, vol := range hvScope.HarvesterMachine.Spec.Volumes {
 		diskRandomID := locutil.RandomID()
@@ -724,6 +727,7 @@ func buildPVCForVolume(
 		if err != nil {
 			return nil, errors.Wrapf(err, "unable to find VM image %s", vol.ImageName)
 		}
+
 		scName := "longhorn-" + vmImage.Name
 		pvc.Spec.StorageClassName = &scName
 		pvc.Annotations[hvAnnotationImageID] = vmImage.Namespace + "/" + vmImage.Name
@@ -832,7 +836,9 @@ runcmd:
 		}
 
 		// Build network-config v1 format (required for SLES)
-		networkConfigV1 := fmt.Sprintf(`version: 1
+		var netCfgBuilder strings.Builder
+
+		fmt.Fprintf(&netCfgBuilder, `version: 1
 config:
   - type: physical
     name: eth0
@@ -846,17 +852,18 @@ config:
 `, netCfg.Address, subnetMask, netCfg.Gateway)
 
 		for _, dns := range netCfg.DNSServers {
-			networkConfigV1 += fmt.Sprintf("      - %s\n", dns)
+			fmt.Fprintf(&netCfgBuilder, "      - %s\n", dns)
 		}
 
 		if len(netCfg.DNSSearch) > 0 {
-			networkConfigV1 += "    search:\n"
+			netCfgBuilder.WriteString("    search:\n")
+
 			for _, search := range netCfg.DNSSearch {
-				networkConfigV1 += fmt.Sprintf("      - %s\n", search)
+				fmt.Fprintf(&netCfgBuilder, "      - %s\n", search)
 			}
 		}
 
-		secretData["networkdata"] = []byte(networkConfigV1)
+		secretData["networkdata"] = []byte(netCfgBuilder.String())
 	}
 
 	// create cloud-init secret for reference in Harvester.
@@ -961,10 +968,15 @@ config:
 
 	// Build disk names annotation as JSON array
 	diskNames := make([]string, 0, len(disks))
+
 	for _, d := range disks {
 		diskNames = append(diskNames, d.pvcName)
 	}
-	diskNamesJSON, _ := json.Marshal(diskNames)
+
+	diskNamesJSON, err := json.Marshal(diskNames)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to marshal disk names to JSON")
+	}
 
 	vmTemplate = &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1065,7 +1077,7 @@ func buildAffinity(hvScope *Scope) *v1.Affinity {
 }
 
 func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.HarvesterMachine) []kubevirtv1.Network {
-	networks := []kubevirtv1.Network{}
+	networks := make([]kubevirtv1.Network, 0, len(harvesterMachine.Spec.Networks))
 	for i, network := range harvesterMachine.Spec.Networks {
 		networks = append(networks, kubevirtv1.Network{
 			Name: "nic-" + strconv.Itoa(i+1),
@@ -1103,6 +1115,8 @@ func getCloudInitData(hvScope *Scope) (string, error) {
 
 // allocateVMIP allocates an IP from the cluster-level VM IP pool for this machine.
 // It is idempotent: if an IP is already allocated, it returns early.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 	machine := hvScope.HarvesterMachine
 	logger := hvScope.Logger
@@ -1110,17 +1124,18 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 	// Return early if already allocated (idempotent)
 	if machine.Status.AllocatedIPAddress != "" {
 		logger.V(3).Info("VM IP already allocated", "ip", machine.Status.AllocatedIPAddress)
+
 		return nil
 	}
 
 	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
 	if vmNetCfg == nil {
-		return fmt.Errorf("VMNetworkConfig is nil on HarvesterCluster")
+		return errors.New("VMNetworkConfig is nil on HarvesterCluster")
 	}
 
 	poolRef := vmNetCfg.IPPoolRef
 	if poolRef == "" {
-		return fmt.Errorf("VMNetworkConfig.IPPoolRef is empty, ensure reconcileVMIPPool has run")
+		return errors.New("VMNetworkConfig.IPPoolRef is empty, ensure reconcileVMIPPool has run")
 	}
 
 	// Get the pool from Harvester
@@ -1132,11 +1147,13 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 
 	// Check for existing allocation in pool
 	machineID := machine.Namespace + "/" + machine.Name
+
 	if pool.Status.Allocated != nil {
 		for ip, id := range pool.Status.Allocated {
 			if id == machineID {
 				machine.Status.AllocatedIPAddress = ip
 				logger.Info("Found existing IP allocation in pool", "ip", ip)
+
 				return nil
 			}
 		}
@@ -1163,6 +1180,8 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 
 // releaseVMIP releases the allocated IP back to the pool during machine deletion.
 // Errors are logged as warnings but do not block deletion.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 	machine := hvScope.HarvesterMachine
 	logger := hvScope.Logger
@@ -1174,6 +1193,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
 	if vmNetCfg == nil || vmNetCfg.IPPoolRef == "" {
 		logger.Info("No VMNetworkConfig/IPPoolRef, skipping IP release")
+
 		return
 	}
 
@@ -1181,6 +1201,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 		context.TODO(), vmNetCfg.IPPoolRef, metav1.GetOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to get VM IP pool for release, skipping", "error", err)
+
 		return
 	}
 
@@ -1189,11 +1210,14 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 
 	if ip == nil {
 		logger.Info("Warning: failed to parse allocated IP for release", "ip", machine.Status.AllocatedIPAddress)
+
 		return
 	}
 
-	if err := store.Release(ip); err != nil {
-		logger.Info("Warning: failed to release IP from pool", "error", err, "ip", machine.Status.AllocatedIPAddress)
+	releaseErr := store.Release(ip)
+	if releaseErr != nil {
+		logger.Info("Warning: failed to release IP from pool", "error", releaseErr, "ip", machine.Status.AllocatedIPAddress)
+
 		return
 	}
 
@@ -1201,6 +1225,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 		context.TODO(), pool, metav1.UpdateOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to update pool after IP release", "error", err)
+
 		return
 	}
 
@@ -1211,6 +1236,8 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 // from the workload cluster before VM deletion. This prevents stale etcd members from
 // blocking replacement nodes from joining the cluster.
 // Errors are logged as warnings but do not block deletion.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Scope) {
 	logger := hvScope.Logger
 
@@ -1223,6 +1250,7 @@ func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Sco
 	if err != nil {
 		logger.Info("Warning: failed to get workload cluster config for etcd cleanup, skipping",
 			"error", err)
+
 		return
 	}
 
@@ -1284,7 +1312,7 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 
 			logger.Info("VM delete requested, requeuing to wait for termination before PVC cleanup")
 
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: requeueDelay}, nil
 		}
 	}
 
@@ -1307,6 +1335,7 @@ func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvS
 	pvcList, err := hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to list PVCs for cleanup", "error", err)
+
 		return
 	}
 
@@ -1319,6 +1348,7 @@ func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvS
 		err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			logger.Info("Warning: failed to delete orphaned PVC", "pvc", pvc.Name, "error", err)
+
 			continue
 		}
 

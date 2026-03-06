@@ -22,16 +22,17 @@ import (
 	"net"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // HarvesterMachineValidator implements admission.CustomValidator for HarvesterMachine.
 type HarvesterMachineValidator struct{}
 
-// SetupWebhookWithManager sets up the validating webhook for HarvesterMachine.
+// SetupHarvesterMachineWebhookWithManager sets up the validating webhook for HarvesterMachine.
 func SetupHarvesterMachineWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&HarvesterMachine{}).
@@ -39,6 +40,7 @@ func SetupHarvesterMachineWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
+//nolint:lll
 // +kubebuilder:webhook:path=/validate-infrastructure-cluster-x-k8s-io-v1alpha1-harvestermachine,mutating=false,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines,verbs=create;update,versions=v1alpha1,name=vharvestermachine.kb.io,admissionReviewVersions=v1
 
 var _ admission.CustomValidator = &HarvesterMachineValidator{}
@@ -49,6 +51,7 @@ func (v *HarvesterMachineValidator) ValidateCreate(_ context.Context, obj runtim
 	if !ok {
 		return nil, fmt.Errorf("expected HarvesterMachine, got %T", obj)
 	}
+
 	return validateHarvesterMachine(m)
 }
 
@@ -58,6 +61,7 @@ func (v *HarvesterMachineValidator) ValidateUpdate(_ context.Context, _, newObj 
 	if !ok {
 		return nil, fmt.Errorf("expected HarvesterMachine, got %T", newObj)
 	}
+
 	return validateHarvesterMachine(m)
 }
 
@@ -75,8 +79,11 @@ func validateHarvesterMachine(r *HarvesterMachine) (admission.Warnings, error) {
 
 	if r.Spec.Memory == "" {
 		errs = append(errs, "spec.memory is required")
-	} else if _, err := resource.ParseQuantity(r.Spec.Memory); err != nil {
-		errs = append(errs, fmt.Sprintf("spec.memory %q is not a valid resource quantity: %v", r.Spec.Memory, err))
+	} else {
+		_, err := resource.ParseQuantity(r.Spec.Memory)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("spec.memory %q is not a valid resource quantity: %v", r.Spec.Memory, err))
+		}
 	}
 
 	if r.Spec.SSHUser == "" {
@@ -95,9 +102,11 @@ func validateHarvesterMachine(r *HarvesterMachine) (admission.Warnings, error) {
 		if vol.VolumeType != "image" && vol.VolumeType != "storageClass" {
 			errs = append(errs, fmt.Sprintf("spec.volumes[%d].volumeType must be 'image' or 'storageClass'", i))
 		}
+
 		if vol.VolumeType == "image" && vol.ImageName == "" {
 			errs = append(errs, fmt.Sprintf("spec.volumes[%d].imageName is required when volumeType is 'image'", i))
 		}
+
 		if vol.VolumeType == "storageClass" && vol.StorageClass == "" {
 			errs = append(errs, fmt.Sprintf("spec.volumes[%d].storageClass is required when volumeType is 'storageClass'", i))
 		}
@@ -111,6 +120,7 @@ func validateHarvesterMachine(r *HarvesterMachine) (admission.Warnings, error) {
 		if r.Spec.NetworkConfig.Address == "" {
 			errs = append(errs, "spec.networkConfig.address is required when networkConfig is set")
 		}
+
 		if r.Spec.NetworkConfig.Gateway == "" {
 			errs = append(errs, "spec.networkConfig.gateway is required when networkConfig is set")
 		} else if net.ParseIP(r.Spec.NetworkConfig.Gateway) == nil {

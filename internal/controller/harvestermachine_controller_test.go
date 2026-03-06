@@ -27,6 +27,7 @@ import (
 
 var _ = Describe("Convert HarvesterMachine networks to Kubevirt Networks", func() {
 	var hvMachineNetworks *v1alpha1.HarvesterMachine
+
 	var kvNetworks []kubevirtv1.Network
 
 	BeforeEach(func() {

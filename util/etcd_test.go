@@ -22,12 +22,12 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ = Describe("Etcd utilities", func() {
-
 	Describe("isPodReady", func() {
 		It("should return true for a Running pod with Ready condition", func() {
 			pod := &v1.Pod{
@@ -96,6 +96,7 @@ var _ = Describe("Etcd utilities", func() {
 			}`
 
 			var resp EtcdMemberListResponse
+
 			err := json.Unmarshal([]byte(raw), &resp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.Members).To(HaveLen(2))
@@ -107,7 +108,9 @@ var _ = Describe("Etcd utilities", func() {
 
 		It("should parse an empty members list", func() {
 			raw := `{"members": []}`
+
 			var resp EtcdMemberListResponse
+
 			err := json.Unmarshal([]byte(raw), &resp)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resp.Members).To(BeEmpty())
@@ -127,26 +130,34 @@ var _ = Describe("Etcd utilities", func() {
 
 		It("should match a member by node name prefix with dash separator", func() {
 			deletedNodeName := "capi-test-cp-fghij"
+
 			var found *EtcdMember
+
 			for i := range members {
 				if strings.HasPrefix(members[i].Name, deletedNodeName+"-") || members[i].Name == deletedNodeName {
 					found = &members[i]
+
 					break
 				}
 			}
+
 			Expect(found).ToNot(BeNil())
 			Expect(found.ID).To(Equal(uint64(222)))
 		})
 
 		It("should not match when no member corresponds to the node name", func() {
 			deletedNodeName := "capi-test-cp-zzzzz"
+
 			var found *EtcdMember
+
 			for i := range members {
 				if strings.HasPrefix(members[i].Name, deletedNodeName+"-") || members[i].Name == deletedNodeName {
 					found = &members[i]
+
 					break
 				}
 			}
+
 			Expect(found).To(BeNil())
 		})
 
@@ -154,13 +165,17 @@ var _ = Describe("Etcd utilities", func() {
 			// "capi-test-cp" is a prefix of all members but should not match
 			// because we require the dash separator after the full node name
 			deletedNodeName := "capi-test-cp"
+
 			var found *EtcdMember
+
 			for i := range members {
 				if strings.HasPrefix(members[i].Name, deletedNodeName+"-") || members[i].Name == deletedNodeName {
 					found = &members[i]
+
 					break
 				}
 			}
+
 			// This WILL match the first member since "capi-test-cp-" is a prefix
 			// of "capi-test-cp-abcde-a1b2c". In practice, CAPI machine names
 			// are unique and include the full hash, so this is safe.
@@ -170,13 +185,17 @@ var _ = Describe("Etcd utilities", func() {
 		It("should match when member name exactly equals node name", func() {
 			members = append(members, EtcdMember{ID: 444, Name: "exact-node-name"})
 			deletedNodeName := "exact-node-name"
+
 			var found *EtcdMember
+
 			for i := range members {
 				if strings.HasPrefix(members[i].Name, deletedNodeName+"-") || members[i].Name == deletedNodeName {
 					found = &members[i]
+
 					break
 				}
 			}
+
 			Expect(found).ToNot(BeNil())
 			Expect(found.ID).To(Equal(uint64(444)))
 		})
@@ -204,13 +223,16 @@ var _ = Describe("Etcd utilities", func() {
 			}
 
 			var selected *v1.Pod
+
 			for i := range pods {
 				pod := &pods[i]
 				if pod.Spec.NodeName == "deleted-node" {
 					continue
 				}
+
 				if isPodReady(pod) {
 					selected = pod
+
 					break
 				}
 			}
