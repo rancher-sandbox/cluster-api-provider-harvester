@@ -4,8 +4,9 @@ description: Cluster API Provider Harvester (CAPHV) - Infrastructure provider fo
 type: application
 version: 0.2.0
 appVersion: "v0.2.0"
-home: https://github.com/rancher-sandbox/cluster-api-provider-harvester
+home: https://github.com/jniedergang/cluster-api-provider-harvester
 sources:
+  - https://github.com/jniedergang/cluster-api-provider-harvester
   - https://github.com/rancher-sandbox/cluster-api-provider-harvester
 keywords:
   - cluster-api
@@ -14,4 +15,6 @@ keywords:
   - infrastructure
   - capi
 maintainers:
+  - name: Julien Niedergang
+    url: https://github.com/jniedergang
   - name: SUSE

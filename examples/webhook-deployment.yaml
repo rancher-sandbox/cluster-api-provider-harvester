@@ -1,6 +1,15 @@
-# Phase 19 — CAPHV Validating Webhooks
-# Requires: cert-manager installed and running
-# Deploy: kubectl apply -f phase19-webhooks.yaml
+# Example: CAPHV Validating Webhooks
+#
+# Deploys validating webhooks for HarvesterMachine and HarvesterCluster resources.
+# Requires: cert-manager installed and running on the management cluster.
+#
+# The Helm chart can deploy these automatically with:
+#   webhooks.enabled=true
+#   webhooks.certManager.enabled=true
+#
+# This standalone manifest is provided for non-Helm deployments.
+#
+# Deploy: kubectl apply -f webhook-deployment.yaml
 ---
 # Self-signed Issuer for webhook TLS
 apiVersion: cert-manager.io/v1
