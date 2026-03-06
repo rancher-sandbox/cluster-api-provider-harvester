@@ -1003,6 +1003,10 @@ config:
 					Requests: v1.ResourceList{
 						"memory": resource.MustParse(hvScope.HarvesterMachine.Spec.Memory),
 					},
+					Limits: v1.ResourceList{
+						"cpu":    *resource.NewQuantity(int64(hvScope.HarvesterMachine.Spec.CPU), resource.DecimalSI),
+						"memory": resource.MustParse(hvScope.HarvesterMachine.Spec.Memory),
+					},
 				},
 			},
 			Affinity: affinity,
