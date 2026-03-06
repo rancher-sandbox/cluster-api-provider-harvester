@@ -361,7 +361,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			Message: "VM already exists and is provisioned",
 		})
 
-		if *existingVM.Spec.Running {
+		if isVMRunning(existingVM) {
 			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
 			if err != nil {
 				hvScope.HarvesterMachine.Status.Ready = false
@@ -559,6 +559,26 @@ func getWorkloadClusterConfig(hvScope *Scope) (*rest.Config, error) {
 	return workloadConfig, nil
 }
 
+func runStrategyPtr(s kubevirtv1.VirtualMachineRunStrategy) *kubevirtv1.VirtualMachineRunStrategy {
+	return &s
+}
+
+// isVMRunning checks whether a VM is intended to be running.
+// KubeVirt VMs can use either spec.running (bool pointer) or spec.runStrategy.
+// Harvester uses runStrategy instead of running, which makes spec.running nil.
+// We use KubeVirt's built-in RunStrategy() method that handles both cases.
+func isVMRunning(vm *kubevirtv1.VirtualMachine) bool {
+	strategy, err := vm.RunStrategy()
+	if err != nil {
+		// Both running and runStrategy set (mutually exclusive) — fallback to status
+		return vm.Status.Ready
+	}
+
+	return strategy == kubevirtv1.RunStrategyAlways ||
+		strategy == kubevirtv1.RunStrategyRerunOnFailure ||
+		strategy == kubevirtv1.RunStrategyOnce
+}
+
 func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harvclient.Clientset) ([]clusterv1.MachineAddress, error) {
 	ipAddresses := []clusterv1.MachineAddress{}
 
@@ -640,9 +660,8 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 			Labels: vmLabels,
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
-			Running: locutil.NewTrue(),
-
-			Template: vmTemplate,
+			RunStrategy: runStrategyPtr(kubevirtv1.RunStrategyAlways),
+			Template:    vmTemplate,
 		},
 	}
 
