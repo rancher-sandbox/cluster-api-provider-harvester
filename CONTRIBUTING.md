@@ -73,7 +73,7 @@ export CAPHV_HARVESTER_SSH="rancher@<your-harvester-ip>"
 
 ## Pull Request Process
 
-1. Fork the repository and create a feature branch from `harvester-v1.6.1`
+1. Fork the repository and create a feature branch from `harvester-v1.7.1`
 2. Make your changes, ensuring all tests pass
 3. Write clear commit messages describing **why** the change was made
 4. Open a PR with a description of the change and any relevant issue references

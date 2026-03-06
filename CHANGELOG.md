@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.6.1 compatibility and production-ready features.
+This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
 ## [v0.2.1] - 2026-03-06
 
@@ -23,7 +23,7 @@ This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-ap
 
 ### Added
 
-- **Harvester v1.6.1 compatibility**: Updated API clients, tested against Harvester v1.6.1 + Rancher v2.13.1
+- **Harvester v1.7.1 compatibility**: Updated API clients, tested against Harvester v1.7.1 + Rancher v2.13.1
 - **Multi-disk VM support**: Multiple volumes per VM (image-backed boot disk + storageClass data disks) with configurable boot order — fixes upstream limitation of single-disk only
 - **IPPool-based IP allocation**: Automatic static IP assignment from Harvester IPPool resources, replacing manual or DHCP-only approaches
 - **Network-config v1**: Cloud-init network configuration compatible with SLES/openSUSE (v2 not supported)

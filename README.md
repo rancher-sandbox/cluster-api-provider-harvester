@@ -1,6 +1,6 @@
 # Cluster API Provider Harvester (CAPHV)
 
-> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.6.1 compatibility and production-ready features.
+> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.7.1 compatibility and production-ready features.
 
 ## Overview
 
@@ -10,7 +10,7 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 
 | Feature | Upstream v0.1.x | This fork v0.2.0 |
 |---------|----------------|-------------------|
-| Harvester compatibility | v1.2.0 | v1.6.1 |
+| Harvester compatibility | v1.2.0 | v1.7.1 |
 | Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
 | IP allocation | Manual / DHCP | Automatic from Harvester IPPool |
 | Cloud-init | Basic | Network-config v1 (SLES), static IP, custom merge |
@@ -29,7 +29,7 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 
 ## Prerequisites
 
-- Harvester HCI v1.6.x cluster
+- Harvester HCI v1.7.x cluster
 - Management cluster (RKE2 recommended) with:
   - Cluster API Core (v1.10+)
   - RKE2 Bootstrap + ControlPlane providers (v0.21+)
@@ -349,7 +349,7 @@ make test
 | Version | Date | Key changes |
 |---------|------|-------------|
 | v0.2.1 | 2026-03-06 | ClusterClass (harvester-rke2), CLI generator (caphv-generate), Helm ClusterClass option |
-| v0.2.0 | 2026-03-06 | Harvester v1.6.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
+| v0.2.0 | 2026-03-06 | Harvester v1.7.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
 | v0.1.6 | 2024-xx-xx | Upstream: initial CAPI contract, single disk, DHCP only |
 
 ## License
