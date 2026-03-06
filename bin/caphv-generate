@@ -94,17 +94,17 @@ USAGE
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 prompt() {
-  local var="$1" msg="$2" default="$3"
+  local var="$1" msg="$2" default="${3-__REQUIRED__}"
   local val
-  if [[ -n "$default" ]]; then
-    read -rp "$msg [$default]: " val
-    val="${val:-$default}"
-  else
-    read -rp "$msg: " val
+  if [[ "$default" == "__REQUIRED__" ]]; then
+    read -rp "$msg: " val || true
     while [[ -z "$val" ]]; do
       echo "  (required)" >&2
-      read -rp "$msg: " val
+      read -rp "$msg: " val || true
     done
+  else
+    read -rp "$msg [$default]: " val || true
+    val="${val:-$default}"
   fi
   eval "$var=\"\$val\""
 }
@@ -112,28 +112,28 @@ prompt() {
 interactive_mode() {
   echo "=== CAPHV Cluster Generator (interactive) ===" >&2
   echo "" >&2
-  prompt NAME        "Cluster name" ""
+  prompt NAME        "Cluster name"
   prompt NAMESPACE   "Namespace" "$NAME"
   prompt CP_REPLICAS "Control plane replicas" "3"
-  prompt WORKER_REPLICAS "Worker replicas" "2"
+  prompt WORKER_REPLICAS "Worker replicas" "1"
   prompt K8S_VERSION "Kubernetes version" "v1.31.14"
   prompt CPU         "CPU per VM" "2"
   prompt MEMORY      "Memory per VM" "4Gi"
-  prompt IMAGE       "VM image (namespace/name)" ""
+  prompt IMAGE       "VM image (namespace/name)"
   prompt DISK_SIZE   "Boot disk size" "40Gi"
   prompt EXTRA_DISK  "Extra data disk (size:storageClass, empty to skip)" ""
-  prompt SSH_KEYPAIR "SSH KeyPair (namespace/name)" ""
+  prompt SSH_KEYPAIR "SSH KeyPair (namespace/name)"
   prompt SSH_USER    "SSH user" "sles"
-  prompt NETWORK     "VM Network (namespace/name)" ""
-  prompt GATEWAY     "Network gateway" ""
-  prompt SUBNET_MASK "Subnet mask" ""
-  prompt IP_POOL     "IPPool name" ""
+  prompt NETWORK     "VM Network (namespace/name)"
+  prompt GATEWAY     "Network gateway"
+  prompt SUBNET_MASK "Subnet mask"
+  prompt IP_POOL     "IPPool name"
   prompt DNS         "DNS servers (comma-separated, empty to skip)" ""
-  prompt HARVESTER_KUBECONFIG "Harvester kubeconfig file path" ""
+  prompt HARVESTER_KUBECONFIG "Harvester kubeconfig file path"
   prompt CLASS       "ClusterClass name" "harvester-rke2"
 
   local apply_choice
-  read -rp "Apply directly? (y/N): " apply_choice
+  read -rp "Apply directly? (y/N): " apply_choice || true
   if [[ "${apply_choice,,}" == "y" ]]; then
     APPLY=true
     DRY_RUN=false
@@ -642,10 +642,7 @@ generate() {
   local HV_KUBECONFIG_B64
   HV_KUBECONFIG_B64="$(base64 -w0 < "$HARVESTER_KUBECONFIG")"
 
-  # ─── ClusterClass + Templates (per-namespace) ───
-  generate_clusterclass
-
-  # ─── Namespace ───
+  # ─── Namespace (must be first) ───
   cat <<EOF
 apiVersion: v1
 kind: Namespace
@@ -653,6 +650,9 @@ metadata:
   name: ${NAMESPACE}
 ---
 EOF
+
+  # ─── ClusterClass + Templates (per-namespace) ───
+  generate_clusterclass
 
   # ─── Secret (Harvester kubeconfig) ───
   cat <<EOF
