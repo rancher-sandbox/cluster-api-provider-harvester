@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -1188,8 +1189,11 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 
 	logger.V(5).Info("cloud-init secret deleted successfully: " + hvScope.HarvesterMachine.Name + "-cloud-init")
 
-	vm, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
-		hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.GetOptions{})
+	targetNS := hvScope.HarvesterCluster.Spec.TargetNamespace
+	machineName := hvScope.HarvesterMachine.Name
+
+	vm, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(targetNS).Get(
+		hvScope.Ctx, machineName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to get VM, error was different than NotFound")
@@ -1197,51 +1201,25 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 			return ctrl.Result{Requeue: true}, err
 		}
 
-		logger.Info("No VM found in Harvester that corresponds to HarvesterMachine...")
+		// VM is gone — clean up any orphaned PVCs by name prefix
+		logger.Info("No VM found, cleaning up orphaned PVCs")
+		r.deletePVCsByPrefix(hvScope.Ctx, &hvScope, targetNS, machineName+"-disk-")
 	} else {
 		logger.V(5).Info("found VM: " + vm.Namespace + "/" + vm.Name)
 
 		if (vm != &kubevirtv1.VirtualMachine{}) {
-			attachedPVCString := vm.Annotations[vmAnnotationPVC]
-			attachedPVCObj := []*v1.PersistentVolumeClaim{}
+			// Delete VM first
+			err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(targetNS).Delete(
+				hvScope.Ctx, machineName, metav1.DeleteOptions{})
+			if err != nil && !apierrors.IsNotFound(err) {
+				logger.Error(err, "unable to delete VM, error was different than NotFound")
 
-			if attachedPVCString != "" {
-				err = json.Unmarshal([]byte(attachedPVCString), &attachedPVCObj)
-				if err != nil {
-					return ctrl.Result{Requeue: true}, err
-				}
+				return ctrl.Result{Requeue: true}, err
 			}
 
-			err = hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
-				hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.DeleteOptions{})
-			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					logger.Error(err, "unable to delete VM, error was different than NotFound")
+			logger.Info("VM delete requested, requeuing to wait for termination before PVC cleanup")
 
-					return ctrl.Result{Requeue: true}, err
-				}
-
-				logger.Info("VM not found, doing nothing")
-				time.Sleep(time.Second)
-			}
-
-			logger.V(5).Info("VM deleted successfully: " + hvScope.HarvesterMachine.Name)
-
-			for _, pvc := range attachedPVCObj {
-				err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(hvScope.HarvesterCluster.Spec.TargetNamespace).Delete(
-					hvScope.Ctx, pvc.Name, metav1.DeleteOptions{})
-				if err != nil {
-					if !apierrors.IsNotFound(err) {
-						logger.Error(err, "unable to delete PVC, error was different than NotFound")
-
-						return ctrl.Result{Requeue: true}, err
-					}
-
-					logger.Info("attached PVC not found, continuing")
-				}
-
-				logger.V(5).Info("PVC deleted successfully: " + pvc.Name)
-			}
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 	}
 
@@ -1253,4 +1231,32 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// deletePVCsByPrefix lists all PVCs in the namespace and deletes those whose name
+// starts with the given prefix. This handles orphaned PVCs left behind when VM
+// deletion completes before PVC cleanup.
+func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvScope *Scope, namespace, prefix string) {
+	logger := hvScope.Logger
+
+	pvcList, err := hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		logger.Info("Warning: failed to list PVCs for cleanup", "error", err)
+		return
+	}
+
+	for i := range pvcList.Items {
+		pvc := &pvcList.Items[i]
+		if !strings.HasPrefix(pvc.Name, prefix) {
+			continue
+		}
+
+		err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{})
+		if err != nil && !apierrors.IsNotFound(err) {
+			logger.Info("Warning: failed to delete orphaned PVC", "pvc", pvc.Name, "error", err)
+			continue
+		}
+
+		logger.Info("Deleted orphaned PVC", "pvc", pvc.Name)
+	}
 }
