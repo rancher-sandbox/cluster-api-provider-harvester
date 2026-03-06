@@ -98,13 +98,13 @@ kubectl apply -f templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml
 # Generate all manifests
 bin/caphv-generate \
   --name my-cluster \
-  --image "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2" \
+  --image "default/my-vm-image.qcow2" \
   --ssh-keypair "default/my-ssh-key" \
-  --network "default/production" \
-  --gateway 172.16.0.1 \
-  --subnet-mask 255.255.0.0 \
-  --ip-pool capi-vm-pool \
-  --dns 172.16.3.6 \
+  --network "default/my-vm-network" \
+  --gateway 10.0.0.1 \
+  --subnet-mask 255.255.255.0 \
+  --ip-pool my-ip-pool \
+  --dns 10.0.0.53 \
   --harvester-kubeconfig ~/.kube/harvester.yaml \
   > cluster.yaml
 
@@ -123,6 +123,64 @@ The CLI generates: Namespace, Secret, Cluster (topology), ConfigMaps (CCM/CSI/Ca
 ```bash
 kubectl get cluster,machine,harvestermachine -n my-cluster
 ```
+
+## User Experience Summary
+
+### Prerequisites (one-time setup)
+
+On the management cluster:
+- Rancher + Turtles installed
+- CAPHV deployed via Helm (`clusterClass.enabled=true`)
+- Rancher `cacerts` setting configured (required for Turtles strict TLS mode with external TLS termination)
+- Harvester kubeconfig available locally
+
+### Create a cluster
+
+**Interactive mode (guided):**
+```bash
+caphv-generate --interactive
+```
+The script asks ~15 questions with sensible defaults, then generates and applies everything.
+
+**Flags mode (scriptable):**
+```bash
+caphv-generate \
+  --name my-cluster \
+  --cp-replicas 3 --worker-replicas 2 \
+  --image "default/my-vm-image.qcow2" \
+  --ssh-keypair "default/my-ssh-key" \
+  --network "default/my-vm-network" \
+  --gateway 10.0.0.1 --subnet-mask 255.255.255.0 \
+  --ip-pool my-ip-pool --dns 10.0.0.53 \
+  --harvester-kubeconfig ~/.kube/harvester.yaml \
+  --apply
+```
+
+### What happens automatically (~16 min)
+
+1. **Namespace** created
+2. **Secret** with Harvester kubeconfig injected
+3. **ClusterClass** + templates deployed in the namespace
+4. **Cluster topology** created — CAPI orchestrates everything:
+   - VMs created on Harvester (IPs allocated from IPPool)
+   - RKE2 bootstrap (control plane then workers)
+   - Cloud-init with static IP, iptables, SSH
+   - Cloud provider + CSI Harvester installed via ClusterResourceSets
+   - MachineHealthCheck active (auto-remediation)
+5. **Rancher** detects the cluster (auto-import label) — deploys agent — cluster visible in the UI
+
+### Result
+
+- Fully functional Kubernetes cluster (RKE2)
+- Visible and manageable in Rancher UI
+- Auto-remediation: if a VM dies, it is automatically recreated (~9 min)
+- Rolling upgrade: change the K8s version in the Cluster spec — rolling update CP then workers
+
+### Day 2 Operations
+
+- **Scale**: modify `replicas` in the Cluster spec
+- **Upgrade K8s**: modify `version` in the Cluster spec
+- **Delete**: `kubectl delete cluster my-cluster -n my-namespace` — everything is cleaned up (VMs, PVCs, secrets)
 
 ## Quick Start (manual — full control)
 
@@ -170,8 +228,8 @@ spec:
   loadBalancerConfig:
     ipamType: pool
   vmNetworkConfig:
-    gateway: "172.16.0.1"
-    subnetMask: "255.255.0.0"
+    gateway: "10.0.0.1"
+    subnetMask: "255.255.255.0"
     ipPoolRef: default/my-ip-pool
 ```
 
@@ -192,7 +250,7 @@ spec:
       sshKeyPair: default/my-ssh-key
       volumes:
         - volumeType: image
-          imageName: default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2
+          imageName: default/my-vm-image.qcow2
           volumeSize: "40Gi"
           bootOrder: 1
         - volumeType: storageClass     # optional: additional data disk
