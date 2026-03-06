@@ -40,5 +40,10 @@ serviceAccount:
   create: true
   name: caphv-controller-manager
 
+# Install ClusterClass templates alongside the controller
+clusterClass:
+  # Set to true to install the default ClusterClass (harvester-rke2)
+  enabled: false
+
 # Namespace (overridden by helm install -n)
 namespace: caphv-system

@@ -23,7 +23,9 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 | MachineHealthCheck | Untested | Tested, full auto-remediation |
 | Rolling K8s upgrade | Untested | Tested (CP + workers) |
 | E2E tests | Kubebuilder scaffold only | 18 integration tests (live cluster) |
-| Helm chart | None | Full chart with webhook support |
+| ClusterClass | Generic example only | Production-ready with vmNetworkConfig, IPPool, sshUser |
+| CLI generator | None | `caphv-generate` script (~30-line clusters) |
+| Helm chart | None | Full chart with webhook + ClusterClass support |
 
 ## Prerequisites
 
@@ -74,7 +76,55 @@ make deploy IMG=<your-registry>/caphv-controller:v0.2.0
 kubectl apply -f out/infrastructure-components.yaml
 ```
 
-## Quick Start
+## Quick Start (ClusterClass — recommended)
+
+Using ClusterClass reduces cluster creation from ~200 lines to ~30 lines of YAML.
+
+### 1. Install the ClusterClass (once per management cluster)
+
+```bash
+# Via Helm (with controller)
+helm install caphv chart/caphv/ \
+  -n caphv-system --create-namespace \
+  --set clusterClass.enabled=true
+
+# Or standalone
+kubectl apply -f templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml
+```
+
+### 2. Generate cluster manifests with the CLI
+
+```bash
+# Generate all manifests
+bin/caphv-generate \
+  --name my-cluster \
+  --image "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2" \
+  --ssh-keypair "default/my-ssh-key" \
+  --network "default/production" \
+  --gateway 172.16.0.1 \
+  --subnet-mask 255.255.0.0 \
+  --ip-pool capi-vm-pool \
+  --dns 172.16.3.6 \
+  --harvester-kubeconfig ~/.kube/harvester.yaml \
+  > cluster.yaml
+
+# Or interactive mode
+bin/caphv-generate --interactive
+
+# Apply
+kubectl apply -f cluster.yaml
+# Or directly: bin/caphv-generate [...] --apply
+```
+
+The CLI generates: Namespace, Secret, Cluster (topology), ConfigMaps (CCM/CSI/Calico), ClusterResourceSets, and MachineHealthCheck.
+
+### 3. Monitor cluster creation
+
+```bash
+kubectl get cluster,machine,harvestermachine -n my-cluster
+```
+
+## Quick Start (manual — full control)
 
 ### 1. Create the identity Secret
 
@@ -240,6 +290,7 @@ make test
 
 | Version | Date | Key changes |
 |---------|------|-------------|
+| v0.2.1 | 2026-03-06 | ClusterClass (harvester-rke2), CLI generator (caphv-generate), Helm ClusterClass option |
 | v0.2.0 | 2026-03-06 | Harvester v1.6.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
 | v0.1.6 | 2024-xx-xx | Upstream: initial CAPI contract, single disk, DHCP only |
 
