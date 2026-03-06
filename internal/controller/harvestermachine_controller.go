@@ -604,6 +604,12 @@ func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harv
 	return ipAddresses, nil
 }
 
+// diskInfo holds the PVC name and volume index for each disk attached to a VM.
+type diskInfo struct {
+	pvcName string
+	index   int
+}
+
 func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, error) {
 	var err error
 
@@ -621,26 +627,32 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 
 	vmiLabels["harvesterhci.io/vmName"] = vmName
 	vmiLabels["harvesterhci.io/vmNamePrefix"] = vmName
-	diskRandomID := locutil.RandomID()
-	pvcName := vmName + "-disk-0-" + diskRandomID
 
-	hasVMIMageName := func(volume infrav1.Volume) bool { return volume.ImageName != "" }
+	targetNS := hvScope.HarvesterCluster.Spec.TargetNamespace
 
-	// Supposing that the imageName field in HarvesterMachine.Spec.Volumes has the format "<NAMESPACE>/<NAME>",
-	// we use the following to get vmImageNS and vmImageName
-	imageVolumes := locutil.Filter(hvScope.HarvesterMachine.Spec.Volumes, hasVMIMageName)
+	// Build PVC list for all volumes
+	var pvcs []*v1.PersistentVolumeClaim
+	var disks []diskInfo
 
-	vmImage, err := getImageFromHarvesterMachine(imageVolumes, hvScope)
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to find VM image reference in HarvesterMachine")
+	for i, vol := range hvScope.HarvesterMachine.Spec.Volumes {
+		diskRandomID := locutil.RandomID()
+		pvcName := fmt.Sprintf("%s-disk-%d-%s", vmName, i, diskRandomID)
+
+		pvc, err := buildPVCForVolume(&vol, pvcName, targetNS, hvScope)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to build PVC for volume %d", i)
+		}
+
+		pvcs = append(pvcs, pvc)
+		disks = append(disks, diskInfo{pvcName: pvcName, index: i})
 	}
 
-	pvcAnnotation, err := buildPVCAnnotationFromImageID(&imageVolumes[0], pvcName, hvScope.HarvesterCluster.Spec.TargetNamespace, vmImage)
+	pvcAnnotation, err := json.Marshal(pvcs)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unable to generate PVC annotation on VM")
+		return nil, errors.Wrap(err, "unable to marshal PVC annotations")
 	}
 
-	vmTemplate, err := buildVMTemplate(hvScope, pvcName, vmiLabels)
+	vmTemplate, err := buildVMTemplate(hvScope, disks, vmiLabels)
 	if err != nil {
 		return &kubevirtv1.VirtualMachine{}, errors.Wrap(err, "unable to build VM definition")
 	}
@@ -652,9 +664,9 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 	ubuntuVM := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vmName,
-			Namespace: hvScope.HarvesterCluster.Spec.TargetNamespace,
+			Namespace: targetNS,
 			Annotations: map[string]string{
-				vmAnnotationPVC:        pvcAnnotation,
+				vmAnnotationPVC:        string(pvcAnnotation),
 				vmAnnotationNetworkIps: "[]",
 			},
 			Labels: vmLabels,
@@ -665,7 +677,7 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 		},
 	}
 
-	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
+	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(targetNS).Create(
 		context.TODO(),
 		ubuntuVM,
 		metav1.CreateOptions{})
@@ -676,21 +688,22 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 	return hvCreatedMachine, nil
 }
 
-func buildPVCAnnotationFromImageID(
-	imageVolume *infrav1.Volume,
+// buildPVCForVolume creates a PersistentVolumeClaim for a single volume.
+// For "image" volumes, the PVC references a Harvester VM image (StorageClass = longhorn-<imageName>).
+// For "storageClass" volumes, the PVC uses the specified StorageClass directly (blank data disk).
+func buildPVCForVolume(
+	vol *infrav1.Volume,
 	pvcName string,
 	pvcNamespace string,
-	vmImage *harvesterv1beta1.VirtualMachineImage,
-) (string, error) {
+	hvScope *Scope,
+) (*v1.PersistentVolumeClaim, error) {
 	block := v1.PersistentVolumeBlock
-	scName := "longhorn-" + vmImage.Name
+
 	pvc := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName,
-			Namespace: pvcNamespace,
-			Annotations: map[string]string{
-				hvAnnotationImageID: vmImage.Namespace + "/" + vmImage.Name,
-			},
+			Name:        pvcName,
+			Namespace:   pvcNamespace,
+			Annotations: map[string]string{},
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			AccessModes: []v1.PersistentVolumeAccessMode{
@@ -698,39 +711,43 @@ func buildPVCAnnotationFromImageID(
 			},
 			Resources: v1.VolumeResourceRequirements{
 				Requests: v1.ResourceList{
-					"storage": *imageVolume.VolumeSize,
+					"storage": *vol.VolumeSize,
 				},
 			},
-			VolumeMode:       &block,
-			StorageClassName: &scName,
+			VolumeMode: &block,
 		},
 	}
 
-	pvcJsonString, err := json.Marshal([]*v1.PersistentVolumeClaim{pvc})
-	if err != nil {
-		return "", err
+	switch vol.VolumeType {
+	case "image":
+		vmImage, err := getImageByName(vol.ImageName, pvcNamespace, hvScope)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to find VM image %s", vol.ImageName)
+		}
+		scName := "longhorn-" + vmImage.Name
+		pvc.Spec.StorageClassName = &scName
+		pvc.Annotations[hvAnnotationImageID] = vmImage.Namespace + "/" + vmImage.Name
+
+	case "storageClass":
+		scName := vol.StorageClass
+		pvc.Spec.StorageClassName = &scName
 	}
 
-	return string(pvcJsonString), nil
+	return pvc, nil
 }
 
-func getImageFromHarvesterMachine(imageVolumes []infrav1.Volume, hvScope *Scope) (image *harvesterv1beta1.VirtualMachineImage, err error) {
-	vmImageNamespacedString := imageVolumes[0].ImageName
-
-	vmImageNamespacedName, err := locutil.GetNamespacedName(vmImageNamespacedString, hvScope.HarvesterCluster.Spec.TargetNamespace)
+// getImageByName resolves a Harvester VirtualMachineImage by its display name.
+// imageName can be "namespace/name" or just "name" (defaults to targetNamespace).
+func getImageByName(imageName, defaultNamespace string, hvScope *Scope) (*harvesterv1beta1.VirtualMachineImage, error) {
+	vmImageNamespacedName, err := locutil.GetNamespacedName(imageName, defaultNamespace)
 	if err != nil {
-		return &harvesterv1beta1.VirtualMachineImage{}, errors.New("ImageName is HarvesterMachine is Malformed, expecting <NAMESPACE>/<NAME> format")
+		return nil, fmt.Errorf("imageName %q is malformed, expecting <NAMESPACE>/<NAME> format: %w", imageName, err)
 	}
 
 	foundImages, err := hvScope.HarvesterClient.HarvesterhciV1beta1().VirtualMachineImages(vmImageNamespacedName.Namespace).List(
 		context.TODO(), metav1.ListOptions{})
 	if err != nil {
-		return &harvesterv1beta1.VirtualMachineImage{}, err
-	}
-
-	if len(foundImages.Items) == 0 {
-		return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf(
-			"impossible to find any VM image referenced namespace %s", vmImageNamespacedName.Namespace)
+		return nil, err
 	}
 
 	for _, image := range foundImages.Items {
@@ -739,13 +756,12 @@ func getImageFromHarvesterMachine(imageVolumes []infrav1.Volume, hvScope *Scope)
 		}
 	}
 
-	return &harvesterv1beta1.VirtualMachineImage{}, fmt.Errorf(
-		"impossible to find VM image %s in namespace %s", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
+	return nil, fmt.Errorf("VM image %s not found in namespace %s", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
 }
 
 // buildVMTemplate creates a *kubevirtv1.VirtualMachineInstanceTemplateSpec from the CLI Flags and some computed values.
 func buildVMTemplate(hvScope *Scope,
-	pvcName string, vmiLabels map[string]string,
+	disks []diskInfo, vmiLabels map[string]string,
 ) (vmTemplate *kubevirtv1.VirtualMachineInstanceTemplateSpec, err error) {
 	var sshKey *harvesterv1beta1.KeyPair
 
@@ -875,52 +891,67 @@ config:
 		}
 	}
 
-	// Build volumes list: disk-0 PVC + cloud-init disk
-	volumes := []kubevirtv1.Volume{
-		{
-			Name: "disk-0",
+	// Build volumes and disks lists dynamically from all configured volumes
+	volumes := make([]kubevirtv1.Volume, 0, len(disks)+1)
+	kvDisks := make([]kubevirtv1.Disk, 0, len(disks)+1)
+
+	for _, d := range disks {
+		diskName := fmt.Sprintf("disk-%d", d.index)
+
+		volumes = append(volumes, kubevirtv1.Volume{
+			Name: diskName,
 			VolumeSource: kubevirtv1.VolumeSource{
 				PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
 					PersistentVolumeClaimVolumeSource: v1.PersistentVolumeClaimVolumeSource{
-						ClaimName: pvcName,
+						ClaimName: d.pvcName,
 					},
 				},
 			},
-		},
-		{
-			Name: "cloudinitdisk",
-			VolumeSource: kubevirtv1.VolumeSource{
-				CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
-					UserDataSecretRef: &v1.LocalObjectReference{
-						Name: hvScope.HarvesterMachine.Name + "-cloud-init",
-					},
-					NetworkDataSecretRef: &v1.LocalObjectReference{
-						Name: hvScope.HarvesterMachine.Name + "-cloud-init",
-					},
+		})
+
+		disk := kubevirtv1.Disk{
+			Name: diskName,
+			DiskDevice: kubevirtv1.DiskDevice{
+				Disk: &kubevirtv1.DiskTarget{
+					Bus: "virtio",
 				},
 			},
-		},
+		}
+
+		// Apply boot order if specified in the volume spec
+		if d.index < len(hvScope.HarvesterMachine.Spec.Volumes) {
+			bootOrder := hvScope.HarvesterMachine.Spec.Volumes[d.index].BootOrder
+			if bootOrder > 0 {
+				bo := uint(bootOrder)
+				disk.BootOrder = &bo
+			}
+		}
+
+		kvDisks = append(kvDisks, disk)
 	}
 
-	// Build disks list
-	disks := []kubevirtv1.Disk{
-		{
-			Name: "disk-0",
-			DiskDevice: kubevirtv1.DiskDevice{
-				Disk: &kubevirtv1.DiskTarget{
-					Bus: "virtio",
+	// Append cloud-init disk last
+	volumes = append(volumes, kubevirtv1.Volume{
+		Name: "cloudinitdisk",
+		VolumeSource: kubevirtv1.VolumeSource{
+			CloudInitNoCloud: &kubevirtv1.CloudInitNoCloudSource{
+				UserDataSecretRef: &v1.LocalObjectReference{
+					Name: hvScope.HarvesterMachine.Name + "-cloud-init",
+				},
+				NetworkDataSecretRef: &v1.LocalObjectReference{
+					Name: hvScope.HarvesterMachine.Name + "-cloud-init",
 				},
 			},
 		},
-		{
-			Name: "cloudinitdisk",
-			DiskDevice: kubevirtv1.DiskDevice{
-				Disk: &kubevirtv1.DiskTarget{
-					Bus: "virtio",
-				},
+	})
+	kvDisks = append(kvDisks, kubevirtv1.Disk{
+		Name: "cloudinitdisk",
+		DiskDevice: kubevirtv1.DiskDevice{
+			Disk: &kubevirtv1.DiskTarget{
+				Bus: "virtio",
 			},
 		},
-	}
+	})
 
 	// Build network interfaces
 	interfaces := buildNetworkInterfaces(hvScope.HarvesterMachine)
@@ -928,10 +959,17 @@ config:
 	// Build affinity with user-specified NodeAffinity and WorkloadAffinity
 	affinity := buildAffinity(hvScope)
 
+	// Build disk names annotation as JSON array
+	diskNames := make([]string, 0, len(disks))
+	for _, d := range disks {
+		diskNames = append(diskNames, d.pvcName)
+	}
+	diskNamesJSON, _ := json.Marshal(diskNames)
+
 	vmTemplate = &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Annotations: map[string]string{
-				hvAnnotationDiskNames: "[\"" + pvcName + "\"]",
+				hvAnnotationDiskNames: string(diskNamesJSON),
 				hvAnnotationSSH:       "[\"" + sshKey.GetName() + "\"]",
 				cpVMLabelKey:          cpVMLabelValuePrefix + "-" + hvScope.Cluster.Name,
 			},
@@ -956,7 +994,7 @@ config:
 						},
 					},
 					Interfaces: interfaces,
-					Disks:      disks,
+					Disks:      kvDisks,
 				},
 				Memory: &kubevirtv1.Memory{
 					Guest: quantityPtr(resource.MustParse(hvScope.HarvesterMachine.Spec.Memory)),
