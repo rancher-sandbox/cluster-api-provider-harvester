@@ -678,6 +678,7 @@ metadata:
     ccm: external
     csi: external
     cni: external
+    cluster-api.cattle.io/rancher-auto-import: "true"
 spec:
   topology:
     class: ${CLASS}
