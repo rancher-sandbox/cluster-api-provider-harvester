@@ -704,7 +704,7 @@ metadata:
 spec:
   topology:
     class: ${CLASS}
-    version: ${K8S_VERSION}+rke2r1
+    version: ${K8S_VERSION%+rke2r1}+rke2r1
     controlPlane:
       replicas: ${CP_REPLICAS}
     workers:
