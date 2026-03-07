@@ -102,5 +102,5 @@ jobs:
         else
           gh release create ${{ github.ref_name }} --draft --generate-notes
         fi
-        gh release upload ${{ github.ref_name }} out/metadata.yaml
-        gh release upload ${{ github.ref_name }} out/infrastructure-components.yaml
+        gh release upload ${{ github.ref_name }} out/metadata.yaml --clobber
+        gh release upload ${{ github.ref_name }} out/infrastructure-components.yaml --clobber
