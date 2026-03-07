@@ -826,44 +826,9 @@ runcmd:
 		"userdata": finalCloudInit,
 	}
 
-	// Build network-config v1 format if EffectiveNetworkConfig is set
-	if hvScope.EffectiveNetworkConfig != nil {
-		netCfg := hvScope.EffectiveNetworkConfig
-		subnetMask := "255.255.0.0" // default
-
-		if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
-			subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
-		}
-
-		// Build network-config v1 format (required for SLES)
-		var netCfgBuilder strings.Builder
-
-		fmt.Fprintf(&netCfgBuilder, `version: 1
-config:
-  - type: physical
-    name: eth0
-    subnets:
-      - type: static
-        address: %s
-        netmask: %s
-        gateway: %s
-  - type: nameserver
-    address:
-`, netCfg.Address, subnetMask, netCfg.Gateway)
-
-		for _, dns := range netCfg.DNSServers {
-			fmt.Fprintf(&netCfgBuilder, "      - %s\n", dns)
-		}
-
-		if len(netCfg.DNSSearch) > 0 {
-			netCfgBuilder.WriteString("    search:\n")
-
-			for _, search := range netCfg.DNSSearch {
-				fmt.Fprintf(&netCfgBuilder, "      - %s\n", search)
-			}
-		}
-
-		secretData["networkdata"] = []byte(netCfgBuilder.String())
+	// Build network-config v1 for all NICs (static for eth0 if EffectiveNetworkConfig is set, DHCP otherwise)
+	if len(hvScope.HarvesterMachine.Spec.Networks) > 0 {
+		secretData["networkdata"] = []byte(buildNetworkData(hvScope))
 	}
 
 	// create cloud-init secret for reference in Harvester.
@@ -1041,6 +1006,66 @@ func buildNetworkInterfaces(machine *infrav1.HarvesterMachine) []kubevirtv1.Inte
 	}
 
 	return interfaces
+}
+
+// buildNetworkData generates cloud-init network-config v1 YAML for all NICs.
+// If EffectiveNetworkConfig is set, eth0 gets a static config; additional NICs get DHCP.
+// If EffectiveNetworkConfig is nil, all NICs get DHCP.
+func buildNetworkData(hvScope *Scope) string {
+	var b strings.Builder
+
+	b.WriteString("version: 1\nconfig:\n")
+
+	for i := range hvScope.HarvesterMachine.Spec.Networks {
+		ethName := "eth" + strconv.Itoa(i)
+
+		fmt.Fprintf(&b, "  - type: physical\n    name: %s\n    subnets:\n", ethName)
+
+		if i == 0 && hvScope.EffectiveNetworkConfig != nil {
+			netCfg := hvScope.EffectiveNetworkConfig
+			subnetMask := "255.255.0.0" // default
+
+			if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
+				subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
+			}
+
+			fmt.Fprintf(&b, "      - type: static\n        address: %s\n        netmask: %s\n        gateway: %s\n",
+				netCfg.Address, subnetMask, netCfg.Gateway)
+		} else {
+			b.WriteString("      - type: dhcp\n")
+		}
+	}
+
+	// Collect DNS servers from EffectiveNetworkConfig or VMNetworkConfig
+	var dnsServers []string
+
+	var dnsSearch []string
+
+	if hvScope.EffectiveNetworkConfig != nil {
+		dnsServers = hvScope.EffectiveNetworkConfig.DNSServers
+		dnsSearch = hvScope.EffectiveNetworkConfig.DNSSearch
+	} else if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
+		dnsServers = hvScope.HarvesterCluster.Spec.VMNetworkConfig.DNSServers
+		dnsSearch = hvScope.HarvesterCluster.Spec.VMNetworkConfig.DNSSearch
+	}
+
+	if len(dnsServers) > 0 {
+		b.WriteString("  - type: nameserver\n    address:\n")
+
+		for _, dns := range dnsServers {
+			fmt.Fprintf(&b, "      - %s\n", dns)
+		}
+
+		if len(dnsSearch) > 0 {
+			b.WriteString("    search:\n")
+
+			for _, search := range dnsSearch {
+				fmt.Fprintf(&b, "      - %s\n", search)
+			}
+		}
+	}
+
+	return b.String()
 }
 
 // buildAffinity merges user-specified NodeAffinity and WorkloadAffinity with default PodAntiAffinity.

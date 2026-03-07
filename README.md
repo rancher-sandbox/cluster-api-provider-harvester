@@ -12,8 +12,8 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 |---------|----------------|-------------------|
 | Harvester compatibility | v1.2.0 | v1.7.1 |
 | Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
-| IP allocation | Manual / DHCP | Automatic from Harvester IPPool |
-| Cloud-init | Basic | Network-config v1 (SLES), static IP, custom merge |
+| IP allocation | Manual / DHCP | Automatic from Harvester IPPool or DHCP |
+| Cloud-init | Basic | Network-config v1 (SLES), multi-NIC, static IP + DHCP |
 | Cloud provider bootstrap | Manual fixes needed | Automatic (hostNetwork, RBAC, tolerations) |
 | Node initialization | Manual providerID | Automatic from management cluster |
 | etcd cleanup | Manual | Automatic on CP machine deletion |
@@ -303,6 +303,8 @@ Harvester HCI (target)
 | `spec.vmNetworkConfig.subnetMask` | string | Yes* | Subnet mask (e.g. "255.255.0.0") |
 | `spec.vmNetworkConfig.ipPoolRef` | string | No | Reference to Harvester IPPool |
 
+> **DHCP mode**: If `vmNetworkConfig` is omitted and no machine-level `networkConfig` is set, all VM NICs will use DHCP automatically. No IPPool or static IP configuration is needed.
+
 ### HarvesterMachine
 
 | Field | Type | Required | Description |
@@ -348,6 +350,7 @@ make test
 
 | Version | Date | Key changes |
 |---------|------|-------------|
+| v0.2.3 | 2026-03-07 | DHCP VM support, multi-NIC cloud-init |
 | v0.2.1 | 2026-03-06 | ClusterClass (harvester-rke2), CLI generator (caphv-generate), Helm ClusterClass option |
 | v0.2.0 | 2026-03-06 | Harvester v1.7.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
 | v0.1.6 | 2024-xx-xx | Upstream: initial CAPI contract, single disk, DHCP only |

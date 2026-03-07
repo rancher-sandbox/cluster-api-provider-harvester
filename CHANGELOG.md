@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.2.3] - 2026-03-07
+
+### Added
+
+- **DHCP VM support**: VMs can now use DHCP instead of requiring static IP allocation from an IPPool — simply omit `vmNetworkConfig` and `networkConfig` to get DHCP on all NICs
+- **Multi-NIC cloud-init**: Cloud-init network-config v1 now generates entries for all NICs (eth0, eth1, ...) instead of only eth0 — additional NICs beyond the first get DHCP automatically
+
+### Changed
+
+- Extracted `buildNetworkData()` function from inline cloud-init generation for better testability and multi-NIC support
+- Network-data is now generated whenever `spec.networks` is non-empty, even without `EffectiveNetworkConfig`
+
 ## [v0.2.1] - 2026-03-06
 
 ### Added
