@@ -134,7 +134,7 @@ manager: ## Build the harvester manager binary into the ./bin folder
 
 .PHONY: build
 build: generate fmt vet ## Build manager binary.
-	go build -o bin/manager main.go
+	go build -o bin/manager ./cmd/
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
