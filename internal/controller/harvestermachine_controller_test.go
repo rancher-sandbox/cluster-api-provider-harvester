@@ -66,8 +66,8 @@ var _ = Describe("Convert HarvesterMachine networks to Kubevirt Networks", func(
 })
 
 var _ = Describe("buildNetworkData", func() {
-	Context("DHCP with 1 NIC (no NetworkConfig)", func() {
-		It("Should generate DHCP config for eth0", func() {
+	Context("DHCP cloud-init with 1 NIC", func() {
+		It("Should generate write_files and bootcmd for dhclient", func() {
 			scope := &Scope{
 				HarvesterMachine: &v1alpha1.HarvesterMachine{
 					Spec: v1alpha1.HarvesterMachineSpec{
@@ -77,17 +77,18 @@ var _ = Describe("buildNetworkData", func() {
 				HarvesterCluster: &v1alpha1.HarvesterCluster{},
 			}
 
-			result := buildNetworkData(scope)
-			Expect(result).To(ContainSubstring("version: 1"))
-			Expect(result).To(ContainSubstring("name: eth0"))
-			Expect(result).To(ContainSubstring("type: dhcp"))
-			Expect(result).NotTo(ContainSubstring("type: static"))
-			Expect(result).NotTo(ContainSubstring("eth1"))
+			result := buildDHCPCloudInit(scope)
+			Expect(result).To(ContainSubstring("bootcmd:"))
+			Expect(result).To(ContainSubstring("dhclient-script-caphv.sh"))
+			Expect(result).To(ContainSubstring("dhclient"))
+			Expect(result).To(ContainSubstring("eth0"))
+			Expect(result).To(ContainSubstring("cat >")) // script created inline in bootcmd
+			Expect(strings.Count(result, "dhclient")).To(BeNumerically(">=", 2)) // script ref + bootcmd
 		})
 	})
 
-	Context("DHCP with 2 NICs (no NetworkConfig)", func() {
-		It("Should generate DHCP config for eth0 and eth1", func() {
+	Context("DHCP cloud-init with 2 NICs", func() {
+		It("Should generate bootcmd entries for both interfaces", func() {
 			scope := &Scope{
 				HarvesterMachine: &v1alpha1.HarvesterMachine{
 					Spec: v1alpha1.HarvesterMachineSpec{
@@ -97,11 +98,11 @@ var _ = Describe("buildNetworkData", func() {
 				HarvesterCluster: &v1alpha1.HarvesterCluster{},
 			}
 
-			result := buildNetworkData(scope)
-			Expect(result).To(ContainSubstring("name: eth0"))
-			Expect(result).To(ContainSubstring("name: eth1"))
-			Expect(strings.Count(result, "type: dhcp")).To(Equal(2))
-			Expect(result).NotTo(ContainSubstring("type: static"))
+			result := buildDHCPCloudInit(scope)
+			Expect(result).To(ContainSubstring("eth0"))
+			Expect(result).To(ContainSubstring("eth1"))
+			Expect(result).To(ContainSubstring("dhclient-eth0.lease"))
+			Expect(result).To(ContainSubstring("dhclient-eth1.lease"))
 		})
 	})
 
@@ -129,7 +130,7 @@ var _ = Describe("buildNetworkData", func() {
 				},
 			}
 
-			result := buildNetworkData(scope)
+			result := buildNetworkDataStatic(scope)
 			Expect(result).To(ContainSubstring("name: eth0"))
 			Expect(result).To(ContainSubstring("type: static"))
 			Expect(result).To(ContainSubstring("address: 172.16.3.42"))
@@ -179,7 +180,7 @@ config:
     address:
       - 172.16.0.1
 `
-			result := buildNetworkData(scope)
+			result := buildNetworkDataStatic(scope)
 			Expect(result).To(Equal(expected))
 		})
 	})

@@ -814,7 +814,16 @@ runcmd:
 		return nil, err
 	}
 
-	finalCloudInit, err := locutil.MergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitUserData)
+	// In DHCP mode, add dhclient bootcmd to work around wicked BPF filter bug on KubeVirt/virtio-net.
+	// Wicked uses AF_PACKET SOCK_DGRAM with a BPF filter that has link-layer offsets, but on SOCK_DGRAM
+	// the kernel presents network-layer data to BPF, causing all DHCP responses to be silently dropped.
+	// ISC dhclient uses AF_PACKET SOCK_RAW (LPF) which works correctly.
+	cloudInitDHCP := ""
+	if hvScope.EffectiveNetworkConfig == nil && len(hvScope.HarvesterMachine.Spec.Networks) > 0 {
+		cloudInitDHCP = buildDHCPCloudInit(hvScope)
+	}
+
+	finalCloudInit, err := locutil.MergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitDHCP, cloudInitUserData)
 	if err != nil {
 		err = fmt.Errorf("error during merging cloud init user data from Harvester: %w", err)
 
@@ -826,9 +835,11 @@ runcmd:
 		"userdata": finalCloudInit,
 	}
 
-	// Build network-config v1 for all NICs (static for eth0 if EffectiveNetworkConfig is set, DHCP otherwise)
-	if len(hvScope.HarvesterMachine.Spec.Networks) > 0 {
-		secretData["networkdata"] = []byte(buildNetworkData(hvScope))
+	// Build network-config for NICs. For static mode, generate v1 networkdata with IP configuration.
+	// For DHCP mode, skip networkdata entirely — dhclient handles network setup via bootcmd,
+	// and generating networkdata would cause wicked to interfere with the DHCP-assigned IP.
+	if hvScope.EffectiveNetworkConfig != nil && len(hvScope.HarvesterMachine.Spec.Networks) > 0 {
+		secretData["networkdata"] = []byte(buildNetworkDataStatic(hvScope))
 	}
 
 	// create cloud-init secret for reference in Harvester.
@@ -1008,11 +1019,17 @@ func buildNetworkInterfaces(machine *infrav1.HarvesterMachine) []kubevirtv1.Inte
 	return interfaces
 }
 
-// buildNetworkData generates cloud-init network-config v1 YAML for all NICs.
-// If EffectiveNetworkConfig is set, eth0 gets a static config; additional NICs get DHCP.
-// If EffectiveNetworkConfig is nil, all NICs get DHCP.
-func buildNetworkData(hvScope *Scope) string {
+// buildNetworkDataStatic generates cloud-init network-config v1 with static IP on eth0
+// and DHCP on additional NICs.
+func buildNetworkDataStatic(hvScope *Scope) string {
 	var b strings.Builder
+
+	netCfg := hvScope.EffectiveNetworkConfig
+	subnetMask := "255.255.0.0" // default
+
+	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
+		subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
+	}
 
 	b.WriteString("version: 1\nconfig:\n")
 
@@ -1021,14 +1038,7 @@ func buildNetworkData(hvScope *Scope) string {
 
 		fmt.Fprintf(&b, "  - type: physical\n    name: %s\n    subnets:\n", ethName)
 
-		if i == 0 && hvScope.EffectiveNetworkConfig != nil {
-			netCfg := hvScope.EffectiveNetworkConfig
-			subnetMask := "255.255.0.0" // default
-
-			if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
-				subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
-			}
-
+		if i == 0 {
 			fmt.Fprintf(&b, "      - type: static\n        address: %s\n        netmask: %s\n        gateway: %s\n",
 				netCfg.Address, subnetMask, netCfg.Gateway)
 		} else {
@@ -1036,36 +1046,96 @@ func buildNetworkData(hvScope *Scope) string {
 		}
 	}
 
-	// Collect DNS servers from EffectiveNetworkConfig or VMNetworkConfig
-	var dnsServers []string
-
-	var dnsSearch []string
-
-	if hvScope.EffectiveNetworkConfig != nil {
-		dnsServers = hvScope.EffectiveNetworkConfig.DNSServers
-		dnsSearch = hvScope.EffectiveNetworkConfig.DNSSearch
-	} else if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
-		dnsServers = hvScope.HarvesterCluster.Spec.VMNetworkConfig.DNSServers
-		dnsSearch = hvScope.HarvesterCluster.Spec.VMNetworkConfig.DNSSearch
-	}
-
-	if len(dnsServers) > 0 {
+	if len(netCfg.DNSServers) > 0 {
 		b.WriteString("  - type: nameserver\n    address:\n")
 
-		for _, dns := range dnsServers {
+		for _, dns := range netCfg.DNSServers {
 			fmt.Fprintf(&b, "      - %s\n", dns)
 		}
 
-		if len(dnsSearch) > 0 {
+		if len(netCfg.DNSSearch) > 0 {
 			b.WriteString("    search:\n")
 
-			for _, search := range dnsSearch {
+			for _, search := range netCfg.DNSSearch {
 				fmt.Fprintf(&b, "      - %s\n", search)
 			}
 		}
 	}
 
 	return b.String()
+}
+
+// buildDHCPCloudInit generates cloud-init YAML with write_files and bootcmd entries that
+// configure network interfaces via dhclient. This works around wicked's BPF filter bug:
+// wicked uses AF_PACKET SOCK_DGRAM with a BPF filter that has link-layer offsets, but on
+// SOCK_DGRAM the kernel runs BPF against network-layer data, causing all DHCP responses
+// to be silently dropped. ISC dhclient uses SOCK_RAW (LPF) which works correctly.
+func buildDHCPCloudInit(hvScope *Scope) string {
+	var b strings.Builder
+
+	// dhclient-script: configures IP from DHCP lease, converts netmask to CIDR prefix.
+	// SLES ships a wicked-dependent dhclient-script that fails, so we provide our own.
+	// IMPORTANT: the script must be created in bootcmd (not write_files) because
+	// cloud-init runs bootcmd BEFORE write_files, and dhclient needs the script to exist.
+	dhclientScript := dhclientScriptContent()
+
+	scriptPath := "/usr/local/bin/dhclient-script-caphv.sh"
+
+	b.WriteString("bootcmd:\n")
+
+	// First bootcmd entry: create the dhclient-script file via heredoc
+	b.WriteString("  - |\n")
+	fmt.Fprintf(&b, "    cat > %s << 'DHCSCRIPT'\n", scriptPath)
+
+	for _, line := range strings.Split(dhclientScript, "\n") {
+		fmt.Fprintf(&b, "    %s\n", line)
+	}
+
+	b.WriteString("    DHCSCRIPT\n")
+	fmt.Fprintf(&b, "    chmod +x %s\n", scriptPath)
+
+	// Then one entry per NIC to run dhclient
+	for i := range hvScope.HarvesterMachine.Spec.Networks {
+		ethName := "eth" + strconv.Itoa(i)
+		// -1 = try once then fork to background (parent exits, bootcmd continues).
+		// Do NOT use -d (foreground) as it would block cloud-init forever.
+		fmt.Fprintf(&b,
+			"  - ['dhclient', '-1', '-sf', '%s', '-lf', '/tmp/dhclient-%s.lease', '-pf', '/tmp/dhclient-%s.pid', '%s']\n",
+			scriptPath, ethName, ethName, ethName)
+	}
+
+	return b.String()
+}
+
+//nolint:dupword // bash nested loops have consecutive "done" keywords
+func dhclientScriptContent() string {
+	return `#!/bin/bash
+case "$reason" in
+  PREINIT)
+    ip link set dev $interface up
+    ;;
+  BOUND|RENEW|REBIND|REBOOT)
+    ip addr flush dev $interface 2>/dev/null
+    IFS=. read -r a b c d <<< "$new_subnet_mask"
+    prefix=0
+    for octet in $a $b $c $d; do
+      while [ $octet -gt 0 ]; do
+        prefix=$((prefix + (octet & 1)))
+        octet=$((octet >> 1))
+      done
+    done
+    ip addr add $new_ip_address/$prefix dev $interface
+    if [ -n "$new_routers" ]; then
+      ip route add default via $new_routers dev $interface 2>/dev/null
+    fi
+    if [ -n "$new_domain_name_servers" ]; then
+      : > /etc/resolv.conf
+      for dns in $new_domain_name_servers; do
+        echo "nameserver $dns" >> /etc/resolv.conf
+      done
+    fi
+    ;;
+esac`
 }
 
 // buildAffinity merges user-specified NodeAffinity and WorkloadAffinity with default PodAntiAffinity.
