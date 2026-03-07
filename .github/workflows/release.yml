@@ -100,7 +100,7 @@ jobs:
         if gh release view ${{ github.ref_name }} > /dev/null; then
           echo ${{ github.ref_name }} release exists
         else
-          gh release create ${{ github.ref_name }} --draft --generate-notes
+          gh release create ${{ github.ref_name }} --generate-notes
         fi
         gh release upload ${{ github.ref_name }} out/metadata.yaml --clobber
         gh release upload ${{ github.ref_name }} out/infrastructure-components.yaml --clobber
