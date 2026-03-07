@@ -8,4 +8,4 @@ spec:
     spec:
       containers:
       - name: manager
-        image: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:dev
+        image: ghcr.io/jniedergang/cluster-api-provider-harvester:dev
