@@ -128,6 +128,13 @@ spec:
           default: []
           items:
             type: string
+    - name: cni
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "calico"
+          description: "CNI plugin (calico, canal, cilium, none)"
   patches:
     - name: vmNetworks
       definitions:
@@ -327,6 +334,18 @@ spec:
                   dnsServers:
                   {{`{{ range .dnsServers }}`}}- {{`{{ . }}`}}
                   {{`{{ end }}`}}
+    - name: cni
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/serverConfig/cni
+              valueFrom:
+                variable: cni
     - name: csiAddonConfigMap
       definitions:
         - selector:
