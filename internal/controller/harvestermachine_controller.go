@@ -755,12 +755,12 @@ func getImageByName(imageName, defaultNamespace string, hvScope *Scope) (*harves
 	}
 
 	for _, image := range foundImages.Items {
-		if image.Spec.DisplayName == vmImageNamespacedName.Name {
+		if image.Spec.DisplayName == vmImageNamespacedName.Name || image.Name == vmImageNamespacedName.Name {
 			return &image, nil
 		}
 	}
 
-	return nil, fmt.Errorf("VM image %s not found in namespace %s", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
+	return nil, fmt.Errorf("VM image %s not found in namespace %s (searched by display name and resource name)", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
 }
 
 // buildVMTemplate creates a *kubevirtv1.VirtualMachineInstanceTemplateSpec from the CLI Flags and some computed values.
