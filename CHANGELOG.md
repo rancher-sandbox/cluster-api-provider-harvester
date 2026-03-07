@@ -9,12 +9,18 @@ This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-ap
 ### Added
 
 - **DHCP VM support**: VMs can now use DHCP instead of requiring static IP allocation from an IPPool — simply omit `vmNetworkConfig` and `networkConfig` to get DHCP on all NICs
-- **Multi-NIC cloud-init**: Cloud-init network-config v1 now generates entries for all NICs (eth0, eth1, ...) instead of only eth0 — additional NICs beyond the first get DHCP automatically
+- **Multi-NIC cloud-init**: Static mode network-config v1 generates entries for all NICs (eth0 static, eth1+ DHCP)
+
+### Fixed
+
+- **Wicked DHCP failure on KubeVirt**: Wicked's BPF filter uses link-layer offsets on `AF_PACKET SOCK_DGRAM`, but the kernel presents network-layer data to BPF, causing all DHCP responses to be silently dropped. Workaround: use ISC dhclient (`SOCK_RAW`/LPF) via cloud-init bootcmd
+- **Cloud-init ordering**: dhclient-script created inline in `bootcmd` (not `write_files` which runs after `bootcmd`)
+- **dhclient blocking**: Use `-1` flag (try once, fork to background) instead of `-d` (foreground) which blocked cloud-init
 
 ### Changed
 
-- Extracted `buildNetworkData()` function from inline cloud-init generation for better testability and multi-NIC support
-- Network-data is now generated whenever `spec.networks` is non-empty, even without `EffectiveNetworkConfig`
+- Split `buildNetworkData()` into `buildNetworkDataStatic()` (for static IP mode) and `buildDHCPCloudInit()` (for DHCP mode)
+- Skip `networkdata` generation entirely in DHCP mode to prevent wicked nanny from overriding dhclient-assigned IPs
 
 ## [v0.2.1] - 2026-03-06
 

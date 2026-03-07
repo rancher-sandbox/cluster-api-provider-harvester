@@ -2,7 +2,7 @@
 
 image:
   repository: ghcr.io/jniedergang/cluster-api-provider-harvester
-  tag: v0.2.0
+  tag: v0.2.3
   pullPolicy: IfNotPresent
 
 replicas: 1
