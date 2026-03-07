@@ -707,8 +707,9 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 	logger.V(5).Info("IP Pool deleted successfully") //nolint:mnd
 
-	// Delete VM IP pool if created by controller (via VMNetworkConfig)
-	if scope.HarvesterCluster.Spec.VMNetworkConfig != nil && scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef != "" {
+	// Delete VM IP pool only if it was created by the controller (not pre-existing).
+	// Pre-existing pools referenced via IPPoolRef are shared resources and must not be deleted.
+	if conditions.IsTrue(scope.HarvesterCluster, infrav1.VMIPPoolCreatedByControllerCondition) {
 		vmPoolName := scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef
 
 		err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Delete(
@@ -722,8 +723,12 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 			logger.Info("VM IP Pool not found, skipping ...", "pool", vmPoolName)
 		} else {
-			logger.Info("VM IP Pool deleted", "pool", vmPoolName)
+			logger.Info("VM IP Pool deleted (was created by controller)", "pool", vmPoolName)
 		}
+
+		conditions.Delete(scope.HarvesterCluster, infrav1.VMIPPoolCreatedByControllerCondition)
+	} else if scope.HarvesterCluster.Spec.VMNetworkConfig != nil && scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef != "" {
+		logger.Info("Skipping VM IP Pool deletion (pre-existing pool)", "pool", scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef)
 	}
 
 	logger.Info("Removing finalizer from HarvesterCluster ...",
@@ -925,6 +930,15 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 	scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef = createdPool.Name
 
 	scope.Logger.Info("Created VM IP pool", "name", createdPool.Name)
+
+	// Mark that the controller created this pool so it can be cleaned up on deletion.
+	// Pre-existing pools (referenced via IPPoolRef) won't have this condition.
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.VMIPPoolCreatedByControllerCondition,
+		Status:  apiv1.ConditionTrue,
+		Reason:  infrav1.VMIPPoolCreatedByControllerReason,
+		Message: fmt.Sprintf("VM IP pool %s was created by the controller", createdPool.Name),
+	})
 
 	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
 		Type:    infrav1.VMIPPoolReadyCondition,
