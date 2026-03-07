@@ -70,6 +70,10 @@ var _ = Describe("GetKubeconfigFromClusterAndCheck", func() {
 		saName = "test-1"
 		hvKubeconfigB64 = os.Getenv("HV_KUBECONFIG_B64")
 		harvesterServerURL = os.Getenv("HV_SERVER_URL")
+
+		if hvKubeconfigB64 == "" {
+			Skip("HV_KUBECONFIG_B64 not set, skipping integration test")
+		}
 	})
 
 	It("Should return the right name", func() {

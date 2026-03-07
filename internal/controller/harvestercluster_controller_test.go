@@ -205,6 +205,10 @@ data:
 	log := log.FromContext(context.TODO())
 
 	BeforeEach(func() {
+		if os.Getenv("KUBECONFIG") == "" {
+			Skip("KUBECONFIG not set, skipping integration test")
+		}
+
 		hvConfig, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 		Expect(err).ToNot(HaveOccurred())
 		hvClient, err := hvclient.NewForConfig(hvConfig)
