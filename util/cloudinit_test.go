@@ -67,3 +67,91 @@ ssh_authorized_keys:
 `))
 	})
 })
+
+var _ = Describe("MergeCloudInitData edge cases", func() {
+	It("should handle empty strings gracefully", func() {
+		result, err := MergeCloudInitData("", "", "")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(result)).To(HavePrefix("#cloud-config"))
+	})
+
+	It("should handle a single cloud-init input", func() {
+		input := `packages:
+  - curl
+runcmd:
+  - echo "hello"
+`
+		result, err := MergeCloudInitData(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		resultStr := string(result)
+		Expect(resultStr).To(ContainSubstring("curl"))
+		Expect(resultStr).To(ContainSubstring("echo"))
+	})
+
+	It("should merge bootcmd sections as lists", func() {
+		ci1 := `bootcmd:
+  - echo "first"
+`
+		ci2 := `bootcmd:
+  - echo "second"
+`
+		result, err := MergeCloudInitData(ci1, ci2)
+		Expect(err).ToNot(HaveOccurred())
+
+		resultStr := string(result)
+		Expect(resultStr).To(ContainSubstring("echo \"first\""))
+		Expect(resultStr).To(ContainSubstring("echo \"second\""))
+	})
+
+	It("should merge write_files sections as lists", func() {
+		ci1 := `write_files:
+  - path: /tmp/file1
+    content: "hello"
+`
+		ci2 := `write_files:
+  - path: /tmp/file2
+    content: "world"
+`
+		result, err := MergeCloudInitData(ci1, ci2)
+		Expect(err).ToNot(HaveOccurred())
+
+		resultStr := string(result)
+		Expect(resultStr).To(ContainSubstring("/tmp/file1"))
+		Expect(resultStr).To(ContainSubstring("/tmp/file2"))
+	})
+
+	It("should overwrite non-list keys with the last value", func() {
+		ci1 := `hostname: node1
+`
+		ci2 := `hostname: node2
+`
+		result, err := MergeCloudInitData(ci1, ci2)
+		Expect(err).ToNot(HaveOccurred())
+
+		resultStr := string(result)
+		Expect(resultStr).To(ContainSubstring("node2"))
+		Expect(resultStr).ToNot(ContainSubstring("node1"))
+	})
+
+	It("should return error for malformed YAML", func() {
+		_, err := MergeCloudInitData("invalid: [yaml: broken")
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should skip empty strings between valid inputs", func() {
+		ci1 := `packages:
+  - vim
+`
+		ci2 := ""
+		ci3 := `packages:
+  - git
+`
+		result, err := MergeCloudInitData(ci1, ci2, ci3)
+		Expect(err).ToNot(HaveOccurred())
+
+		resultStr := string(result)
+		Expect(resultStr).To(ContainSubstring("vim"))
+		Expect(resultStr).To(ContainSubstring("git"))
+	})
+})

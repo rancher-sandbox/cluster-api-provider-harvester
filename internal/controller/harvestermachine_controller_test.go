@@ -82,7 +82,7 @@ var _ = Describe("buildNetworkData", func() {
 			Expect(result).To(ContainSubstring("dhclient-script-caphv.sh"))
 			Expect(result).To(ContainSubstring("dhclient"))
 			Expect(result).To(ContainSubstring("eth0"))
-			Expect(result).To(ContainSubstring("cat >")) // script created inline in bootcmd
+			Expect(result).To(ContainSubstring("cat >"))                         // script created inline in bootcmd
 			Expect(strings.Count(result, "dhclient")).To(BeNumerically(">=", 2)) // script ref + bootcmd
 		})
 	})

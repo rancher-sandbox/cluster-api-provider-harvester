@@ -1087,7 +1087,7 @@ func buildDHCPCloudInit(hvScope *Scope) string {
 	b.WriteString("  - |\n")
 	fmt.Fprintf(&b, "    cat > %s << 'DHCSCRIPT'\n", scriptPath)
 
-	for _, line := range strings.Split(dhclientScript, "\n") {
+	for line := range strings.SplitSeq(dhclientScript, "\n") {
 		fmt.Fprintf(&b, "    %s\n", line)
 	}
 
