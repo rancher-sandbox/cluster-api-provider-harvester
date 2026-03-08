@@ -10,20 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: registry.opensuse.org/opensuse/tumbleweed:latest
-    defaults:
-      run:
-        shell: /usr/bin/bash -e {0}
     steps:
       - name: Install dependencies
-        run: zypper -n install git tar gzip curl
+        run: zypper -n install git tar gzip curl go
 
       - name: Clone the code
         uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
 
       - name: Install golangci-lint
         run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | bash -s -- -b /usr/local/bin v2.2.1
