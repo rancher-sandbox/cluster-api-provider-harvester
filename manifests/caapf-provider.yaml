@@ -1,0 +1,11 @@
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: fleet
+  namespace: caapf-system
+spec:
+  name: fleet
+  type: addon
+  version: v0.12.0
+  fetchConfig:
+    url: https://github.com/rancher/cluster-api-addon-provider-fleet/releases/download/v0.12.0/addon-components.yaml

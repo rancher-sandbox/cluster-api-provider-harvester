@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.2.5] - 2026-03-08
+
+### Added
+
+- **Fleet/CAAPF addon management**: CSI and CNI configuration can now be deployed via Fleet GitOps instead of ClusterResourceSets — enables per-cluster CNI tuning (MTU, BGP, encapsulation, pod CIDR)
+- **CAAPF integration**: CAPIProvider manifest for Cluster API Addon Provider Fleet (v0.12.0, CAPI v1beta1 compatible)
+- **CNI configuration flags**: `--pod-cidr`, `--cni-mtu`, `--cni-encapsulation`, `--cni-bgp` in caphv-generate
+- **Fleet addon repository**: Separate Git repository (`caphv-fleet-addons`) with Fleet bundles for Harvester CSI, Calico, Canal, and Cilium HelmChartConfig
+- **Fleet mode in caphv-generate**: `--fleet-addon-repo` generates a Fleet `GitRepo` with cluster-scoped targeting instead of CSI/CNI CRS
+- **E2E fleet test suite**: 3 tests (CAAPF controller, Fleet mode generation, CRS retrocompatibility)
+
+### Changed
+
+- Cluster manifests now include `spec.clusterNetwork.pods.cidrBlocks` for pod CIDR configuration
+- CCM remains in CRS mode regardless of addon mode (controller-coupled bootstrap dependency)
+
 ## [v0.2.3] - 2026-03-07
 
 ### Added

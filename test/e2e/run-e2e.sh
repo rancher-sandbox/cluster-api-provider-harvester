@@ -28,8 +28,16 @@
 #   ./test/e2e/run-e2e.sh remediation  # Run only remediation test
 #   ./test/e2e/run-e2e.sh multidisk    # Run only multi-disk test
 #   ./test/e2e/run-e2e.sh webhook      # Run only webhook validation test
+#   ./test/e2e/run-e2e.sh fleet        # Run only Fleet/CAAPF test
 
 set -euo pipefail
+
+# Source fleet test functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "$SCRIPT_DIR/fleet_test.sh" ]; then
+    # shellcheck source=fleet_test.sh
+    source "$SCRIPT_DIR/fleet_test.sh"
+fi
 
 # --- Configuration (override via CAPHV_* environment variables) ---
 RANCHER_SSH="${CAPHV_RANCHER_SSH:-rancher@<rancher-manager-ip>}"
@@ -629,6 +637,7 @@ main() {
             test_scale
             test_multidisk
             test_remediation
+            test_fleet
             ;;
         scale)
             test_scale
@@ -642,8 +651,11 @@ main() {
         webhook)
             test_webhook
             ;;
+        fleet)
+            test_fleet
+            ;;
         *)
-            echo "Usage: $0 [all|scale|remediation|multidisk|webhook]"
+            echo "Usage: $0 [all|scale|remediation|multidisk|webhook|fleet]"
             exit 1
             ;;
     esac
