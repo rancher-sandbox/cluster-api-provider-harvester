@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"math/big"
 	"net"
 
 	. "github.com/onsi/ginkgo"
@@ -382,5 +383,140 @@ var _ = Describe("AllocateVMIPFromPool", func() {
 
 		_, err := AllocateVMIPFromPool(pool, "machine-1")
 		Expect(err).To(HaveOccurred())
+	})
+})
+
+var _ = Describe("ipToInt", func() {
+	It("should convert IPv4 address to integer", func() {
+		ip := net.ParseIP("192.168.1.1")
+		result := ipToInt(ip)
+		expected := big.NewInt(0).SetBytes(ip.To4())
+		Expect(result.Cmp(expected)).To(Equal(0))
+	})
+
+	It("should convert IPv6 address to integer", func() {
+		ip := net.ParseIP("::1")
+		// For IPv6, To4() returns nil, so it should use To16()
+		result := ipToInt(ip)
+		Expect(result).ToNot(BeNil())
+		expected := big.NewInt(1)
+		Expect(result.Cmp(expected)).To(Equal(0))
+	})
+
+	It("should handle full IPv6 address", func() {
+		ip := net.ParseIP("2001:db8::1")
+		result := ipToInt(ip)
+		Expect(result).ToNot(BeNil())
+		Expect(result.Sign()).To(Equal(1)) // positive
+	})
+})
+
+var _ = Describe("MakeRange edge cases", func() {
+	It("should handle invalid range start IP", func() {
+		r := &lbv1beta1.Range{
+			Subnet:     "192.168.1.0/24",
+			RangeStart: "999.999.999.999",
+		}
+		_, err := MakeRange(r)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid range start"))
+	})
+
+	It("should handle invalid range end IP", func() {
+		r := &lbv1beta1.Range{
+			Subnet:   "192.168.1.0/24",
+			RangeEnd: "999.999.999.999",
+		}
+		_, err := MakeRange(r)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid range end"))
+	})
+
+	It("should handle invalid gateway IP", func() {
+		r := &lbv1beta1.Range{
+			Subnet:  "192.168.1.0/24",
+			Gateway: "999.999.999.999",
+		}
+		_, err := MakeRange(r)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("invalid gateway"))
+	})
+
+	It("should swap start and end when start > end", func() {
+		r := &lbv1beta1.Range{
+			Subnet:     "192.168.1.0/24",
+			RangeStart: "192.168.1.200",
+			RangeEnd:   "192.168.1.100",
+		}
+		result, err := MakeRange(r)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.RangeStart.String()).To(Equal("192.168.1.100"))
+		Expect(result.RangeEnd.String()).To(Equal("192.168.1.200"))
+	})
+
+	It("should handle point-to-point subnet /32", func() {
+		r := &lbv1beta1.Range{
+			Subnet: "192.168.1.1/32",
+		}
+		result, err := MakeRange(r)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).ToNot(BeNil())
+	})
+
+	It("should handle IP outside subnet for range start", func() {
+		r := &lbv1beta1.Range{
+			Subnet:     "192.168.1.0/24",
+			RangeStart: "10.0.0.1",
+		}
+		_, err := MakeRange(r)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("out of subnet"))
+	})
+})
+
+var _ = Describe("parseIP edge cases", func() {
+	It("should reject network address", func() {
+		r := &lbv1beta1.Range{
+			Subnet:     "192.168.1.0/24",
+			RangeStart: "192.168.1.0", // network address
+		}
+		_, err := MakeRange(r)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("network address"))
+	})
+
+	It("should reject broadcast address", func() {
+		r := &lbv1beta1.Range{
+			Subnet:   "192.168.1.0/24",
+			RangeEnd: "192.168.1.255", // broadcast address
+		}
+		_, err := MakeRange(r)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("broadcast address"))
+	})
+})
+
+var _ = Describe("AllocateVMIPFromPool with history", func() {
+	It("should reuse historical IP for the same machine", func() {
+		pool := &lbv1beta1.IPPool{
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{
+						Subnet:     "192.168.1.0/24",
+						RangeStart: "192.168.1.10",
+						RangeEnd:   "192.168.1.20",
+					},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				AllocatedHistory: map[string]string{
+					"192.168.1.15": "machine-reuse",
+				},
+			},
+		}
+
+		ip, err := AllocateVMIPFromPool(pool, "machine-reuse")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(ip).To(Equal("192.168.1.15"))
 	})
 })
