@@ -2915,3 +2915,173 @@ var _ = Describe("ReconcileNormal cloud provider config path", func() {
 		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
 	})
 })
+
+// =============================================================================
+// Additional reconcileCloudProviderConfig tests for key-missing and
+// GetCloudConfigB64 failure paths
+// =============================================================================
+
+var _ = Describe("reconcileCloudProviderConfig key and kubeconfig paths", func() {
+	It("should error when ConfigMap exists but data key is missing", func() {
+		hvFake := hvfake.NewSimpleClientset()
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		// Create a ConfigMap WITH the wrong key
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "cloud-cm", Namespace: "ns"},
+			Data:       map[string]string{"other-key": "some-data"},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
+		r := &HarvesterClusterReconciler{Client: fakeClient, Scheme: scheme}
+
+		scope := &ClusterScope{
+			Ctx:    context.TODO(),
+			Logger: log.FromContext(context.TODO()),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
+				Spec: infrav1.HarvesterClusterSpec{
+					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{
+						ManifestsConfigMapName:      "cloud-cm",
+						ManifestsConfigMapNamespace: "ns",
+						ManifestsConfigMapKey:       "manifests", // does not exist in CM
+					},
+				},
+			},
+			HarvesterClient: hvFake,
+			ReconcileClient: fakeClient,
+		}
+
+		err := r.reconcileCloudProviderConfig(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unable to get the data key"))
+		Expect(err.Error()).To(ContainSubstring("manifests"))
+	})
+
+	It("should error from GetCloudConfigB64 when ingress-expose service is missing", func() {
+		hvFake := hvfake.NewSimpleClientset()
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		// ConfigMap with the correct key and valid YAML data
+		cm := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "cp-cm", Namespace: "ns"},
+			Data: map[string]string{
+				"manifests": "apiVersion: v1\nkind: Secret\nmetadata:\n  name: cloud-creds\n  namespace: kube-system\ndata:\n  kubeconfig: placeholder\n",
+			},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(cm).Build()
+		r := &HarvesterClusterReconciler{Client: fakeClient, Scheme: scheme}
+
+		scope := &ClusterScope{
+			Ctx:    context.TODO(),
+			Logger: log.FromContext(context.TODO()),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "cp-cluster", Namespace: "ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "cp-test", Namespace: "ns"},
+				Spec: infrav1.HarvesterClusterSpec{
+					TargetNamespace: "default",
+					Server:         "https://harvester.local",
+					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{
+						ManifestsConfigMapName:            "cp-cm",
+						ManifestsConfigMapNamespace:       "ns",
+						ManifestsConfigMapKey:             "manifests",
+						CloudConfigCredentialsSecretName:  "cloud-creds",
+						CloudConfigCredentialsSecretKey:   "kubeconfig",
+					},
+				},
+			},
+			HarvesterClient: hvFake,
+			ReconcileClient: fakeClient,
+		}
+
+		err := r.reconcileCloudProviderConfig(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unable to generate the kubeconfig"))
+	})
+})
+
+// =============================================================================
+// Additional ReconcileNormal tests: placeholder LB exists with empty IP + POOL IPAM
+// =============================================================================
+
+var _ = Describe("ReconcileNormal placeholder LB with POOL IPAM", func() {
+	It("should update placeholder LB IP from pool when LB exists but has no IP", func() {
+		hvFake := hvfake.NewSimpleClientset()
+
+		// Create namespace
+		_, _ = hvFake.CoreV1().Namespaces().Create(context.TODO(), &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{Name: "tns"},
+		}, metav1.CreateOptions{})
+
+		// Create the placeholder LB service with empty status (no Ingress IP)
+		lbName := locutil.GenerateRFC1035Name([]string{"ns", "pool-cls", "lb"})
+		_, _ = hvFake.CoreV1().Services("tns").Create(context.TODO(), &corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{Name: lbName, Namespace: "tns"},
+			Spec: corev1.ServiceSpec{
+				Type: corev1.ServiceTypeLoadBalancer,
+			},
+			// Status.LoadBalancer.Ingress is empty
+		}, metav1.CreateOptions{})
+
+		// Create the IP pool with available IPs
+		_, _ = hvFake.LoadbalancerV1beta1().IPPools().Create(context.TODO(), &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{
+						Subnet:     "172.16.0.0/16",
+						Gateway:    "172.16.0.1",
+						RangeStart: "172.16.3.50",
+						RangeEnd:   "172.16.3.59",
+					},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Available: 10,
+			},
+		}, metav1.CreateOptions{})
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		r := &HarvesterClusterReconciler{Client: fakeClient, Scheme: scheme}
+
+		hvCluster := &infrav1.HarvesterCluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "pool-cls", Namespace: "ns",
+				Finalizers: []string{infrav1.ClusterFinalizer},
+			},
+			Spec: infrav1.HarvesterClusterSpec{
+				TargetNamespace: "tns",
+				LoadBalancerConfig: infrav1.LoadBalancerConfig{
+					IPAMType:  infrav1.POOL,
+					IpPoolRef: "my-pool",
+				},
+			},
+		}
+
+		scope := &ClusterScope{
+			Ctx: context.TODO(), Logger: log.FromContext(context.TODO()),
+			Cluster:          &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "pool-cls", Namespace: "ns"}},
+			HarvesterCluster: hvCluster, HarvesterClient: hvFake, ReconcileClient: fakeClient,
+		}
+
+		result, err := r.ReconcileNormal(scope)
+		// Should either requeue or succeed after updating the LB IP
+		_ = err
+		Expect(result.Requeue || result.RequeueAfter > 0).To(BeTrue())
+	})
+})

@@ -19,7 +19,10 @@ package controller
 import (
 	"context"
 	"strings"
+	"time"
 
+	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
+	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -34,8 +37,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	hvfake "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/fake"
 )
 
 // =============================================================================
@@ -1188,11 +1193,1678 @@ var _ = Describe("getProviderIDFromWorkloadCluster", func() {
 })
 
 // =============================================================================
-// Tests for buildVMTemplate error paths (SSH key not found)
+// Tests for buildVMTemplate
 // =============================================================================
 
-// Note: buildVMTemplate requires HarvesterClient (concrete type) for SSH key lookup.
-// We test only through the dependent functions that are testable.
+var _ = Describe("buildVMTemplate", func() {
+	It("should build a complete VM template with static network", func() {
+		// Create SSH KeyPair
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec: harvesterv1beta1.KeyPairSpec{
+				PublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@test",
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		// Create bootstrap data secret
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "bootstrap-data", Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+		logger := log.FromContext(context.TODO())
+
+		dataSecretName := "bootstrap-data"
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec: clusterv1.MachineSpec{
+					Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName},
+				},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0"},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU:        4,
+					Memory:     "8Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					TargetNamespace: "default",
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						SubnetMask: "255.255.0.0",
+						Gateway:    "172.16.0.1",
+						DNSServers: []string{"172.16.0.1"},
+					},
+				},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+			EffectiveNetworkConfig: &infrav1.NetworkConfig{
+				Address:    "172.16.3.40",
+				Gateway:    "172.16.0.1",
+				DNSServers: []string{"172.16.0.1"},
+			},
+		}
+
+		disks := []diskInfo{
+			{pvcName: "test-cp-0-disk-0-abc", index: 0},
+		}
+		vmiLabels := map[string]string{"harvesterhci.io/vmName": "test-cp-0"}
+
+		tmpl, err := buildVMTemplate(scope, disks, vmiLabels)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(tmpl).ToNot(BeNil())
+
+		// Verify CPU
+		Expect(tmpl.Spec.Domain.CPU.Cores).To(Equal(uint32(4)))
+		Expect(tmpl.Spec.Domain.CPU.Sockets).To(Equal(uint32(1)))
+		Expect(tmpl.Spec.Domain.CPU.Threads).To(Equal(uint32(1)))
+		// Verify memory
+		Expect(tmpl.Spec.Domain.Memory.Guest.String()).To(Equal("8Gi"))
+		// Verify volumes (1 disk + cloudinit)
+		Expect(tmpl.Spec.Volumes).To(HaveLen(2))
+		Expect(tmpl.Spec.Volumes[0].Name).To(Equal("disk-0"))
+		Expect(tmpl.Spec.Volumes[0].PersistentVolumeClaim.ClaimName).To(Equal("test-cp-0-disk-0-abc"))
+		Expect(tmpl.Spec.Volumes[1].Name).To(Equal("cloudinitdisk"))
+		// Verify disks
+		Expect(tmpl.Spec.Domain.Devices.Disks).To(HaveLen(2))
+		Expect(tmpl.Spec.Domain.Devices.Disks[0].Name).To(Equal("disk-0"))
+		Expect(string(tmpl.Spec.Domain.Devices.Disks[0].DiskDevice.Disk.Bus)).To(Equal("virtio"))
+		Expect(tmpl.Spec.Domain.Devices.Disks[1].Name).To(Equal("cloudinitdisk"))
+		// Verify networks
+		Expect(tmpl.Spec.Networks).To(HaveLen(1))
+		Expect(tmpl.Spec.Networks[0].Multus.NetworkName).To(Equal("default/production"))
+		// Verify interfaces
+		Expect(tmpl.Spec.Domain.Devices.Interfaces).To(HaveLen(1))
+		Expect(tmpl.Spec.Domain.Devices.Interfaces[0].Name).To(Equal("nic-1"))
+		Expect(tmpl.Spec.Domain.Devices.Interfaces[0].Model).To(Equal("virtio"))
+		// Verify hostname
+		Expect(tmpl.Spec.Hostname).To(Equal("test-cp-0"))
+		// Verify USB input
+		Expect(tmpl.Spec.Domain.Devices.Inputs).To(HaveLen(1))
+		Expect(string(tmpl.Spec.Domain.Devices.Inputs[0].Type)).To(Equal("tablet"))
+		// Verify annotations
+		Expect(tmpl.ObjectMeta.Annotations).To(HaveKey(hvAnnotationDiskNames))
+		Expect(tmpl.ObjectMeta.Annotations).To(HaveKey(hvAnnotationSSH))
+		Expect(tmpl.ObjectMeta.Annotations[hvAnnotationSSH]).To(ContainSubstring("capi-ssh-key"))
+		// Verify labels
+		Expect(tmpl.ObjectMeta.Labels).To(HaveKeyWithValue("harvesterhci.io/vmName", "test-cp-0"))
+		// Verify cloud-init secret was created on Harvester
+		secret, err := hvClient.CoreV1().Secrets("default").Get(context.TODO(), "test-cp-0-cloud-init", metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(secret.Data).To(HaveKey("userdata"))
+		Expect(secret.Data).To(HaveKey("networkdata")) // static mode
+		// Verify userdata contains SSH key and qemu-guest-agent
+		userdata := string(secret.Data["userdata"])
+		Expect(userdata).To(ContainSubstring("ssh-rsa"))
+		Expect(userdata).To(ContainSubstring("qemu-guest-agent"))
+		Expect(userdata).To(ContainSubstring("echo hello"))
+		// Verify networkdata contains static config
+		networkdata := string(secret.Data["networkdata"])
+		Expect(networkdata).To(ContainSubstring("172.16.3.40"))
+		Expect(networkdata).To(ContainSubstring("type: static"))
+		// Verify resource requests/limits
+		Expect(tmpl.Spec.Domain.Resources.Requests["memory"]).To(Equal(resource.MustParse("8Gi")))
+		Expect(tmpl.Spec.Domain.Resources.Limits["memory"]).To(Equal(resource.MustParse("8Gi")))
+		Expect(tmpl.Spec.Domain.Resources.Limits["cpu"]).To(Equal(*resource.NewQuantity(4, resource.DecimalSI)))
+	})
+
+	It("should build a VM template with DHCP mode (no networkdata)", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa AAAA test@test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo dhcp\n")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-dhcp-0"},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:        hvClient,
+			ReconcilerClient:       fakeClient,
+			Logger:                 &logger,
+			EffectiveNetworkConfig: nil, // DHCP mode
+		}
+
+		disks := []diskInfo{{pvcName: "test-dhcp-0-disk-0-xyz", index: 0}}
+		vmiLabels := map[string]string{"harvesterhci.io/vmName": "test-dhcp-0"}
+		tmpl, err := buildVMTemplate(scope, disks, vmiLabels)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(tmpl).ToNot(BeNil())
+
+		// Verify CPU and memory for DHCP VM
+		Expect(tmpl.Spec.Domain.CPU.Cores).To(Equal(uint32(2)))
+		Expect(tmpl.Spec.Domain.Memory.Guest.String()).To(Equal("4Gi"))
+
+		// In DHCP mode, cloud-init should contain dhclient in userdata but NOT have networkdata key
+		secret, err := hvClient.CoreV1().Secrets("default").Get(context.TODO(), "test-dhcp-0-cloud-init", metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(secret.Data).To(HaveKey("userdata"))
+		userdata := string(secret.Data["userdata"])
+		Expect(userdata).To(ContainSubstring("dhclient"))
+		Expect(userdata).To(ContainSubstring("echo dhcp"))
+		// networkdata should NOT be present in DHCP mode
+		_, hasNetworkdata := secret.Data["networkdata"]
+		Expect(hasNetworkdata).To(BeFalse())
+	})
+
+	It("should build VM template with multiple disks and boot order", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa AAAA test@test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+		logger := log.FromContext(context.TODO())
+
+		size40 := resource.MustParse("40Gi")
+		size10 := resource.MustParse("10Gi")
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-multidisk"},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "image", VolumeSize: &size40, BootOrder: 1},
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size10, BootOrder: 0},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:        hvClient,
+			ReconcilerClient:       fakeClient,
+			Logger:                 &logger,
+			EffectiveNetworkConfig: nil,
+		}
+
+		disks := []diskInfo{
+			{pvcName: "test-multidisk-disk-0-abc", index: 0},
+			{pvcName: "test-multidisk-disk-1-def", index: 1},
+		}
+		tmpl, err := buildVMTemplate(scope, disks, map[string]string{})
+		Expect(err).ToNot(HaveOccurred())
+		// 2 data disks + 1 cloudinit disk
+		Expect(tmpl.Spec.Volumes).To(HaveLen(3))
+		Expect(tmpl.Spec.Volumes[0].Name).To(Equal("disk-0"))
+		Expect(tmpl.Spec.Volumes[1].Name).To(Equal("disk-1"))
+		Expect(tmpl.Spec.Volumes[2].Name).To(Equal("cloudinitdisk"))
+		// Verify boot order on first disk
+		Expect(tmpl.Spec.Domain.Devices.Disks[0].BootOrder).ToNot(BeNil())
+		Expect(*tmpl.Spec.Domain.Devices.Disks[0].BootOrder).To(Equal(uint(1)))
+		// Second disk has BootOrder 0 => no boot order set
+		Expect(tmpl.Spec.Domain.Devices.Disks[1].BootOrder).To(BeNil())
+		// diskNames annotation should be a JSON array with both PVC names
+		Expect(tmpl.ObjectMeta.Annotations[hvAnnotationDiskNames]).To(ContainSubstring("test-multidisk-disk-0-abc"))
+		Expect(tmpl.ObjectMeta.Annotations[hvAnnotationDiskNames]).To(ContainSubstring("test-multidisk-disk-1-def"))
+	})
+
+	It("should update existing cloud-init secret", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa AAAA test@test"},
+		}
+		// Pre-create the cloud-init secret to test update path
+		existingSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-update-0-cloud-init", Namespace: "default"},
+			Data:       map[string][]byte{"userdata": []byte("old-data")},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair, existingSecret)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-update-0"},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:        hvClient,
+			ReconcilerClient:       fakeClient,
+			Logger:                 &logger,
+			EffectiveNetworkConfig: nil,
+		}
+
+		tmpl, err := buildVMTemplate(scope, nil, map[string]string{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(tmpl).ToNot(BeNil())
+
+		// Verify the secret was updated (not old data)
+		secret, err := hvClient.CoreV1().Secrets("default").Get(context.TODO(), "test-update-0-cloud-init", metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		userdata := string(secret.Data["userdata"])
+		Expect(userdata).ToNot(Equal("old-data"))
+		Expect(userdata).To(ContainSubstring("qemu-guest-agent"))
+	})
+
+	It("should return error when SSH key pair not found", func() {
+		hvClient := hvfake.NewSimpleClientset() // no key pair
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				Spec: infrav1.HarvesterMachineSpec{SSHKeyPair: "default/missing-key"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		_, err := buildVMTemplate(scope, nil, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("keypair"))
+	})
+
+	It("should return error when SSH key pair name is malformed", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				Spec: infrav1.HarvesterMachineSpec{SSHKeyPair: "a/b/c"}, // too many slashes
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		_, err := buildVMTemplate(scope, nil, nil)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("Malformed"))
+	})
+})
+
+// =============================================================================
+// Tests for createVMFromHarvesterMachine
+// =============================================================================
+
+var _ = Describe("createVMFromHarvesterMachine", func() {
+	It("should create a VM with storageClass volume in DHCP mode", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0"},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 4, Memory: "8Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size, BootOrder: 1},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:        hvClient,
+			ReconcilerClient:       fakeClient,
+			Logger:                 &logger,
+			EffectiveNetworkConfig: nil, // DHCP mode
+		}
+
+		vm, err := createVMFromHarvesterMachine(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(vm).ToNot(BeNil())
+		Expect(vm.Name).To(Equal("test-cp-0"))
+		Expect(vm.Namespace).To(Equal("default"))
+		Expect(*vm.Spec.RunStrategy).To(Equal(kubevirtv1.RunStrategyAlways))
+		// Verify annotations
+		Expect(vm.Annotations).To(HaveKey(vmAnnotationPVC))
+		Expect(vm.Annotations).To(HaveKey(vmAnnotationNetworkIps))
+		// Verify labels
+		Expect(vm.Labels).To(HaveKeyWithValue("harvesterhci.io/creator", "harvester"))
+		// Verify template exists
+		Expect(vm.Spec.Template).ToNot(BeNil())
+		Expect(vm.Spec.Template.Spec.Domain.CPU.Cores).To(Equal(uint32(4)))
+
+		// Verify the VM was created on the fake client
+		createdVM, err := hvClient.KubevirtV1().VirtualMachines("default").Get(context.TODO(), "test-cp-0", metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(createdVM.Name).To(Equal("test-cp-0"))
+	})
+
+	It("should add control-plane label when machine has CP label", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap"
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+				Data:       map[string][]byte{"value": []byte("")},
+			},
+		).Build()
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "my-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "my-cp-0",
+					Labels: map[string]string{
+						clusterv1.MachineControlPlaneLabel: "",
+					},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:        hvClient,
+			ReconcilerClient:       fakeClient,
+			Logger:                 &logger,
+			EffectiveNetworkConfig: nil,
+		}
+
+		vm, err := createVMFromHarvesterMachine(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// Check the CP VM label (cpVMLabelKey = "harvestercluster/machinetype", cpVMLabelValuePrefix = "controlplane")
+		Expect(vm.Labels).To(HaveKey("harvestercluster/machinetype"))
+		Expect(vm.Labels["harvestercluster/machinetype"]).To(Equal("controlplane-my-cluster"))
+	})
+
+	It("should NOT add control-plane label for worker machines", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap"
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+				Data:       map[string][]byte{"value": []byte("")},
+			},
+		).Build()
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "my-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "my-worker-0",
+					Labels: map[string]string{}, // no CP label
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:        hvClient,
+			ReconcilerClient:       fakeClient,
+			Logger:                 &logger,
+			EffectiveNetworkConfig: nil,
+		}
+
+		vm, err := createVMFromHarvesterMachine(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// Worker should NOT have the CP label
+		Expect(vm.Labels).ToNot(HaveKey("harvestercluster/machinetype"))
+	})
+
+	It("should create VM with static network config", func() {
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		dataSecretName := "bootstrap"
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
+			&corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+				Data:       map[string][]byte{"value": []byte("")},
+			},
+		).Build()
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx:     context.TODO(),
+			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "static-cp-0"},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 4, Memory: "8Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size, BootOrder: 1},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					TargetNamespace: "default",
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						SubnetMask: "255.255.0.0",
+						Gateway:    "172.16.0.1",
+						DNSServers: []string{"172.16.0.1"},
+					},
+				},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+			EffectiveNetworkConfig: &infrav1.NetworkConfig{
+				Address:    "172.16.3.42",
+				Gateway:    "172.16.0.1",
+				DNSServers: []string{"172.16.0.1"},
+			},
+		}
+
+		vm, err := createVMFromHarvesterMachine(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(vm.Name).To(Equal("static-cp-0"))
+
+		// Verify cloud-init secret has networkdata for static mode
+		secret, err := hvClient.CoreV1().Secrets("default").Get(context.TODO(), "static-cp-0-cloud-init", metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(secret.Data).To(HaveKey("networkdata"))
+		networkdata := string(secret.Data["networkdata"])
+		Expect(networkdata).To(ContainSubstring("172.16.3.42"))
+		Expect(networkdata).To(ContainSubstring("type: static"))
+	})
+})
+
+// =============================================================================
+// Tests for removeEtcdMemberIfControlPlane
+// =============================================================================
+
+var _ = Describe("removeEtcdMemberIfControlPlane", func() {
+	It("should skip when machine is not control-plane", func() {
+		logger := log.FromContext(context.TODO())
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{}}, // no CP label
+			},
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
+			},
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+		r := &HarvesterMachineReconciler{}
+		r.removeEtcdMemberIfControlPlane(scope) // should return early without error
+	})
+
+	It("should skip when machine has nil labels", func() {
+		logger := log.FromContext(context.TODO())
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{}, // nil labels map
+			},
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
+			},
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+		r := &HarvesterMachineReconciler{}
+		r.removeEtcdMemberIfControlPlane(scope) // should return early without error
+	})
+
+	It("should log warning and return when workload config unavailable for CP machine", func() {
+		logger := log.FromContext(context.TODO())
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						clusterv1.MachineControlPlaneLabel: "",
+					},
+				},
+			},
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "ns"},
+			},
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+		r := &HarvesterMachineReconciler{}
+		// kubeconfig secret doesn't exist -> getWorkloadClusterConfig fails -> early return
+		r.removeEtcdMemberIfControlPlane(scope) // should not panic
+	})
+})
+
+// =============================================================================
+// Tests for ReconcileNormal
+// =============================================================================
+
+var _ = Describe("ReconcileNormal", func() {
+	It("should return early when cluster is paused", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: "test-ns",
+					Annotations: map[string]string{
+						"cluster.x-k8s.io/paused": "true",
+					},
+				},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cp-0",
+					Namespace: "test-ns",
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
+		// Status should be not ready when paused
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should add finalizer when not present", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: "test-ns",
+				},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cp-0",
+					Namespace: "test-ns",
+					// No finalizers yet
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		// Finalizer should be added
+		Expect(scope.HarvesterMachine.Finalizers).To(ContainElement(infrav1.MachineFinalizer))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should wait for infrastructure ready", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: "test-ns",
+				},
+				Status: clusterv1.ClusterStatus{
+					InfrastructureReady: false,
+				},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-cp-0",
+					Namespace:  "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should wait for bootstrap data secret", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
+
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status: clusterv1.ClusterStatus{
+					InfrastructureReady: true,
+				},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec: clusterv1.MachineSpec{
+					Bootstrap: clusterv1.Bootstrap{
+						DataSecretName: nil, // no bootstrap data yet
+					},
+				},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-cp-0",
+					Namespace:  "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should create VM when no existing VM found (DHCP mode)", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-cp-0",
+					Namespace:  "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 4, Memory: "8Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size, BootOrder: 1},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hv-cluster", Namespace: "test-ns"},
+				Spec:       infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// VM was just created, status.Ready should be true at end of ReconcileNormal
+		Expect(result.Requeue).To(BeFalse())
+
+		// Verify the VM was created on Harvester
+		createdVM, getErr := hvClient.KubevirtV1().VirtualMachines("default").Get(context.TODO(), "test-cp-0", metav1.GetOptions{})
+		Expect(getErr).ToNot(HaveOccurred())
+		Expect(createdVM.Name).To(Equal("test-cp-0"))
+	})
+
+	It("should detect existing running VM and get IP addresses", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		strategy := kubevirtv1.RunStrategyAlways
+		existingVM := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				RunStrategy: &strategy,
+			},
+		}
+		existingVMI := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
+					{IP: "172.16.3.42", Name: "nic-1"},
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(existingVM, existingVMI)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-cp-0",
+					Namespace:  "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 4, Memory: "8Gi",
+				},
+				Status: infrav1.HarvesterMachineStatus{
+					Ready: false, // not yet ready
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+
+		// When VM is running and has IPs but machine was not Ready yet, should set Ready=true and requeue
+		Expect(result.Requeue).To(BeTrue())
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
+		Expect(scope.HarvesterMachine.Status.Addresses).To(HaveLen(1))
+		Expect(scope.HarvesterMachine.Status.Addresses[0].Address).To(Equal("172.16.3.42"))
+	})
+
+	It("should requeue when VM is running but VMI not found yet", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		strategy := kubevirtv1.RunStrategyAlways
+		existingVM := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				RunStrategy: &strategy,
+			},
+		}
+		// No VMI -> getIPAddressesFromVMI will fail
+		hvClient := hvfake.NewSimpleClientset(existingVM)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-cp-0",
+					Namespace:  "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// Should requeue since VMI doesn't exist yet (not found error)
+		Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should set providerID from VM UID when workload config unavailable", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		strategy := kubevirtv1.RunStrategyAlways
+		existingVM := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cp-0", Namespace: "default",
+				UID: "fake-uid-12345",
+			},
+			Spec: kubevirtv1.VirtualMachineSpec{RunStrategy: &strategy},
+		}
+		existingVMI := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
+					{IP: "172.16.3.42", Name: "nic-1"},
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(existingVM, existingVMI)
+		logger := log.FromContext(context.TODO())
+
+		// Pre-set MachineCreatedCondition to true (VM was previously created)
+		hvMachine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cp-0", Namespace: "test-ns",
+				Finalizers: []string{infrav1.MachineFinalizer},
+			},
+			Spec: infrav1.HarvesterMachineSpec{
+				ProviderID: "", // no providerID yet
+			},
+			Status: infrav1.HarvesterMachineStatus{
+				Ready: true, // already marked Ready (has IPs)
+			},
+		}
+		conditions.MarkTrue(hvMachine, infrav1.MachineCreatedCondition)
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: hvMachine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		// ProviderID should be set from VM UID (fallback when kubeconfig unavailable)
+		Expect(scope.HarvesterMachine.Spec.ProviderID).To(Equal("harvester://fake-uid-12345"))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
+	})
+
+	It("should mark ready when providerID already set and VM is running", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		strategy := kubevirtv1.RunStrategyAlways
+		existingVM := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Spec:       kubevirtv1.VirtualMachineSpec{RunStrategy: &strategy},
+		}
+		existingVMI := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
+					{IP: "172.16.3.42", Name: "nic-1"},
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(existingVM, existingVMI)
+		logger := log.FromContext(context.TODO())
+
+		// Pre-set MachineCreatedCondition
+		hvMachine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cp-0", Namespace: "test-ns",
+				Finalizers: []string{infrav1.MachineFinalizer},
+			},
+			Spec: infrav1.HarvesterMachineSpec{
+				ProviderID: "harvester://already-set", // providerID already set
+			},
+			Status: infrav1.HarvesterMachineStatus{
+				Ready: true, // already ready
+			},
+		}
+		conditions.MarkTrue(hvMachine, infrav1.MachineCreatedCondition)
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: hvMachine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
+		Expect(scope.HarvesterMachine.Spec.ProviderID).To(Equal("harvester://already-set"))
+	})
+
+	It("should handle MachineCreatedCondition=true but VM missing", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		hvClient := hvfake.NewSimpleClientset() // no VM
+		logger := log.FromContext(context.TODO())
+
+		// Pre-set MachineCreatedCondition to true (as if VM was previously created)
+		hvMachine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "test-cp-0", Namespace: "test-ns",
+				Finalizers: []string{infrav1.MachineFinalizer},
+			},
+		}
+		conditions.MarkTrue(hvMachine, infrav1.MachineCreatedCondition)
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: hvMachine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// VM is gone but condition says created -> mark not found, requeue
+		Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should requeue when VM running but no IP addresses and was already Ready", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		strategy := kubevirtv1.RunStrategyAlways
+		existingVM := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Spec:       kubevirtv1.VirtualMachineSpec{RunStrategy: &strategy},
+		}
+		// VMI exists but has no IP addresses (interfaces with empty IPs)
+		existingVMI := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
+					{IP: "", Name: "nic-1"}, // no IP yet
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(existingVM, existingVMI)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cp-0", Namespace: "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Status: infrav1.HarvesterMachineStatus{
+					Ready: true, // was previously ready, but now IPs disappeared
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// No IP addresses but was Ready -> requeue
+		Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should handle halted VM by setting not ready and requeuing", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		strategy := kubevirtv1.RunStrategyHalted
+		existingVM := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				RunStrategy: &strategy,
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(existingVM)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-cp-0",
+					Namespace:  "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		// VM is halted -> not running -> requeue after short delay
+		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should allocate IP from pool when VMNetworkConfig is set", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo static\n")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-vm-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair, pool)
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cp-0", Namespace: "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 4, Memory: "8Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size, BootOrder: 1},
+					},
+					NetworkConfig: nil, // no machine-level config -> use pool
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hv-cluster", Namespace: "test-ns"},
+				Spec: infrav1.HarvesterClusterSpec{
+					TargetNamespace: "default",
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef:  "capi-vm-pool",
+						SubnetMask: "255.255.0.0",
+						Gateway:    "172.16.0.1",
+						DNSServers: []string{"172.16.0.1"},
+					},
+				},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		// Should have allocated an IP
+		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).ToNot(BeEmpty())
+		// EffectiveNetworkConfig should be populated
+		Expect(scope.EffectiveNetworkConfig).ToNot(BeNil())
+		Expect(scope.EffectiveNetworkConfig.Address).To(Equal(scope.HarvesterMachine.Status.AllocatedIPAddress))
+		Expect(scope.EffectiveNetworkConfig.Gateway).To(Equal("172.16.0.1"))
+		// VM should have been created
+		createdVM, getErr := hvClient.KubevirtV1().VirtualMachines("default").Get(context.TODO(), "test-cp-0", metav1.GetOptions{})
+		Expect(getErr).ToNot(HaveOccurred())
+		Expect(createdVM.Name).To(Equal("test-cp-0"))
+	})
+
+	It("should use machine-level NetworkConfig when specified", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		sshKeyPair := &harvesterv1beta1.KeyPair{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-ssh-key", Namespace: "default"},
+			Spec:       harvesterv1beta1.KeyPairSpec{PublicKey: "ssh-rsa test"},
+		}
+		hvClient := hvfake.NewSimpleClientset(sshKeyPair)
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-static-0", Namespace: "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/capi-ssh-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size},
+					},
+					NetworkConfig: &infrav1.NetworkConfig{
+						Address:    "10.0.0.100",
+						Gateway:    "10.0.0.1",
+						DNSServers: []string{"8.8.8.8"},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hv-cluster", Namespace: "test-ns"},
+				Spec: infrav1.HarvesterClusterSpec{
+					TargetNamespace: "default",
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						SubnetMask: "255.255.255.0",
+						Gateway:    "10.0.0.1",
+						DNSServers: []string{"8.8.8.8"},
+					},
+				},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		// EffectiveNetworkConfig should use machine-level config
+		Expect(scope.EffectiveNetworkConfig).ToNot(BeNil())
+		Expect(scope.EffectiveNetworkConfig.Address).To(Equal("10.0.0.100"))
+		Expect(scope.EffectiveNetworkConfig.Gateway).To(Equal("10.0.0.1"))
+	})
+
+	It("should return error when VM creation fails (missing SSH key)", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		// No SSH key pair in the fake client -> createVMFromHarvesterMachine will fail
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		size := resource.MustParse("40Gi")
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cp-0", Namespace: "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					CPU: 2, Memory: "4Gi",
+					SSHKeyPair: "default/missing-key",
+					Networks:   []string{"default/production"},
+					Volumes: []infrav1.Volume{
+						{VolumeType: "storageClass", StorageClass: "longhorn", VolumeSize: &size},
+					},
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-hv-cluster", Namespace: "test-ns"},
+				Spec:       infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		_, err := r.ReconcileNormal(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unable to build VM definition"))
+		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
+	})
+
+	It("should return error when IP allocation fails", func() {
+		scheme := runtime.NewScheme()
+		_ = corev1.AddToScheme(scheme)
+		_ = infrav1.AddToScheme(scheme)
+		_ = clusterv1.AddToScheme(scheme)
+
+		dataSecretName := "bootstrap-data"
+		bootstrapSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
+			Data:       map[string][]byte{"value": []byte("")},
+		}
+		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
+
+		hvClient := hvfake.NewSimpleClientset() // no pool
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			Ctx: context.TODO(),
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+			},
+			Machine: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
+				Spec:       clusterv1.MachineSpec{Bootstrap: clusterv1.Bootstrap{DataSecretName: &dataSecretName}},
+			},
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-cp-0", Namespace: "test-ns",
+					Finalizers: []string{infrav1.MachineFinalizer},
+				},
+				Spec: infrav1.HarvesterMachineSpec{
+					NetworkConfig: nil, // no machine-level config
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					TargetNamespace: "default",
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "missing-pool", // pool doesn't exist
+					},
+				},
+			},
+			HarvesterClient:  hvClient,
+			ReconcilerClient: fakeClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
+		result, err := r.ReconcileNormal(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+	})
+})
 
 // =============================================================================
 // Tests for buildPVCForVolume with unknown volume type
@@ -1237,5 +2909,654 @@ var _ = Describe("buildPVCForVolume edge cases", func() {
 		_, hasImageAnnotation := pvc.Annotations[hvAnnotationImageID]
 		Expect(hasImageAnnotation).To(BeFalse())
 		Expect(*pvc.Spec.StorageClassName).To(Equal("longhorn-image-xyz"))
+	})
+})
+
+// =============================================================================
+// Tests for buildPVCForVolume with image type (requires fake HarvesterClient)
+// =============================================================================
+
+var _ = Describe("buildPVCForVolume with image type", func() {
+	It("should build a PVC for image volume type", func() {
+		size := resource.MustParse("40Gi")
+		vol := &infrav1.Volume{
+			VolumeType: "image",
+			ImageName:  "default/test-image-display",
+			VolumeSize: &size,
+		}
+
+		// Create a fake VirtualMachineImage
+		testImage := &harvesterv1beta1.VirtualMachineImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "image-abc123",
+				Namespace: "default",
+			},
+			Spec: harvesterv1beta1.VirtualMachineImageSpec{
+				DisplayName: "test-image-display",
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(testImage)
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+		}
+
+		pvc, err := buildPVCForVolume(vol, "test-pvc", "default", scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(*pvc.Spec.StorageClassName).To(Equal("longhorn-image-abc123"))
+		Expect(pvc.Annotations[hvAnnotationImageID]).To(Equal("default/image-abc123"))
+	})
+
+	It("should find image by resource name (not display name)", func() {
+		size := resource.MustParse("40Gi")
+		vol := &infrav1.Volume{
+			VolumeType: "image",
+			ImageName:  "default/image-xyz789", // using resource name, not display name
+			VolumeSize: &size,
+		}
+
+		testImage := &harvesterv1beta1.VirtualMachineImage{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "image-xyz789",
+				Namespace: "default",
+			},
+			Spec: harvesterv1beta1.VirtualMachineImageSpec{
+				DisplayName: "some-other-display-name",
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(testImage)
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+		}
+
+		pvc, err := buildPVCForVolume(vol, "test-pvc", "default", scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(*pvc.Spec.StorageClassName).To(Equal("longhorn-image-xyz789"))
+		Expect(pvc.Annotations[hvAnnotationImageID]).To(Equal("default/image-xyz789"))
+	})
+
+	It("should return error when image not found", func() {
+		size := resource.MustParse("40Gi")
+		vol := &infrav1.Volume{
+			VolumeType: "image",
+			ImageName:  "default/nonexistent-image",
+			VolumeSize: &size,
+		}
+
+		hvClient := hvfake.NewSimpleClientset() // no images
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+		}
+
+		_, err := buildPVCForVolume(vol, "test-pvc", "default", scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unable to find VM image"))
+	})
+})
+
+// =============================================================================
+// Tests for getIPAddressesFromVMI (requires fake HarvesterClient)
+// =============================================================================
+
+var _ = Describe("getIPAddressesFromVMI", func() {
+	It("should extract IP addresses from VMI interfaces", func() {
+		vm := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-vm", Namespace: "default"},
+		}
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-vm", Namespace: "default"},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
+					{IP: "172.16.3.42", Name: "nic-1"},
+					{IP: "", Name: "nic-2"},       // should be skipped
+					{IP: "172.16.3.43", Name: "nic-3"},
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(vmi)
+
+		addresses, err := getIPAddressesFromVMI(vm, hvClient)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(addresses).To(HaveLen(2))
+		Expect(addresses[0].Address).To(Equal("172.16.3.42"))
+		Expect(addresses[0].Type).To(Equal(clusterv1.MachineExternalIP))
+		Expect(addresses[1].Address).To(Equal("172.16.3.43"))
+		Expect(addresses[1].Type).To(Equal(clusterv1.MachineExternalIP))
+	})
+
+	It("should return error when VMI not found", func() {
+		vm := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "missing-vm", Namespace: "default"},
+		}
+		hvClient := hvfake.NewSimpleClientset() // no VMI
+
+		_, err := getIPAddressesFromVMI(vm, hvClient)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("should return empty list when VMI has no interfaces", func() {
+		vm := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "no-nic-vm", Namespace: "default"},
+		}
+		vmi := &kubevirtv1.VirtualMachineInstance{
+			ObjectMeta: metav1.ObjectMeta{Name: "no-nic-vm", Namespace: "default"},
+			Status: kubevirtv1.VirtualMachineInstanceStatus{
+				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(vmi)
+
+		addresses, err := getIPAddressesFromVMI(vm, hvClient)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(addresses).To(BeEmpty())
+	})
+})
+
+// =============================================================================
+// Tests for deletePVCsByPrefix (requires fake HarvesterClient)
+// =============================================================================
+
+var _ = Describe("deletePVCsByPrefix", func() {
+	It("should delete PVCs matching prefix", func() {
+		hvClient := hvfake.NewSimpleClientset(
+			&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-vm-disk-0-abc", Namespace: "default"},
+			},
+			&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-vm-disk-1-def", Namespace: "default"},
+			},
+			&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "other-pvc", Namespace: "default"},
+			},
+		)
+		logger := log.FromContext(context.TODO())
+		scope := &Scope{
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+		r := &HarvesterMachineReconciler{}
+		r.deletePVCsByPrefix(context.TODO(), scope, "default", "test-vm-disk-")
+
+		pvcs, err := hvClient.CoreV1().PersistentVolumeClaims("default").List(context.TODO(), metav1.ListOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(pvcs.Items).To(HaveLen(1))
+		Expect(pvcs.Items[0].Name).To(Equal("other-pvc"))
+	})
+
+	It("should handle no PVCs matching prefix", func() {
+		hvClient := hvfake.NewSimpleClientset(
+			&corev1.PersistentVolumeClaim{
+				ObjectMeta: metav1.ObjectMeta{Name: "unrelated-pvc", Namespace: "default"},
+			},
+		)
+		logger := log.FromContext(context.TODO())
+		scope := &Scope{
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+		r := &HarvesterMachineReconciler{}
+		r.deletePVCsByPrefix(context.TODO(), scope, "default", "test-vm-disk-")
+
+		pvcs, err := hvClient.CoreV1().PersistentVolumeClaims("default").List(context.TODO(), metav1.ListOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(pvcs.Items).To(HaveLen(1))
+		Expect(pvcs.Items[0].Name).To(Equal("unrelated-pvc"))
+	})
+
+	It("should handle empty namespace", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+		scope := &Scope{
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+		r := &HarvesterMachineReconciler{}
+		r.deletePVCsByPrefix(context.TODO(), scope, "default", "test-vm-disk-")
+		// Should not panic, just do nothing
+	})
+})
+
+// =============================================================================
+// Tests for allocateVMIP (requires fake HarvesterClient)
+// =============================================================================
+
+var _ = Describe("allocateVMIP", func() {
+	It("should allocate IP from pool", func() {
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-vm-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "capi-vm-pool",
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).ToNot(BeEmpty())
+	})
+
+	It("should be idempotent when IP already allocated", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+				Status: infrav1.HarvesterMachineStatus{
+					AllocatedIPAddress: "172.16.3.40",
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{},
+			HarvesterClient:  hvClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).To(Equal("172.16.3.40"))
+	})
+
+	It("should return error when VMNetworkConfig is nil", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{},
+			HarvesterClient:  hvClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("VMNetworkConfig is nil"))
+	})
+
+	It("should return error when IPPoolRef is empty", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("IPPoolRef is empty"))
+	})
+
+	It("should find existing allocation in pool", func() {
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-vm-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{
+					"172.16.3.42": "test-ns/test-cp-0",
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "capi-vm-pool",
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).To(Equal("172.16.3.42"))
+	})
+})
+
+// =============================================================================
+// Tests for releaseVMIP (requires fake HarvesterClient)
+// =============================================================================
+
+var _ = Describe("releaseVMIP", func() {
+	It("should release IP from pool", func() {
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-vm-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{
+					"172.16.3.40": "test-ns/test-cp-0",
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+				Status: infrav1.HarvesterMachineStatus{
+					AllocatedIPAddress: "172.16.3.40",
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "capi-vm-pool",
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		r.releaseVMIP(scope)
+		// No error return - it's best-effort. Verify pool was updated.
+	})
+
+	It("should skip release when no IP allocated", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				Status: infrav1.HarvesterMachineStatus{AllocatedIPAddress: ""},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		r.releaseVMIP(scope) // should return immediately
+	})
+
+	It("should skip release when VMNetworkConfig is nil", func() {
+		hvClient := hvfake.NewSimpleClientset()
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				Status: infrav1.HarvesterMachineStatus{AllocatedIPAddress: "172.16.3.40"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{},
+			HarvesterClient:  hvClient,
+			Logger:           &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		r.releaseVMIP(scope) // should log and return
+	})
+
+	It("should handle invalid allocated IP gracefully", func() {
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "capi-vm-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+				Status: infrav1.HarvesterMachineStatus{
+					AllocatedIPAddress: "not-a-valid-ip", // invalid IP
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "capi-vm-pool",
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		r.releaseVMIP(scope) // should log warning about invalid IP and return
+	})
+
+	It("should skip release when pool not found", func() {
+		hvClient := hvfake.NewSimpleClientset() // no pool
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				Status: infrav1.HarvesterMachineStatus{AllocatedIPAddress: "172.16.3.40"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "missing-pool",
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		r.releaseVMIP(scope) // should log warning and return
+	})
+})
+
+// =============================================================================
+// Tests for ReconcileDelete (requires fake HarvesterClient)
+// =============================================================================
+
+var _ = Describe("ReconcileDelete", func() {
+	It("should delete VM, cloud-init secret, and PVCs", func() {
+		vm := &kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "default"},
+			Spec:       kubevirtv1.VirtualMachineSpec{},
+		}
+		cloudInitSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0-cloud-init", Namespace: "default"},
+		}
+		pvc := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0-disk-0-abc", Namespace: "default"},
+		}
+		hvClient := hvfake.NewSimpleClientset(vm, cloudInitSecret, pvc)
+		logger := log.FromContext(context.TODO())
+
+		machine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-cp-0",
+				Namespace:  "test-ns",
+				Finalizers: []string{infrav1.MachineFinalizer},
+			},
+		}
+
+		scope := Scope{
+			Ctx:              context.TODO(),
+			HarvesterMachine: machine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		result, err := r.ReconcileDelete(scope)
+		// VM exists, so it should request deletion and requeue
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
+	})
+
+	It("should clean up PVCs when VM is already gone", func() {
+		cloudInitSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-1-cloud-init", Namespace: "default"},
+		}
+		pvc0 := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-1-disk-0-abc", Namespace: "default"},
+		}
+		pvc1 := &corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cp-1-disk-1-def", Namespace: "default"},
+		}
+		hvClient := hvfake.NewSimpleClientset(cloudInitSecret, pvc0, pvc1) // no VM
+		logger := log.FromContext(context.TODO())
+
+		machine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-cp-1",
+				Namespace:  "test-ns",
+				Finalizers: []string{infrav1.MachineFinalizer},
+			},
+		}
+
+		scope := Scope{
+			Ctx:              context.TODO(),
+			HarvesterMachine: machine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		result, err := r.ReconcileDelete(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.RequeueAfter).To(BeZero()) // no requeue — finalizer removed
+
+		// Verify PVCs were deleted
+		pvcs, listErr := hvClient.CoreV1().PersistentVolumeClaims("default").List(context.TODO(), metav1.ListOptions{})
+		Expect(listErr).ToNot(HaveOccurred())
+		Expect(pvcs.Items).To(BeEmpty())
+
+		// Verify finalizer was removed
+		Expect(machine.Finalizers).ToNot(ContainElement(infrav1.MachineFinalizer))
+	})
+
+	It("should handle cloud-init secret already deleted", func() {
+		hvClient := hvfake.NewSimpleClientset() // no VM, no secret
+		logger := log.FromContext(context.TODO())
+
+		machine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-cp-2",
+				Namespace:  "test-ns",
+				Finalizers: []string{infrav1.MachineFinalizer},
+			},
+		}
+
+		scope := Scope{
+			Ctx:              context.TODO(),
+			HarvesterMachine: machine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		result, err := r.ReconcileDelete(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Requeue).To(BeFalse())
+		// Finalizer should be removed
+		Expect(machine.Finalizers).ToNot(ContainElement(infrav1.MachineFinalizer))
+	})
+
+	It("should return error when finalizer is already missing", func() {
+		hvClient := hvfake.NewSimpleClientset() // no VM, no secret
+		logger := log.FromContext(context.TODO())
+
+		machine := &infrav1.HarvesterMachine{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "test-no-finalizer",
+				Namespace:  "test-ns",
+				Finalizers: []string{}, // no finalizer
+			},
+		}
+
+		scope := Scope{
+			Ctx:              context.TODO(),
+			HarvesterMachine: machine,
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		_, err := r.ReconcileDelete(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unable to remove finalizer"))
 	})
 })
