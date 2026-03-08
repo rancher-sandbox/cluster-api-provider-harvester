@@ -72,7 +72,7 @@ type Scope struct {
 	Machine                *clusterv1.Machine
 	HarvesterCluster       *infrav1.HarvesterCluster
 	HarvesterMachine       *infrav1.HarvesterMachine
-	HarvesterClient        *harvclient.Clientset
+	HarvesterClient        harvclient.Interface
 	ReconcilerClient       client.Client
 	Logger                 *logr.Logger
 	EffectiveNetworkConfig *infrav1.NetworkConfig
@@ -582,7 +582,7 @@ func isVMRunning(vm *kubevirtv1.VirtualMachine) bool {
 		strategy == kubevirtv1.RunStrategyOnce
 }
 
-func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harvclient.Clientset) ([]clusterv1.MachineAddress, error) {
+func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient harvclient.Interface) ([]clusterv1.MachineAddress, error) {
 	ipAddresses := []clusterv1.MachineAddress{}
 
 	vmInstance, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).Get(context.TODO(), existingVM.Name, metav1.GetOptions{})
