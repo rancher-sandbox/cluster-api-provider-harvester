@@ -38,7 +38,7 @@ spec:
   type: infrastructure
   version: v0.2.3
   fetchConfig:
-    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml
+    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -78,6 +78,96 @@ kubectl get validatingwebhookconfigurations | grep caphv
 
 The CAPIProvider status should show `Installed` and the controller pod should be `Running`
 with 2/2 containers ready (controller + kube-rbac-proxy).
+
+### Automatic Provider Upgrades
+
+Turtles supports automatic version upgrades via `enableAutomaticUpdate`. When enabled,
+Turtles monitors for new releases and automatically updates the provider when a new version
+is published.
+
+**CAPIProvider with automatic updates**:
+
+```yaml
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  version: v0.2.3
+  enableAutomaticUpdate: true
+  fetchConfig:
+    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
+  configSecret:
+    name: caphv-variables
+```
+
+Key differences from manual deployment:
+- `enableAutomaticUpdate: true` — Turtles polls for new versions
+- `fetchConfig.url` uses `/releases/latest/download/` — resolves to the latest release
+
+**Manual upgrade** (if auto-update is disabled):
+
+```bash
+# 1. Update the CAPIProvider version and URL
+kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
+  "spec": {
+    "version": "v0.3.0",
+    "fetchConfig": {
+      "url": "https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml"
+    }
+  }
+}'
+
+# 2. Watch the rollout
+kubectl rollout status deploy/caphv-controller-manager -n caphv-system
+
+# 3. Verify new version
+kubectl get deploy caphv-controller-manager -n caphv-system -o jsonpath='{.spec.template.spec.containers[0].image}'
+```
+
+### Functional test: provider upgrade
+
+1. **Deploy CAPIProvider** with current version:
+```bash
+kubectl apply -f capiprovider-harvester.yaml
+kubectl wait --for=condition=Ready capiprovider/harvester -n caphv-system --timeout=120s
+```
+
+2. **Verify running version**:
+```bash
+kubectl get deploy caphv-controller-manager -n caphv-system \
+  -o jsonpath='{.spec.template.spec.containers[0].image}'
+# Expected: ghcr.io/jniedergang/cluster-api-provider-harvester:v0.2.3
+```
+
+3. **Patch to new version** (manual upgrade test):
+```bash
+kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
+  "spec": {"version": "v0.3.0"}
+}'
+```
+
+4. **Watch upgrade rollout**:
+```bash
+kubectl rollout status deploy/caphv-controller-manager -n caphv-system --timeout=120s
+```
+
+5. **Verify workload clusters unaffected**:
+```bash
+kubectl get clusters.cluster.x-k8s.io -A
+kubectl get machines.cluster.x-k8s.io -A
+# All clusters should remain Ready, machines Running
+```
+
+6. **Enable automatic updates** (optional):
+```bash
+kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
+  "spec": {"enableAutomaticUpdate": true}
+}'
+```
 
 ---
 

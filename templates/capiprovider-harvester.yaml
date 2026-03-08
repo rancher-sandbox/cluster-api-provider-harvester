@@ -1,0 +1,27 @@
+# CAPIProvider resource for deploying CAPHV via Rancher Turtles
+#
+# Deploy with:
+#   kubectl create namespace caphv-system
+#   kubectl apply -f capiprovider-harvester.yaml
+#
+# For automatic upgrades, set enableAutomaticUpdate: true
+# and use the /releases/latest/download/ URL pattern.
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  version: v0.2.3
+  # Set to true for automatic version upgrades when new releases are published
+  # enableAutomaticUpdate: true
+  fetchConfig:
+    # For pinned version (manual upgrades):
+    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
+    # For automatic upgrades (latest release):
+    # url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
+  configSecret:
+    name: caphv-variables
