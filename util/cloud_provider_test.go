@@ -18,8 +18,9 @@ limitations under the License.
 package util
 
 import (
+	"context"
 	"encoding/base64"
-	"fmt"
+	"errors"
 	"os"
 	"strings"
 
@@ -36,8 +37,8 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/clientcmd"
 
-	hvfake "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/fake"
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
+	hvfake "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/fake"
 )
 
 var yamlString = `apiVersion: v1
@@ -299,7 +300,7 @@ var _ = Describe("createServiceAccountIfNotExists", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the SA was created
-		sa, err := hvClient.CoreV1().ServiceAccounts("default").Get(nil, "test-sa", metav1.GetOptions{})
+		sa, err := hvClient.CoreV1().ServiceAccounts("default").Get(context.TODO(), "test-sa", metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(sa.Name).To(Equal("test-sa"))
 	})
@@ -307,7 +308,7 @@ var _ = Describe("createServiceAccountIfNotExists", func() {
 	It("should not error if the service account already exists", func() {
 		hvClient := hvfake.NewSimpleClientset()
 		// Pre-create the SA via the API so it's in the tracker
-		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(nil, &corev1.ServiceAccount{
+		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(context.TODO(), &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{Name: "existing-sa", Namespace: "default"},
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
@@ -321,8 +322,8 @@ var _ = Describe("createServiceAccountIfNotExists error handling", func() {
 	It("should propagate non-NotFound errors from Get", func() {
 		hvClient := hvfake.NewSimpleClientset()
 		// Add a reactor that makes Get for ServiceAccounts return an internal error
-		hvClient.PrependReactor("get", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			return true, nil, fmt.Errorf("injected API error")
+		hvClient.PrependReactor("get", "serviceaccounts", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("injected API error")
 		})
 		err := createServiceAccountIfNotExists(hvClient, "test-sa", "default")
 		Expect(err).To(HaveOccurred())
@@ -333,8 +334,8 @@ var _ = Describe("createServiceAccountIfNotExists error handling", func() {
 var _ = Describe("createClusterRoleBindingIfNotExists error handling", func() {
 	It("should propagate non-NotFound errors from Get", func() {
 		hvClient := hvfake.NewSimpleClientset()
-		hvClient.PrependReactor("get", "clusterrolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			return true, nil, fmt.Errorf("injected CRB error")
+		hvClient.PrependReactor("get", "clusterrolebindings", func(_ k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, errors.New("injected CRB error")
 		})
 		err := createClusterRoleBindingIfNotExists(hvClient, "test-crb", "default")
 		Expect(err).To(HaveOccurred())
@@ -349,7 +350,7 @@ var _ = Describe("createClusterRoleBindingIfNotExists", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the CRB was created
-		crb, err := hvClient.RbacV1().ClusterRoleBindings().Get(nil, "test-crb", metav1.GetOptions{})
+		crb, err := hvClient.RbacV1().ClusterRoleBindings().Get(context.TODO(), "test-crb", metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(crb.Name).To(Equal("test-crb"))
 		Expect(crb.Subjects).To(HaveLen(1))
@@ -361,7 +362,7 @@ var _ = Describe("createClusterRoleBindingIfNotExists", func() {
 	It("should not error if the cluster role binding already exists", func() {
 		hvClient := hvfake.NewSimpleClientset()
 		// Pre-create the CRB via the API so it's in the tracker
-		_, err := hvClient.RbacV1().ClusterRoleBindings().Create(nil, &rbacv1.ClusterRoleBinding{
+		_, err := hvClient.RbacV1().ClusterRoleBindings().Create(context.TODO(), &rbacv1.ClusterRoleBinding{
 			ObjectMeta: metav1.ObjectMeta{Name: "existing-crb"},
 			Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "existing-crb", Namespace: "default"}},
 			RoleRef:    rbacv1.RoleRef{Kind: "ClusterRole", Name: cloudProviderRoleName},
@@ -384,14 +385,14 @@ var _ = Describe("getKubeConfig", func() {
 		hvClient := hvfake.NewSimpleClientset()
 
 		// Create the service account
-		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(nil, &corev1.ServiceAccount{
+		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(context.TODO(), &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-sa", Namespace: "default"},
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
 		// Pre-create the secret with token and ca.crt data
 		// getKubeConfig will try to create "test-sa-token" and get AlreadyExists, then Get it
-		_, err = hvClient.CoreV1().Secrets("default").Create(nil, &corev1.Secret{
+		_, err = hvClient.CoreV1().Secrets("default").Create(context.TODO(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-sa-token",
 				Namespace: "default",
@@ -405,7 +406,7 @@ var _ = Describe("getKubeConfig", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create the ingress-expose service in kube-system with VIP annotation
-		_, err = hvClient.CoreV1().Services("kube-system").Create(nil, &corev1.Service{
+		_, err = hvClient.CoreV1().Services("kube-system").Create(context.TODO(), &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ingress-expose",
 				Namespace: "kube-system",
@@ -429,13 +430,13 @@ var _ = Describe("getKubeConfig", func() {
 		hvClient := hvfake.NewSimpleClientset()
 
 		// Create the service account
-		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(nil, &corev1.ServiceAccount{
+		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(context.TODO(), &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-sa2", Namespace: "default"},
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create the secret
-		_, err = hvClient.CoreV1().Secrets("default").Create(nil, &corev1.Secret{
+		_, err = hvClient.CoreV1().Secrets("default").Create(context.TODO(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-sa2-token", Namespace: "default"},
 			Type:       corev1.SecretTypeServiceAccountToken,
 			Data: map[string][]byte{
@@ -455,13 +456,13 @@ var _ = Describe("getKubeConfig", func() {
 		hvClient := hvfake.NewSimpleClientset()
 
 		// Create SA
-		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(nil, &corev1.ServiceAccount{
+		_, err := hvClient.CoreV1().ServiceAccounts("default").Create(context.TODO(), &corev1.ServiceAccount{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-sa3", Namespace: "default"},
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create secret
-		_, err = hvClient.CoreV1().Secrets("default").Create(nil, &corev1.Secret{
+		_, err = hvClient.CoreV1().Secrets("default").Create(context.TODO(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-sa3-token", Namespace: "default"},
 			Type:       corev1.SecretTypeServiceAccountToken,
 			Data: map[string][]byte{
@@ -472,7 +473,7 @@ var _ = Describe("getKubeConfig", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Service with no VIP annotation
-		_, err = hvClient.CoreV1().Services("kube-system").Create(nil, &corev1.Service{
+		_, err = hvClient.CoreV1().Services("kube-system").Create(context.TODO(), &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ingress-expose",
 				Namespace: "kube-system",
@@ -502,7 +503,7 @@ var _ = Describe("GetCloudConfigB64", func() {
 		hvClient := hvfake.NewSimpleClientset()
 
 		// Pre-create the secret that getKubeConfig will look up
-		_, err := hvClient.CoreV1().Secrets("default").Create(nil, &corev1.Secret{
+		_, err := hvClient.CoreV1().Secrets("default").Create(context.TODO(), &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: "cloud-sa-token", Namespace: "default"},
 			Type:       corev1.SecretTypeServiceAccountToken,
 			Data: map[string][]byte{
@@ -513,7 +514,7 @@ var _ = Describe("GetCloudConfigB64", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create ingress-expose service
-		_, err = hvClient.CoreV1().Services("kube-system").Create(nil, &corev1.Service{
+		_, err = hvClient.CoreV1().Services("kube-system").Create(context.TODO(), &corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ingress-expose",
 				Namespace: "kube-system",
@@ -529,12 +530,12 @@ var _ = Describe("GetCloudConfigB64", func() {
 		Expect(result).ToNot(BeEmpty())
 
 		// Verify SA was created
-		sa, err := hvClient.CoreV1().ServiceAccounts("default").Get(nil, "cloud-sa", metav1.GetOptions{})
+		sa, err := hvClient.CoreV1().ServiceAccounts("default").Get(context.TODO(), "cloud-sa", metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(sa.Name).To(Equal("cloud-sa"))
 
 		// Verify CRB was created
-		crb, err := hvClient.RbacV1().ClusterRoleBindings().Get(nil, "cloud-sa", metav1.GetOptions{})
+		crb, err := hvClient.RbacV1().ClusterRoleBindings().Get(context.TODO(), "cloud-sa", metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(crb.RoleRef.Name).To(Equal(cloudProviderRoleName))
 	})

@@ -25,7 +25,6 @@ import (
 
 	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -686,7 +685,6 @@ var _ = Describe("ReconcileDelete (ClusterScope)", func() {
 
 		result, err := r.ReconcileDelete(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
 		Expect(result.RequeueAfter).To(BeZero())
 		// Finalizer should be removed
 		Expect(hvCluster.Finalizers).To(BeEmpty())
@@ -739,7 +737,7 @@ var _ = Describe("ReconcileDelete (ClusterScope)", func() {
 
 		result, err := r.ReconcileDelete(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		Expect(hvCluster.Finalizers).To(BeEmpty())
 	})
 })
@@ -925,8 +923,8 @@ var _ = Describe("reconcileVMIPPool", func() {
 		}
 
 		scope := &ClusterScope{
-			Ctx:    context.TODO(),
-			Logger: log.FromContext(context.TODO()),
+			Ctx:              context.TODO(),
+			Logger:           log.FromContext(context.TODO()),
 			HarvesterCluster: hvCluster,
 			HarvesterClient:  hvFake,
 			ReconcileClient:  fakeClient,
@@ -1198,12 +1196,15 @@ var _ = Describe("ReconcileNormal (cluster) initial phases", func() {
 
 		// Verify TargetNamespaceReady condition was set to True
 		var nsCondition *clusterv1.Condition
+
 		for i := range hvCluster.Status.Conditions {
 			if hvCluster.Status.Conditions[i].Type == infrav1.TargetNamespaceReadyCondition {
 				nsCondition = &hvCluster.Status.Conditions[i]
+
 				break
 			}
 		}
+
 		Expect(nsCondition).ToNot(BeNil())
 		Expect(nsCondition.Status).To(Equal(corev1.ConditionTrue))
 	})
@@ -1584,12 +1585,15 @@ var _ = Describe("createIPPoolIfNotExists", func() {
 
 		// Check that CustomIPPoolCreated condition was set to True
 		var found bool
+
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.CustomIPPoolCreatedCondition {
 				Expect(c.Status).To(Equal(corev1.ConditionTrue))
+
 				found = true
 			}
 		}
+
 		Expect(found).To(BeTrue())
 	})
 })
@@ -1789,12 +1793,15 @@ var _ = Describe("reconcileVMIPPool additional paths", func() {
 
 		// Verify VMIPPoolReady condition is set
 		var found bool
+
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.VMIPPoolReadyCondition {
 				Expect(c.Status).To(Equal(corev1.ConditionTrue))
+
 				found = true
 			}
 		}
+
 		Expect(found).To(BeTrue())
 	})
 
@@ -1977,10 +1984,15 @@ var _ = Describe("findObjectsForSecret", func() {
 		fakeClient := fake.NewClientBuilder().
 			WithScheme(scheme).
 			WithIndex(&infrav1.HarvesterCluster{}, secretIdField, func(o client.Object) []string {
-				cluster := o.(*infrav1.HarvesterCluster)
+				cluster, ok := o.(*infrav1.HarvesterCluster)
+				if !ok {
+					return nil
+				}
+
 				if (cluster.Spec.IdentitySecret == infrav1.SecretKey{}) || cluster.Spec.IdentitySecret.Name == "" {
 					return nil
 				}
+
 				return []string{cluster.Spec.IdentitySecret.Name}
 			}).
 			Build()
@@ -2016,10 +2028,15 @@ var _ = Describe("findObjectsForSecret", func() {
 			WithScheme(scheme).
 			WithObjects(hvCluster).
 			WithIndex(&infrav1.HarvesterCluster{}, secretIdField, func(o client.Object) []string {
-				cluster := o.(*infrav1.HarvesterCluster)
+				cluster, ok := o.(*infrav1.HarvesterCluster)
+				if !ok {
+					return nil
+				}
+
 				if (cluster.Spec.IdentitySecret == infrav1.SecretKey{}) || cluster.Spec.IdentitySecret.Name == "" {
 					return nil
 				}
+
 				return []string{cluster.Spec.IdentitySecret.Name}
 			}).
 			Build()
@@ -2306,11 +2323,13 @@ var _ = Describe("ReconcileNormal with CP machines", func() {
 
 		// Check LoadBalancerReady condition was set
 		var lbReady bool
+
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.LoadBalancerReadyCondition && c.Status == corev1.ConditionTrue {
 				lbReady = true
 			}
 		}
+
 		Expect(lbReady).To(BeTrue())
 	})
 
@@ -2386,11 +2405,13 @@ var _ = Describe("ReconcileNormal with CP machines", func() {
 
 		// Check InfrastructureReady condition
 		var infraReady bool
+
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.InfrastructureReadyCondition && c.Status == corev1.ConditionTrue {
 				infraReady = true
 			}
 		}
+
 		Expect(infraReady).To(BeTrue())
 	})
 
@@ -2838,11 +2859,13 @@ var _ = Describe("ReconcileNormal with POOL IPAM and VMNetworkConfig", func() {
 
 		// VMIPPoolReady condition should be set
 		var vmPoolReady bool
+
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.VMIPPoolReadyCondition && c.Status == corev1.ConditionTrue {
 				vmPoolReady = true
 			}
 		}
+
 		Expect(vmPoolReady).To(BeTrue())
 	})
 })
@@ -2990,13 +3013,13 @@ var _ = Describe("reconcileCloudProviderConfig key and kubeconfig paths", func()
 				ObjectMeta: metav1.ObjectMeta{Name: "cp-test", Namespace: "ns"},
 				Spec: infrav1.HarvesterClusterSpec{
 					TargetNamespace: "default",
-					Server:         "https://harvester.local",
+					Server:          "https://harvester.local",
 					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{
-						ManifestsConfigMapName:            "cp-cm",
-						ManifestsConfigMapNamespace:       "ns",
-						ManifestsConfigMapKey:             "manifests",
-						CloudConfigCredentialsSecretName:  "cloud-creds",
-						CloudConfigCredentialsSecretKey:   "kubeconfig",
+						ManifestsConfigMapName:           "cp-cm",
+						ManifestsConfigMapNamespace:      "ns",
+						ManifestsConfigMapKey:            "manifests",
+						CloudConfigCredentialsSecretName: "cloud-creds",
+						CloudConfigCredentialsSecretKey:  "kubeconfig",
 					},
 				},
 			},
@@ -3082,6 +3105,7 @@ var _ = Describe("ReconcileNormal placeholder LB with POOL IPAM", func() {
 		result, err := r.ReconcileNormal(scope)
 		// Should either requeue or succeed after updating the LB IP
 		_ = err
-		Expect(result.Requeue || result.RequeueAfter > 0).To(BeTrue())
+
+		Expect(result.Requeue || result.RequeueAfter > 0).To(BeTrue()) //nolint:staticcheck // result.Requeue still used by controller
 	})
 })

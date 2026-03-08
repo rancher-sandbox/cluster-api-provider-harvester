@@ -6,9 +6,14 @@ on:
 
 jobs:
   lint:
-    name: Run on Ubuntu
+    name: golangci-lint
     runs-on: ubuntu-latest
+    container:
+      image: registry.opensuse.org/opensuse/tumbleweed:latest
     steps:
+      - name: Install dependencies
+        run: zypper -n install git tar gzip curl
+
       - name: Clone the code
         uses: actions/checkout@v4
 

@@ -399,6 +399,7 @@ var _ = Describe("ipToInt", func() {
 		// For IPv6, To4() returns nil, so it should use To16()
 		result := ipToInt(ip)
 		Expect(result).ToNot(BeNil())
+
 		expected := big.NewInt(1)
 		Expect(result.Cmp(expected)).To(Equal(0))
 	})

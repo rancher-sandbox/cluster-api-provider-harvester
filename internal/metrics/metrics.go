@@ -48,7 +48,7 @@ var (
 		Namespace: namespace,
 		Name:      "machine_creation_duration_seconds",
 		Help:      "Duration of HarvesterMachine VM creation in seconds.",
-		Buckets:   prometheus.ExponentialBuckets(1, 2, 10), // 1s to ~512s
+		Buckets:   prometheus.ExponentialBuckets(1, 2, 10), //nolint:mnd // 1s to ~512s
 	})
 
 	// MachineDeleteTotal counts total VM deletion attempts.
@@ -149,7 +149,7 @@ var (
 		Namespace: namespace,
 		Name:      "node_init_duration_seconds",
 		Help:      "Duration of workload node initialization in seconds.",
-		Buckets:   prometheus.ExponentialBuckets(0.5, 2, 8), // 0.5s to ~64s
+		Buckets:   prometheus.ExponentialBuckets(0.5, 2, 8), //nolint:mnd // 0.5s to ~64s
 	})
 
 	// MachineReconcileDuration tracks machine reconciliation duration.

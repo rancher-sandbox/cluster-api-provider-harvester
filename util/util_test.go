@@ -23,10 +23,11 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 )
@@ -153,7 +154,7 @@ var _ = Describe("RandomID", func() {
 
 	It("should return different IDs on subsequent calls", func() {
 		ids := map[string]bool{}
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			ids[RandomID()] = true
 		}
 		// With 26^4*10 = 4,569,760 combinations, 10 calls should almost always differ
@@ -186,7 +187,7 @@ var _ = Describe("Filter", func() {
 	})
 
 	It("should handle empty slice", func() {
-		result := Filter([]int{}, func(i int) bool { return true })
+		result := Filter([]int{}, func(_ int) bool { return true })
 		Expect(result).To(BeNil())
 	})
 })
