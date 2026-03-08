@@ -116,10 +116,20 @@ spec:
         openAPIV3Schema:
           type: string
     - name: ipPoolRef
-      required: true
+      required: false
       schema:
         openAPIV3Schema:
           type: string
+          default: ""
+    - name: ipPoolRefs
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: array
+          default: []
+          items:
+            type: string
+          description: "Multiple IPPools for fallback (overrides ipPoolRef)"
     - name: dnsServers
       required: false
       schema:
@@ -330,8 +340,10 @@ spec:
                 template: |
                   gateway: {{`{{ .gateway }}`}}
                   subnetMask: {{`{{ .subnetMask }}`}}
-                  ipPoolRef: {{`{{ .ipPoolRef }}`}}
-                  dnsServers:
+                  {{`{{ if .ipPoolRefs }}`}}ipPoolRefs:
+                  {{`{{ range .ipPoolRefs }}`}}- {{`{{ . }}`}}
+                  {{`{{ end }}`}}{{`{{ else if .ipPoolRef }}`}}ipPoolRef: {{`{{ .ipPoolRef }}`}}
+                  {{`{{ end }}`}}dnsServers:
                   {{`{{ range .dnsServers }}`}}- {{`{{ . }}`}}
                   {{`{{ end }}`}}
     - name: cni

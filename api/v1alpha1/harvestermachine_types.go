@@ -175,6 +175,11 @@ type HarvesterMachineStatus struct {
 	// AllocatedIPAddress is the IP address allocated from the VM IP pool for this machine.
 	// +optional
 	AllocatedIPAddress string `json:"allocatedIPAddress,omitempty"`
+
+	// AllocatedPoolRef is the name of the IPPool from which AllocatedIPAddress was allocated.
+	// Used for accurate release when multiple pools are configured.
+	// +optional
+	AllocatedPoolRef string `json:"allocatedPoolRef,omitempty"`
 }
 
 //+kubebuilder:object:root=true

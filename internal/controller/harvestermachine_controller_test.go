@@ -3232,7 +3232,7 @@ var _ = Describe("allocateVMIP", func() {
 		r := &HarvesterMachineReconciler{}
 		err := r.allocateVMIP(scope)
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("IPPoolRef is empty"))
+		Expect(err.Error()).To(ContainSubstring("no IPPool references configured"))
 	})
 
 	It("should find existing allocation in pool", func() {
@@ -3271,6 +3271,141 @@ var _ = Describe("allocateVMIP", func() {
 		err := r.allocateVMIP(scope)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).To(Equal("172.16.3.42"))
+		Expect(scope.HarvesterMachine.Status.AllocatedPoolRef).To(Equal("capi-vm-pool"))
+	})
+
+	It("should allocate from second pool when first is exhausted", func() {
+		pool1 := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "pool-1"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.40", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{
+					"172.16.3.40": "test-ns/other-machine", // pool1 full
+				},
+			},
+		}
+		pool2 := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "pool-2"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.4.40", RangeEnd: "172.16.4.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool1, pool2)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-1", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRefs: []string{"pool-1", "pool-2"},
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).To(Equal("172.16.4.40"))
+		Expect(scope.HarvesterMachine.Status.AllocatedPoolRef).To(Equal("pool-2"))
+	})
+
+	It("should return error when all pools exhausted", func() {
+		pool1 := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "pool-1"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.40", RangeEnd: "172.16.3.40", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{
+					"172.16.3.40": "test-ns/other-machine",
+				},
+			},
+		}
+		pool2 := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "pool-2"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.4.40", RangeEnd: "172.16.4.40", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{
+					"172.16.4.40": "test-ns/yet-another",
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool1, pool2)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-new", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRefs: []string{"pool-1", "pool-2"},
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("all configured IP pools exhausted"))
+	})
+
+	It("should use IPPoolRef for backward compatibility when IPPoolRefs is empty", func() {
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "legacy-pool"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.3.50", RangeEnd: "172.16.3.59", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRef: "legacy-pool", // old field, IPPoolRefs empty
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		err := r.allocateVMIP(scope)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).To(Equal("172.16.3.50"))
+		Expect(scope.HarvesterMachine.Status.AllocatedPoolRef).To(Equal("legacy-pool"))
 	})
 })
 
@@ -3410,6 +3545,51 @@ var _ = Describe("releaseVMIP", func() {
 
 		r := &HarvesterMachineReconciler{}
 		r.releaseVMIP(scope) // should log warning and return
+	})
+
+	It("should release IP using AllocatedPoolRef", func() {
+		pool := &lbv1beta1.IPPool{
+			ObjectMeta: metav1.ObjectMeta{Name: "pool-2"},
+			Spec: lbv1beta1.IPPoolSpec{
+				Ranges: []lbv1beta1.Range{
+					{RangeStart: "172.16.4.40", RangeEnd: "172.16.4.49", Subnet: "172.16.0.0/16", Gateway: "172.16.0.1"},
+				},
+			},
+			Status: lbv1beta1.IPPoolStatus{
+				Allocated: map[string]string{
+					"172.16.4.42": "test-ns/test-cp-0",
+				},
+			},
+		}
+		hvClient := hvfake.NewSimpleClientset(pool)
+		logger := log.FromContext(context.TODO())
+
+		scope := &Scope{
+			HarvesterMachine: &infrav1.HarvesterMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cp-0", Namespace: "test-ns"},
+				Status: infrav1.HarvesterMachineStatus{
+					AllocatedIPAddress: "172.16.4.42",
+					AllocatedPoolRef:   "pool-2", // allocated from pool-2, not pool-1
+				},
+			},
+			HarvesterCluster: &infrav1.HarvesterCluster{
+				Spec: infrav1.HarvesterClusterSpec{
+					VMNetworkConfig: &infrav1.VMNetworkConfig{
+						IPPoolRefs: []string{"pool-1", "pool-2"},
+					},
+				},
+			},
+			HarvesterClient: hvClient,
+			Logger:          &logger,
+		}
+
+		r := &HarvesterMachineReconciler{}
+		r.releaseVMIP(scope)
+		// Verify pool-2 was used (not pool-1)
+		updatedPool, err := hvClient.LoadbalancerV1beta1().IPPools().Get(context.TODO(), "pool-2", metav1.GetOptions{})
+		Expect(err).ToNot(HaveOccurred())
+		_, exists := updatedPool.Status.Allocated["172.16.4.42"]
+		Expect(exists).To(BeFalse())
 	})
 })
 

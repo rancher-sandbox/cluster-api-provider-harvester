@@ -1255,55 +1255,70 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 		return errors.New("VMNetworkConfig is nil on HarvesterCluster")
 	}
 
-	poolRef := vmNetCfg.IPPoolRef
-	if poolRef == "" {
-		return errors.New("VMNetworkConfig.IPPoolRef is empty, ensure reconcileVMIPPool has run")
+	poolRefs := vmNetCfg.GetIPPoolRefs()
+	if len(poolRefs) == 0 {
+		return errors.New("no IPPool references configured, ensure reconcileVMIPPool has run")
 	}
 
-	// Get the pool from Harvester
-	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-		context.TODO(), poolRef, metav1.GetOptions{})
-	if err != nil {
-		return errors.Wrapf(err, "failed to get VM IP pool %s", poolRef)
-	}
-
-	// Check for existing allocation in pool
 	machineID := machine.Namespace + "/" + machine.Name
 
-	if pool.Status.Allocated != nil {
-		for ip, id := range pool.Status.Allocated {
-			if id == machineID {
-				machine.Status.AllocatedIPAddress = ip
-				logger.Info("Found existing IP allocation in pool", "ip", ip)
+	// Try each pool in order until allocation succeeds
+	var lastErr error
 
-				return nil
+	for _, poolRef := range poolRefs {
+		pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+			context.TODO(), poolRef, metav1.GetOptions{})
+		if err != nil {
+			logger.V(1).Info("Failed to get IP pool, trying next", "pool", poolRef, "error", err)
+			lastErr = errors.Wrapf(err, "failed to get VM IP pool %s", poolRef)
+
+			continue
+		}
+
+		// Check for existing allocation in this pool
+		if pool.Status.Allocated != nil {
+			for ip, id := range pool.Status.Allocated {
+				if id == machineID {
+					machine.Status.AllocatedIPAddress = ip
+					machine.Status.AllocatedPoolRef = poolRef
+					logger.Info("Found existing IP allocation in pool", "ip", ip, "pool", poolRef)
+
+					return nil
+				}
 			}
 		}
+
+		// Try to allocate from this pool
+		caphvmetrics.IPPoolAllocationsTotal.Inc()
+
+		allocatedIP, allocErr := locutil.AllocateVMIPFromPool(pool, machineID)
+		if allocErr != nil {
+			logger.V(1).Info("Pool exhausted or allocation failed, trying next", "pool", poolRef, "error", allocErr)
+			lastErr = errors.Wrapf(allocErr, "failed to allocate from pool %s", poolRef)
+
+			continue
+		}
+
+		// Update pool in Harvester
+		_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
+			context.TODO(), pool, metav1.UpdateOptions{})
+		if err != nil {
+			caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
+
+			return errors.Wrapf(err, "failed to update VM IP pool %s after allocation", poolRef)
+		}
+
+		machine.Status.AllocatedIPAddress = allocatedIP
+		machine.Status.AllocatedPoolRef = poolRef
+		logger.Info("Allocated VM IP from pool", "ip", allocatedIP, "pool", poolRef, "machine", machine.Name)
+
+		return nil
 	}
 
-	// Allocate new IP
-	caphvmetrics.IPPoolAllocationsTotal.Inc()
+	// All pools exhausted
+	caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
 
-	allocatedIP, err := locutil.AllocateVMIPFromPool(pool, machineID)
-	if err != nil {
-		caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
-
-		return errors.Wrap(err, "failed to allocate IP from VM IP pool")
-	}
-
-	// Update pool in Harvester
-	_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
-		context.TODO(), pool, metav1.UpdateOptions{})
-	if err != nil {
-		caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
-
-		return errors.Wrap(err, "failed to update VM IP pool after allocation")
-	}
-
-	machine.Status.AllocatedIPAddress = allocatedIP
-	logger.Info("Allocated VM IP from pool", "ip", allocatedIP, "machine", machine.Name)
-
-	return nil
+	return errors.Wrap(lastErr, "all configured IP pools exhausted")
 }
 
 // releaseVMIP releases the allocated IP back to the pool during machine deletion.
@@ -1318,15 +1333,26 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 		return
 	}
 
+	// Determine which pool to release from: use AllocatedPoolRef if available,
+	// fall back to first configured pool for backward compatibility.
 	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
-	if vmNetCfg == nil || vmNetCfg.IPPoolRef == "" {
-		logger.Info("No VMNetworkConfig/IPPoolRef, skipping IP release")
+
+	poolRef := machine.Status.AllocatedPoolRef
+	if poolRef == "" && vmNetCfg != nil {
+		poolRefs := vmNetCfg.GetIPPoolRefs()
+		if len(poolRefs) > 0 {
+			poolRef = poolRefs[0]
+		}
+	}
+
+	if poolRef == "" {
+		logger.Info("No pool reference for IP release, skipping")
 
 		return
 	}
 
 	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-		context.TODO(), vmNetCfg.IPPoolRef, metav1.GetOptions{})
+		context.TODO(), poolRef, metav1.GetOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to get VM IP pool for release, skipping", "error", err)
 

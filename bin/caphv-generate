@@ -27,6 +27,7 @@ NETWORK=""
 GATEWAY=""
 SUBNET_MASK=""
 IP_POOL=""
+IP_POOL_REFS=""
 DNS=""
 HARVESTER_KUBECONFIG=""
 CNI="calico"
@@ -52,6 +53,7 @@ REQUIRED FLAGS:
   --gateway IP                Network gateway (e.g. 172.16.0.1)
   --subnet-mask MASK          Subnet mask (e.g. 255.255.0.0)
   --ip-pool NAME              IPPool name in Harvester (e.g. capi-vm-pool)
+  --ip-pool-refs POOLS        Multiple IPPools, comma-separated (overrides --ip-pool)
   --harvester-kubeconfig PATH Path to Harvester kubeconfig file
 
 OPTIONAL FLAGS:
@@ -129,7 +131,8 @@ interactive_mode() {
   prompt NETWORK     "VM Network (namespace/name)"
   prompt GATEWAY     "Network gateway"
   prompt SUBNET_MASK "Subnet mask"
-  prompt IP_POOL     "IPPool name"
+  prompt IP_POOL     "IPPool name (single pool)"
+  prompt IP_POOL_REFS "Additional IPPools (comma-separated, empty for single pool)" ""
   prompt DNS         "DNS servers (comma-separated, empty to skip)" ""
   prompt CNI         "CNI plugin (calico/canal/cilium/none)" "calico"
   prompt HARVESTER_KUBECONFIG "Harvester kubeconfig file path"
@@ -151,7 +154,7 @@ validate() {
   [[ -n "$NETWORK" ]]    || die "--network is required"
   [[ -n "$GATEWAY" ]]    || die "--gateway is required"
   [[ -n "$SUBNET_MASK" ]] || die "--subnet-mask is required"
-  [[ -n "$IP_POOL" ]]    || die "--ip-pool is required"
+  [[ -n "$IP_POOL" || -n "$IP_POOL_REFS" ]] || die "--ip-pool or --ip-pool-refs is required"
   [[ -n "$HARVESTER_KUBECONFIG" ]] || die "--harvester-kubeconfig is required"
   [[ -f "$HARVESTER_KUBECONFIG" ]] || die "Harvester kubeconfig not found: $HARVESTER_KUBECONFIG"
 
@@ -180,6 +183,26 @@ ${indent}  storageClass: "${extra_sc}"
 ${indent}  volumeSize: "${extra_size}"
 ${indent}  bootOrder: 0
 EOF
+  fi
+}
+
+# Build ipPoolRefs YAML array for topology variables
+build_ippool_yaml() {
+  local indent="$1"
+  if [[ -n "$IP_POOL_REFS" ]]; then
+    echo "${indent}- name: ipPoolRefs"
+    echo "${indent}  value:"
+    IFS=',' read -ra pools <<< "$IP_POOL_REFS"
+    for p in "${pools[@]}"; do
+      echo "${indent}    - \"${p}\""
+    done
+    echo "${indent}- name: ipPoolRef"
+    echo "${indent}  value: \"\""
+  else
+    echo "${indent}- name: ipPoolRef"
+    echo "${indent}  value: \"${IP_POOL}\""
+    echo "${indent}- name: ipPoolRefs"
+    echo "${indent}  value: []"
   fi
 }
 
@@ -318,10 +341,20 @@ spec:
         openAPIV3Schema:
           type: string
     - name: ipPoolRef
-      required: true
+      required: false
       schema:
         openAPIV3Schema:
           type: string
+          default: ""
+    - name: ipPoolRefs
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: array
+          default: []
+          items:
+            type: string
+          description: "Multiple IPPools for fallback (overrides ipPoolRef)"
     - name: dnsServers
       required: false
       schema:
@@ -532,8 +565,10 @@ spec:
                 template: |
                   gateway: {{ .gateway }}
                   subnetMask: {{ .subnetMask }}
-                  ipPoolRef: {{ .ipPoolRef }}
-                  dnsServers:
+                  {{ if .ipPoolRefs }}ipPoolRefs:
+                  {{ range .ipPoolRefs }}- {{ . }}
+                  {{ end }}{{ else if .ipPoolRef }}ipPoolRef: {{ .ipPoolRef }}
+                  {{ end }}dnsServers:
                   {{ range .dnsServers }}- {{ . }}
                   {{ end }}
     - name: cni
@@ -731,8 +766,7 @@ $(build_volumes_yaml "          ")
         value: "${GATEWAY}"
       - name: subnetMask
         value: "${SUBNET_MASK}"
-      - name: ipPoolRef
-        value: "${IP_POOL}"
+$(build_ippool_yaml "      ")
       - name: dnsServers
 $(build_dns_yaml "        ")
       - name: cni
@@ -1240,6 +1274,7 @@ while [[ $# -gt 0 ]]; do
     --gateway)           GATEWAY="$2";           shift 2 ;;
     --subnet-mask)       SUBNET_MASK="$2";       shift 2 ;;
     --ip-pool)           IP_POOL="$2";           shift 2 ;;
+    --ip-pool-refs)      IP_POOL_REFS="$2";      shift 2 ;;
     --dns)               DNS="$2";               shift 2 ;;
     --cni)               CNI="$2";               shift 2 ;;
     --harvester-kubeconfig) HARVESTER_KUBECONFIG="$2"; shift 2 ;;

@@ -847,26 +847,33 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 		return nil
 	}
 
-	// If IPPoolRef is already set, verify pool exists
-	if vmNetCfg.IPPoolRef != "" {
-		_, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-			context.TODO(), vmNetCfg.IPPoolRef, v1.GetOptions{})
-		if err != nil {
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
-				Type:    infrav1.VMIPPoolReadyCondition,
-				Status:  apiv1.ConditionFalse,
-				Reason:  infrav1.VMIPPoolCreationFailedReason,
-				Message: fmt.Sprintf("Referenced VM IP pool %s not found: %v", vmNetCfg.IPPoolRef, err),
-			})
+	// If IPPoolRefs or IPPoolRef is set, verify all pools exist
+	poolRefs := vmNetCfg.GetIPPoolRefs()
+	if len(poolRefs) > 0 {
+		var readyPools []string
 
-			return errors.Wrapf(err, "referenced VM IP pool %s not found", vmNetCfg.IPPoolRef)
+		for _, ref := range poolRefs {
+			_, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+				context.TODO(), ref, v1.GetOptions{})
+			if err != nil {
+				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+					Type:    infrav1.VMIPPoolReadyCondition,
+					Status:  apiv1.ConditionFalse,
+					Reason:  infrav1.VMIPPoolCreationFailedReason,
+					Message: fmt.Sprintf("Referenced VM IP pool %s not found: %v", ref, err),
+				})
+
+				return errors.Wrapf(err, "referenced VM IP pool %s not found", ref)
+			}
+
+			readyPools = append(readyPools, ref)
 		}
 
 		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
 			Type:    infrav1.VMIPPoolReadyCondition,
 			Status:  apiv1.ConditionTrue,
 			Reason:  infrav1.VMIPPoolReadyReason,
-			Message: fmt.Sprintf("VM IP pool %s is ready", vmNetCfg.IPPoolRef),
+			Message: fmt.Sprintf("VM IP pool(s) ready: %v", readyPools),
 		})
 
 		return nil

@@ -134,12 +134,20 @@ type HarvesterClusterSpec struct {
 // VMNetworkConfig describes the network configuration for VM static IP allocation.
 type VMNetworkConfig struct {
 	// IPPoolRef is a reference to an existing IPPool in Harvester for VM IP allocation.
+	// When multiple pools are needed, use IPPoolRefs instead.
 	// Mutually exclusive with IPPool.
 	// +optional
 	IPPoolRef string `json:"ipPoolRef,omitempty"`
 
+	// IPPoolRefs is a list of references to existing IPPools in Harvester.
+	// Pools are tried in order: if the first pool is exhausted, allocation
+	// falls back to the next pool. This enables larger deployments and
+	// multi-subnet configurations.
+	// +optional
+	IPPoolRefs []string `json:"ipPoolRefs,omitempty"`
+
 	// IPPool defines a new IPPool to create in Harvester for VM IP allocation.
-	// Mutually exclusive with IPPoolRef.
+	// Mutually exclusive with IPPoolRef/IPPoolRefs.
 	// +optional
 	IPPool *IpPool `json:"ipPool,omitempty"`
 
@@ -156,6 +164,20 @@ type VMNetworkConfig struct {
 	// DNSSearch is a list of DNS search domains.
 	// +optional
 	DNSSearch []string `json:"dnsSearch,omitempty"`
+}
+
+// GetIPPoolRefs returns all configured IPPool references in priority order.
+// It merges IPPoolRefs and IPPoolRef for backward compatibility.
+func (v *VMNetworkConfig) GetIPPoolRefs() []string {
+	if len(v.IPPoolRefs) > 0 {
+		return v.IPPoolRefs
+	}
+
+	if v.IPPoolRef != "" {
+		return []string{v.IPPoolRef}
+	}
+
+	return nil
 }
 
 // SecretKey is a reference to a Secret which stores Identity information for the Target Harvester Cluster.

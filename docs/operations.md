@@ -605,7 +605,7 @@ Requirements:
 | `spec.loadBalancerConfig.ipamType` | Must be `"dhcp"` or `"pool"` |
 | `spec.vmNetworkConfig.gateway` | Required, must be a valid IP address |
 | `spec.vmNetworkConfig.subnetMask` | Required, must be a valid IP address format |
-| `spec.vmNetworkConfig.ipPoolRef` or `ipPool` | At least one must be set when vmNetworkConfig is specified |
+| `spec.vmNetworkConfig.ipPoolRef` or `ipPoolRefs` or `ipPool` | At least one must be set when vmNetworkConfig is specified |
 
 **HarvesterMachine**:
 
@@ -649,6 +649,99 @@ kubectl delete validatingwebhookconfiguration caphv-validating-webhook-configura
 ```
 
 The controller will re-create it on the next restart if webhooks are enabled.
+
+---
+
+## Multi-Pool IP Allocation
+
+### Overview
+
+When a single IPPool is not large enough for a deployment (e.g., hundreds of VMs across
+multiple subnets), you can configure multiple IPPools with ordered fallback.
+
+### Configuration
+
+**Option A — Single pool** (backward compatible):
+
+```yaml
+spec:
+  vmNetworkConfig:
+    ipPoolRef: "capi-vm-pool"
+    gateway: "172.16.0.1"
+    subnetMask: "255.255.0.0"
+```
+
+**Option B — Multiple pools with fallback**:
+
+```yaml
+spec:
+  vmNetworkConfig:
+    ipPoolRefs:
+      - "capi-pool-subnet-a"
+      - "capi-pool-subnet-b"
+      - "capi-pool-subnet-c"
+    gateway: "172.16.0.1"
+    subnetMask: "255.255.0.0"
+```
+
+Pools are tried in order. When `capi-pool-subnet-a` is exhausted, allocation falls back to
+`capi-pool-subnet-b`, then `capi-pool-subnet-c`. Each machine tracks which pool it allocated
+from in `status.allocatedPoolRef` for accurate IP release on deletion.
+
+### CLI usage
+
+```bash
+# Single pool (existing behavior)
+caphv-generate --ip-pool my-pool ...
+
+# Multiple pools
+caphv-generate --ip-pool-refs "pool-a,pool-b,pool-c" ...
+```
+
+### Functional test procedure
+
+1. **Create two small IPPools** on Harvester (e.g., 2 IPs each):
+
+```bash
+# pool-a: 172.16.3.40-41 (2 IPs)
+# pool-b: 172.16.3.42-43 (2 IPs)
+```
+
+2. **Deploy a cluster with `ipPoolRefs`** referencing both pools:
+
+```bash
+caphv-generate --name multipool-test --ip-pool-refs "pool-a,pool-b" [other flags...] --apply
+```
+
+3. **Scale up to 4 machines** (2 CP + 2 workers) — should allocate from both pools:
+
+```bash
+# Verify allocations
+kubectl get harvestermachines -n multipool-test -o custom-columns=\
+  NAME:.metadata.name,IP:.status.allocatedIPAddress,POOL:.status.allocatedPoolRef
+
+# Expected: first 2 machines from pool-a, next 2 from pool-b
+```
+
+4. **Delete one machine** — verify its IP is released from the correct pool:
+
+```bash
+# Before delete: check pool-a status.allocated
+kubectl get ippool pool-a -o jsonpath='{.status.allocated}' | jq .
+
+# Delete a machine
+kubectl delete machine <machine-name> -n multipool-test
+
+# After delete: IP removed from the correct pool (pool-a or pool-b)
+kubectl get ippool pool-a -o jsonpath='{.status.allocated}' | jq .
+```
+
+5. **Unit tests** (5 new tests):
+   - `allocateVMIP` fallback from pool-1 to pool-2 when pool-1 exhausted
+   - `allocateVMIP` error when all pools exhausted
+   - `allocateVMIP` backward compat with single `ipPoolRef`
+   - `allocateVMIP` sets `AllocatedPoolRef` correctly
+   - `releaseVMIP` uses `AllocatedPoolRef` for targeted release
 
 ---
 
@@ -795,6 +888,24 @@ kubectl get ippool <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | jq .
 # If IPs are leaked (allocated but no corresponding machine), manually edit the IPPool:
 kubectl edit ippool <pool-name> -n <ns>
 # Remove stale entries from status.allocated
+```
+
+**Multi-pool fallback**: When `ipPoolRefs` is configured with multiple pools, the controller
+tries pools in order and automatically falls back to the next pool when one is exhausted.
+Check all pools if machines fail to allocate:
+
+```bash
+# List all configured pools
+kubectl get harvesterclusters -n <ns> -o jsonpath='{.items[*].spec.vmNetworkConfig.ipPoolRefs}'
+
+# Check each pool's allocation
+for pool in pool-a pool-b pool-c; do
+  echo "--- $pool ---"
+  kubectl get ippool "$pool" -o jsonpath='{.status.allocated}' | jq .
+done
+
+# Check which pool a machine allocated from
+kubectl get harvestermachine <name> -n <ns> -o jsonpath='{.status.allocatedPoolRef}'
 ```
 
 ### etcd member removal failed during remediation

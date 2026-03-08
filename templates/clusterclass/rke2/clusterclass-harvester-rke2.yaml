@@ -135,13 +135,24 @@ spec:
         openAPIV3Schema:
           type: string
           description: "Subnet mask (e.g. 255.255.0.0)"
-    # IPPool reference for VM static IPs
+    # IPPool reference for VM static IPs (single pool, backward compat)
     - name: ipPoolRef
-      required: true
+      required: false
       schema:
         openAPIV3Schema:
           type: string
+          default: ""
           description: "IPPool name in Harvester for VM IP allocation"
+    # Multiple IPPool references with ordered fallback
+    - name: ipPoolRefs
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: array
+          default: []
+          items:
+            type: string
+          description: "Multiple IPPools for fallback (overrides ipPoolRef)"
     # DNS servers for VMs
     - name: dnsServers
       required: false
@@ -350,7 +361,7 @@ spec:
               path: /spec/template/spec/targetNamespace
               valueFrom:
                 variable: targetNamespace
-    # Patch vmNetworkConfig (gateway, subnetMask, ipPoolRef, dnsServers)
+    # Patch vmNetworkConfig (gateway, subnetMask, ipPoolRef/ipPoolRefs, dnsServers)
     - name: vmNetworkConfig
       definitions:
         - selector:
@@ -365,8 +376,10 @@ spec:
                 template: |
                   gateway: {{ .gateway }}
                   subnetMask: {{ .subnetMask }}
-                  ipPoolRef: {{ .ipPoolRef }}
-                  dnsServers:
+                  {{ if .ipPoolRefs }}ipPoolRefs:
+                  {{ range .ipPoolRefs }}- {{ . }}
+                  {{ end }}{{ else if .ipPoolRef }}ipPoolRef: {{ .ipPoolRef }}
+                  {{ end }}dnsServers:
                   {{ range .dnsServers }}- {{ . }}
                   {{ end }}
     # Patch CNI on RKE2ControlPlaneTemplate
