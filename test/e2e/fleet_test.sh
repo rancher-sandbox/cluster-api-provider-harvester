@@ -24,7 +24,7 @@ test_fleet() {
         return
     fi
 
-    # Test 2: Fleet mode generates correct YAML (no CRS for CSI/CNI)
+    # Test 2: Fleet mode generates correct YAML (CSI in CRS, CNI in Fleet)
     log_info "Testing Fleet mode YAML generation"
     local test_output
     test_output=$(SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" && \
@@ -61,16 +61,18 @@ test_fleet() {
         rm -f "$tmpkc"
     fi
 
-    local gitrepo_count crs_csi_count
+    local gitrepo_count crs_csi_count crs_cni_count
     gitrepo_count=$(echo "$test_output" | grep -c "kind: GitRepo" || true)
     gitrepo_count="${gitrepo_count:-0}"
     crs_csi_count=$(echo "$test_output" | grep -c "name: crs-harvester-csi" || true)
     crs_csi_count="${crs_csi_count:-0}"
+    crs_cni_count=$(echo "$test_output" | grep -c "name: crs-calico-chart-config" || true)
+    crs_cni_count="${crs_cni_count:-0}"
 
-    if [ "$gitrepo_count" -eq 1 ] && [ "$crs_csi_count" -eq 0 ]; then
-        pass_test "Fleet: Fleet mode generates GitRepo, no CSI CRS"
+    if [ "$gitrepo_count" -eq 1 ] && [ "$crs_csi_count" -eq 1 ] && [ "$crs_cni_count" -eq 0 ]; then
+        pass_test "Fleet: Fleet mode generates GitRepo + CSI CRS, no CNI CRS"
     else
-        fail_test "Fleet: expected 1 GitRepo and 0 CSI CRS (got $gitrepo_count/$crs_csi_count)"
+        fail_test "Fleet: expected 1 GitRepo, 1 CSI CRS, 0 CNI CRS (got $gitrepo_count/$crs_csi_count/$crs_cni_count)"
     fi
 
     # Test 3: CRS mode retrocompatibility

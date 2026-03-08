@@ -765,9 +765,9 @@ EOF
   # Labels and annotations differ between CRS and Fleet modes
   local cluster_labels cluster_annotations=""
   if [[ -n "$FLEET_ADDON_REPO" ]]; then
-    # Fleet mode: labels for Fleet targeting, annotations for CNI params
+    # Fleet mode: CSI stays in CRS (controller-coupled), only CNI goes to Fleet
     cluster_labels="    ccm: external
-    csi: harvester
+    csi: external
     cni: ${CNI}
     cluster-api.cattle.io/rancher-auto-import: \"true\""
     cluster_annotations="  annotations:
@@ -960,10 +960,10 @@ spec:
 ---
 EOF
 
-  # ─── CSI / CNI / CRS — only in CRS mode ───
-  if [[ -z "$FLEET_ADDON_REPO" ]]; then
-
   # ─── ConfigMap: CSI addon (Harvester CSI Driver) ───
+  # Note: CSI ConfigMap + CRS always generated (both CRS and Fleet modes)
+  # because the CAPHV controller injects the Harvester kubeconfig into it
+  # via updateCloudProviderConfig (same coupling as CCM).
   cat <<EOF
 apiVersion: v1
 kind: ConfigMap
@@ -1230,6 +1230,28 @@ data:
 ---
 EOF
 
+  # ─── ClusterResourceSet: CSI ───
+  cat <<EOF
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-csi
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      csi: external
+  resources:
+    - kind: ConfigMap
+      name: harvester-csi-driver-addon-${NAME}
+  strategy: Reconcile
+---
+EOF
+
+  # ─── CNI ConfigMap + CRS — only in CRS mode ───
+  # In Fleet mode, CNI config is deployed via Fleet HelmChartConfig
+  if [[ -z "$FLEET_ADDON_REPO" ]]; then
+
   # ─── ConfigMap: Calico config ───
   cat <<EOF
 apiVersion: v1
@@ -1261,24 +1283,6 @@ data:
 ---
 EOF
 
-  # ─── ClusterResourceSet: CSI ───
-  cat <<EOF
-apiVersion: addons.cluster.x-k8s.io/v1beta1
-kind: ClusterResourceSet
-metadata:
-  name: crs-harvester-csi
-  namespace: ${NAMESPACE}
-spec:
-  clusterSelector:
-    matchLabels:
-      csi: external
-  resources:
-    - kind: ConfigMap
-      name: harvester-csi-driver-addon-${NAME}
-  strategy: Reconcile
----
-EOF
-
   # ─── ClusterResourceSet: Calico ───
   cat <<EOF
 apiVersion: addons.cluster.x-k8s.io/v1beta1
@@ -1297,17 +1301,11 @@ spec:
 ---
 EOF
 
-  fi  # end CRS mode
+  fi  # end CRS mode (CNI only)
 
   # ─── Fleet mode: GitRepo ───
-  if [[ -n "$FLEET_ADDON_REPO" ]]; then
-    local fleet_paths=""
-    fleet_paths="    - /fleet/harvester-csi"
-    if [[ "$CNI" != "none" ]]; then
-      fleet_paths="${fleet_paths}
-    - /fleet/${CNI}-config"
-    fi
-
+  # CSI stays in CRS (controller-coupled). Only CNI config goes to Fleet.
+  if [[ -n "$FLEET_ADDON_REPO" ]] && [[ "$CNI" != "none" ]]; then
     cat <<EOF
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
@@ -1318,7 +1316,7 @@ spec:
   branch: ${FLEET_ADDON_BRANCH}
   repo: ${FLEET_ADDON_REPO}
   paths:
-${fleet_paths}
+    - /fleet/${CNI}-config
   targets:
     - clusterSelector:
         matchLabels:
