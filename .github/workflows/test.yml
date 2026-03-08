@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: registry.opensuse.org/opensuse/tumbleweed:latest
+    defaults:
+      run:
+        shell: /usr/bin/bash -e {0}
     steps:
     - name: Install dependencies
       run: zypper -n install git tar gzip make gcc
