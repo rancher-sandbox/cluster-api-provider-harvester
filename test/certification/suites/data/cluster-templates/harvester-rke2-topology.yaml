@@ -1,0 +1,928 @@
+# Self-contained Harvester RKE2 ClusterClass topology template for Turtles certification.
+# Variables are substituted by the framework: ${NAMESPACE}, ${CLUSTER_NAME}, ${CLUSTER_CLASS_NAME},
+# ${KUBERNETES_VERSION}, ${CONTROL_PLANE_MACHINE_COUNT}, ${WORKER_MACHINE_COUNT}, plus Harvester-specific vars.
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: ${CLUSTER_CLASS_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: RKE2ControlPlaneTemplate
+      name: ${CLUSTER_CLASS_NAME}-control-plane
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        kind: HarvesterMachineTemplate
+        name: ${CLUSTER_CLASS_NAME}-control-plane
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+      kind: HarvesterClusterTemplate
+      name: ${CLUSTER_CLASS_NAME}-cluster
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: RKE2ConfigTemplate
+              name: ${CLUSTER_CLASS_NAME}-worker
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+              kind: HarvesterMachineTemplate
+              name: ${CLUSTER_CLASS_NAME}-worker
+  variables:
+    - name: vmNetworks
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          items:
+            type: string
+    - name: volumes
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          items:
+            type: object
+            properties:
+              volumeType:
+                type: string
+                default: "image"
+              imageName:
+                type: string
+                default: ""
+              storageClass:
+                type: string
+                default: ""
+              volumeSize:
+                type: string
+                default: "40Gi"
+              bootOrder:
+                type: integer
+                default: 0
+    - name: cpuCount
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: integer
+          default: 2
+    - name: memorySize
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "4Gi"
+    - name: sshUser
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "sles"
+    - name: sshKeyPair
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+    - name: identitySecretName
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "hv-identity-secret"
+    - name: targetNamespace
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "default"
+    - name: gateway
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+    - name: subnetMask
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+    - name: ipPoolRef
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+    - name: dnsServers
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: array
+          default: []
+          items:
+            type: string
+    - name: cni
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "calico"
+  patches:
+    - name: vmNetworks
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/networks
+              valueFrom:
+                variable: vmNetworks
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/networks
+              valueFrom:
+                variable: vmNetworks
+    - name: volumes
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/volumes
+              valueFrom:
+                variable: volumes
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/volumes
+              valueFrom:
+                variable: volumes
+    - name: cpuCount
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/cpu
+              valueFrom:
+                variable: cpuCount
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/cpu
+              valueFrom:
+                variable: cpuCount
+    - name: memorySize
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/memory
+              valueFrom:
+                variable: memorySize
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/memory
+              valueFrom:
+                variable: memorySize
+    - name: sshUser
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshUser
+              valueFrom:
+                variable: sshUser
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshUser
+              valueFrom:
+                variable: sshUser
+    - name: sshKeyPair
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshKeyPair
+              valueFrom:
+                variable: sshKeyPair
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshKeyPair
+              valueFrom:
+                variable: sshKeyPair
+    - name: identitySecretName
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/identitySecret/name
+              valueFrom:
+                variable: identitySecretName
+    - name: identitySecretNamespace
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/identitySecret/namespace
+              valueFrom:
+                template: "{{ .builtin.cluster.namespace }}"
+    - name: targetNamespace
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/targetNamespace
+              valueFrom:
+                variable: targetNamespace
+    - name: vmNetworkConfig
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/vmNetworkConfig
+              valueFrom:
+                template: |
+                  gateway: {{ .gateway }}
+                  subnetMask: {{ .subnetMask }}
+                  {{ if .ipPoolRef }}ipPoolRef: {{ .ipPoolRef }}
+                  {{ end }}dnsServers:
+                  {{ range .dnsServers }}- {{ . }}
+                  {{ end }}
+    - name: cni
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/serverConfig/cni
+              valueFrom:
+                variable: cni
+    - name: csiAddonConfigMap
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/updateCloudProviderConfig/manifestsConfigMapName
+              valueFrom:
+                template: "harvester-csi-driver-addon-{{ .builtin.cluster.name }}"
+    - name: csiAddonConfigMapNamespace
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            kind: HarvesterClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/updateCloudProviderConfig/manifestsConfigMapNamespace
+              valueFrom:
+                template: "{{ .builtin.cluster.namespace }}"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterClusterTemplate
+metadata:
+  name: ${CLUSTER_CLASS_NAME}-cluster
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      identitySecret:
+        namespace: ${NAMESPACE}
+        name: ${IDENTITY_SECRET_NAME}
+      loadBalancerConfig:
+        ipamType: dhcp
+        listeners:
+          - name: rke2-server
+            port: 9345
+            protocol: TCP
+            backendPort: 9345
+      targetNamespace: ${TARGET_NAMESPACE}
+      controlPlaneEndpoint:
+        host: "0.0.0.0"
+        port: 6443
+      updateCloudProviderConfig:
+        cloudConfigCredentialsSecretKey: cloud-config
+        cloudConfigCredentialsSecretName: cloud-config
+        manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
+        manifestsConfigMapName: harvester-csi-driver-addon
+        manifestsConfigMapNamespace: ${NAMESPACE}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: ${CLUSTER_CLASS_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      serverConfig:
+        cni: ${CNI}
+        cloudProviderName: external
+      rolloutStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  name: ${CLUSTER_CLASS_NAME}-control-plane
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      cpu: 2
+      memory: "4Gi"
+      sshUser: "sles"
+      sshKeyPair: ""
+      volumes: []
+      networks: []
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  name: ${CLUSTER_CLASS_NAME}-worker
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec:
+      cpu: 2
+      memory: "4Gi"
+      sshUser: "sles"
+      sshKeyPair: ""
+      volumes: []
+      networks: []
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: RKE2ConfigTemplate
+metadata:
+  name: ${CLUSTER_CLASS_NAME}-worker
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    spec: {}
+---
+# Identity Secret (Harvester kubeconfig)
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${IDENTITY_SECRET_NAME}
+data:
+  kubeconfig: ${HARVESTER_KUBECONFIG_B64}
+---
+# Cluster with topology
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}
+  labels:
+    ccm: external
+    csi: external
+    cni: external
+    cluster-api.cattle.io/rancher-auto-import: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 10.42.0.0/16
+    services:
+      cidrBlocks:
+        - 10.43.0.0/16
+  topology:
+    class: ${CLUSTER_CLASS_NAME}
+    version: ${KUBERNETES_VERSION}+rke2r1
+    controlPlane:
+      replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+      metadata:
+        labels:
+          ccm: external
+          csi: external
+          cni: external
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: ${WORKER_MACHINE_COUNT}
+          metadata:
+            labels:
+              ccm: external
+              csi: external
+              cni: external
+    variables:
+      - name: vmNetworks
+        value:
+          - ${VM_NETWORK}
+      - name: volumes
+        value:
+          - volumeSize: "${VOLUME_SIZE}"
+            imageName: "${VOLUME_IMAGE}"
+            volumeType: "image"
+            bootOrder: 1
+      - name: memorySize
+        value: "${MEMORY_SIZE}"
+      - name: cpuCount
+        value: ${CPU_COUNT}
+      - name: sshKeyPair
+        value: "${SSH_KEYPAIR}"
+      - name: sshUser
+        value: "${SSH_USER}"
+      - name: identitySecretName
+        value: "${IDENTITY_SECRET_NAME}"
+      - name: targetNamespace
+        value: "${TARGET_NAMESPACE}"
+      - name: gateway
+        value: "${GATEWAY}"
+      - name: subnetMask
+        value: "${SUBNET_MASK}"
+      - name: ipPoolRef
+        value: "${IP_POOL_REF}"
+      - name: dnsServers
+        value:
+          - "${DNS_SERVERS}"
+      - name: cni
+        value: "${CNI}"
+---
+# ClusterResourceSet — CSI plugin DaemonSet + RBAC
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-ccm-${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      ccm: external
+  resources:
+    - kind: ConfigMap
+      name: cloud-controller-manager-addon-${CLUSTER_NAME}
+  strategy: Reconcile
+---
+# ClusterResourceSet — Cloud provider Deployment + RBAC
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-csi-${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      csi: external
+  resources:
+    - kind: ConfigMap
+      name: harvester-csi-driver-addon-${CLUSTER_NAME}
+  strategy: Reconcile
+---
+# ClusterResourceSet — Calico HelmChartConfig
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-calico-chart-config-${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      cni: external
+  resources:
+    - kind: ConfigMap
+      name: calico-helm-config-${CLUSTER_NAME}
+  strategy: ApplyOnce
+---
+# ConfigMap — Harvester CSI plugin DaemonSet
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-controller-manager-addon-${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+data:
+  harvester-csi-deployment.yaml: |
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      name: harvester-csi-plugin
+      namespace: kube-system
+    spec:
+      selector:
+        matchLabels:
+          app: harvester-csi-plugin
+      template:
+        metadata:
+          labels:
+            app: harvester-csi-plugin
+        spec:
+          containers:
+            - args:
+                - --v=5
+                - --csi-address=$(ADDRESS)
+                - --kubelet-registration-path=/var/lib/kubelet/harvester-plugins/driver.harvesterhci.io/csi.sock
+              env:
+                - name: ADDRESS
+                  value: /csi/csi.sock
+              image: longhornio/csi-node-driver-registrar:v2.12.0
+              lifecycle:
+                preStop:
+                  exec:
+                    command:
+                      - /bin/sh
+                      - -c
+                      - rm -rf /registration/driver.harvesterhci.io-reg.sock /csi//*
+              name: node-driver-registrar
+              securityContext:
+                privileged: true
+              volumeMounts:
+                - mountPath: /csi/
+                  name: socket-dir
+                - mountPath: /registration
+                  name: registration-dir
+            - args:
+                - --nodeid=$(NODE_ID)
+                - --endpoint=$(CSI_ENDPOINT)
+                - --kubeconfig=/etc/csi/cloud-config
+              env:
+                - name: NODE_ID
+                  valueFrom:
+                    fieldRef:
+                      apiVersion: v1
+                      fieldPath: spec.nodeName
+                - name: CSI_ENDPOINT
+                  value: unix:///csi/csi.sock
+              image: rancher/harvester-csi-driver:v0.1.6
+              imagePullPolicy: Always
+              lifecycle:
+                preStop:
+                  exec:
+                    command:
+                      - /bin/sh
+                      - -c
+                      - rm -f /csi//*
+              name: harvester-csi-plugin
+              securityContext:
+                allowPrivilegeEscalation: true
+                capabilities:
+                  add:
+                    - SYS_ADMIN
+                privileged: true
+              volumeMounts:
+                - name: cloud-config
+                  mountPath: "/etc/csi"
+                  readOnly: true
+                - mountPath: /var/lib/kubelet/plugins/kubernetes.io/csi
+                  mountPropagation: Bidirectional
+                  name: kubernetes-csi-dir
+                - mountPath: /csi/
+                  name: socket-dir
+                - mountPath: /var/lib/kubelet/pods
+                  mountPropagation: Bidirectional
+                  name: pods-mount-dir
+                - mountPath: /dev
+                  name: host-dev
+                - mountPath: /sys
+                  name: host-sys
+                - mountPath: /rootfs
+                  mountPropagation: Bidirectional
+                  name: host
+                - mountPath: /lib/modules
+                  name: lib-modules
+                  readOnly: true
+          hostPID: true
+          serviceAccountName: harvester-csi
+          tolerations:
+            - effect: NoSchedule
+              key: node-role.kubernetes.io/control-plane
+              operator: Exists
+            - effect: NoSchedule
+              key: kubevirt.io/drain
+              operator: Exists
+          volumes:
+            - name: cloud-config
+              secret:
+                secretName: cloud-config
+            - hostPath:
+                path: /var/lib/kubelet/plugins/kubernetes.io/csi
+                type: DirectoryOrCreate
+              name: kubernetes-csi-dir
+            - hostPath:
+                path: /var/lib/kubelet/plugins_registry
+                type: Directory
+              name: registration-dir
+            - hostPath:
+                path: /var/lib/kubelet/harvester-plugins/driver.harvesterhci.io
+                type: DirectoryOrCreate
+              name: socket-dir
+            - hostPath:
+                path: /var/lib/kubelet/pods
+                type: DirectoryOrCreate
+              name: pods-mount-dir
+            - hostPath:
+                path: /dev
+              name: host-dev
+            - hostPath:
+                path: /sys
+              name: host-sys
+            - hostPath:
+                path: /
+              name: host
+            - hostPath:
+                path: /lib/modules
+              name: lib-modules
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: harvester-csi
+      namespace: kube-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: harvester-csi
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: cluster-admin
+    subjects:
+      - kind: ServiceAccount
+        name: harvester-csi
+        namespace: kube-system
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: CSIDriver
+    metadata:
+      name: driver.harvesterhci.io
+    spec:
+      attachRequired: true
+      fsGroupPolicy: ReadWriteOnceWithFSType
+      podInfoOnMount: true
+      volumeLifecycleModes:
+        - Persistent
+    ---
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: harvester
+      annotations:
+        storageclass.kubernetes.io/is-default-class: "true"
+    allowVolumeExpansion: true
+    provisioner: driver.harvesterhci.io
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+---
+# ConfigMap — Harvester cloud provider Deployment (with bootstrap fixes)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harvester-csi-driver-addon-${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+data:
+  harvester-cloud-provider-deploy.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: cloud-provider
+        app.kubernetes.io/name: harvester-cloud-provider
+      name: harvester-cloud-provider
+      namespace: kube-system
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: cloud-provider
+          app.kubernetes.io/name: harvester-cloud-provider
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: cloud-provider
+            app.kubernetes.io/name: harvester-cloud-provider
+        spec:
+          hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
+          containers:
+          - args:
+            - --cloud-config=/etc/kubernetes/cloud-config
+            command:
+            - harvester-cloud-provider
+            image: rancher/harvester-cloud-provider:v0.2.0
+            imagePullPolicy: Always
+            name: harvester-cloud-provider
+            resources: {}
+            volumeMounts:
+            - mountPath: /etc/kubernetes
+              name: cloud-config
+          serviceAccountName: harvester-cloud-controller-manager
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+            operator: Exists
+          - effect: NoSchedule
+            key: node.cloudprovider.kubernetes.io/uninitialized
+            operator: Equal
+            value: "true"
+          - key: node.cluster.x-k8s.io/not-ready
+            operator: Exists
+          volumes:
+            - name: cloud-config
+              secret:
+                secretName: cloud-config
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: harvester-cloud-controller-manager
+      namespace: kube-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: harvester-cloud-controller-manager
+    rules:
+    - apiGroups:
+      - ""
+      resources:
+      - services
+      - nodes
+      - events
+      verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+    - apiGroups:
+      - ""
+      resources:
+      - services/status
+      verbs:
+      - update
+      - patch
+    - apiGroups:
+      - ""
+      resources:
+      - nodes/status
+      verbs:
+      - patch
+      - update
+    - apiGroups:
+      - coordination.k8s.io
+      resources:
+      - leases
+      verbs:
+      - get
+      - create
+      - update
+    ---
+    kind: ClusterRoleBinding
+    apiVersion: rbac.authorization.k8s.io/v1
+    metadata:
+      name: harvester-cloud-controller-manager
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: harvester-cloud-controller-manager
+    subjects:
+      - kind: ServiceAccount
+        name: harvester-cloud-controller-manager
+        namespace: kube-system
+---
+# ConfigMap — Calico HelmChartConfig
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calico-helm-config-${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+data:
+  calico-helm-config.yaml: |
+    apiVersion: helm.cattle.io/v1
+    kind: HelmChartConfig
+    metadata:
+      name: rke2-calico
+      namespace: kube-system
+    spec:
+      valuesContent: |-
+        installation:
+          controlPlaneTolerations:
+            - key: "node-role.kubernetes.io/control-plane"
+              operator: Exists
+              effect: NoSchedule
+            - key: "node-role.kubernetes.io/etcd"
+              operator: Exists
+              effect: NoExecute
+            - key: "node.cloudprovider.kubernetes.io/uninitialized"
+              operator: Equal
+              value: "true"
+              effect: NoSchedule
+---
+# MachineHealthCheck
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineHealthCheck
+metadata:
+  name: ${CLUSTER_NAME}-mhc
+  namespace: ${NAMESPACE}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  maxUnhealthy: 34%
+  nodeStartupTimeout: 20m
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  unhealthyConditions:
+    - type: Ready
+      status: "False"
+      timeout: 5m
+    - type: Ready
+      status: Unknown
+      timeout: 5m
