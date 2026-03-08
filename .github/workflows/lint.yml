@@ -12,7 +12,7 @@ jobs:
       image: registry.opensuse.org/opensuse/tumbleweed:latest
     steps:
       - name: Install dependencies
-        run: zypper -n install git tar gzip curl go
+        run: zypper -n install git tar gzip curl gawk go
 
       - name: Clone the code
         uses: actions/checkout@v4
