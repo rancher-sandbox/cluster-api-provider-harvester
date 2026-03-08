@@ -1,0 +1,13 @@
+# This file is for teaching kustomize how to substitute name and namespace reference in CRD
+nameReference:
+- kind: Issuer
+  group: cert-manager.io
+  fieldSpecs:
+  - kind: Certificate
+    group: cert-manager.io
+    path: spec/issuerRef/name
+
+varReference:
+- path: spec/dnsNames
+  kind: Certificate
+  group: cert-manager.io
