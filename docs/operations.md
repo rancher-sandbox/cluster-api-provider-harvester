@@ -1,0 +1,821 @@
+# CAPHV Production Operations Guide
+
+Cluster API Provider Harvester (CAPHV) is a CAPI infrastructure provider that manages
+Kubernetes clusters on Harvester HCI. This guide covers installation, cluster lifecycle,
+monitoring, and disaster recovery for production environments.
+
+---
+
+## Installation via CAPIProvider (Rancher Turtles)
+
+The recommended production deployment uses the Rancher Turtles `CAPIProvider` CRD. Turtles
+watches for CAPIProvider resources and automatically downloads, installs, and manages the
+provider lifecycle -- including the controller Deployment, CRDs, webhooks, RBAC, and
+ServiceMonitor.
+
+### Prerequisites
+
+- A Rancher management cluster with Rancher Turtles installed
+- cert-manager deployed on the management cluster (required for webhook certificates)
+- Cluster API core provider already installed (Turtles handles this if configured)
+
+### Deploy the CAPIProvider
+
+Create a namespace and apply the CAPIProvider resource:
+
+```bash
+kubectl create namespace caphv-system
+```
+
+```yaml
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  version: v0.2.3
+  fetchConfig:
+    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml
+  configSecret:
+    name: caphv-variables
+```
+
+```bash
+kubectl apply -f capiprovider-harvester.yaml
+```
+
+### What Turtles deploys
+
+When the CAPIProvider is created, Turtles fetches `infrastructure-components.yaml` from the
+specified URL and applies its contents to the cluster. This single manifest contains:
+
+- **CRDs**: HarvesterCluster, HarvesterMachine, HarvesterClusterTemplate, HarvesterMachineTemplate
+- **Controller Deployment**: `caphv-controller-manager` in namespace `caphv-system`
+- **RBAC**: ClusterRole, ClusterRoleBinding, Role, RoleBinding for the controller
+- **Webhooks**: ValidatingWebhookConfiguration for HarvesterCluster and HarvesterMachine resources
+- **cert-manager resources**: Issuer and Certificate for webhook TLS
+- **ServiceMonitor**: Prometheus scrape configuration for controller metrics
+- **Service**: `caphv-webhook-service` (port 443 -> 9443) and `caphv-controller-manager-metrics-service` (port 8443 -> 8080)
+
+### Verify the deployment
+
+```bash
+# Check CAPIProvider status
+kubectl get capiprovider -n caphv-system
+
+# Check the controller pod is running
+kubectl get pods -n caphv-system
+
+# Check CRDs are installed
+kubectl get crd | grep harvester
+
+# Check webhooks are registered
+kubectl get validatingwebhookconfigurations | grep caphv
+```
+
+The CAPIProvider status should show `Installed` and the controller pod should be `Running`
+with 2/2 containers ready (controller + kube-rbac-proxy).
+
+---
+
+## Migration from Manual Deploy to CAPIProvider
+
+If CAPHV was previously deployed manually (via `kubectl apply -f` or Helm), follow this
+procedure to migrate to the Turtles-managed CAPIProvider approach without disrupting existing
+workload clusters.
+
+### Step 1: Document existing state
+
+```bash
+# Record all CAPI resources for each managed cluster
+for ns in $(kubectl get clusters.cluster.x-k8s.io -A -o jsonpath='{.items[*].metadata.namespace}' | tr ' ' '\n' | sort -u); do
+  echo "=== Namespace: $ns ==="
+  kubectl get cluster,machine,harvestercluster,harvestermachine,machinedeployment,machineset -n "$ns"
+done
+
+# Save current controller deployment for reference
+kubectl get deploy caphv-controller-manager -n caphv-system -o yaml > caphv-deploy-backup.yaml
+```
+
+### Step 2: Back up CAPI resources
+
+```bash
+# Export all CAPHV-related resources
+kubectl get harvesterclusters.infrastructure.cluster.x-k8s.io -A -o yaml > backup-harvesterclusters.yaml
+kubectl get harvestermachines.infrastructure.cluster.x-k8s.io -A -o yaml > backup-harvestermachines.yaml
+kubectl get clusters.cluster.x-k8s.io -A -o yaml > backup-clusters.yaml
+kubectl get machines.cluster.x-k8s.io -A -o yaml > backup-machines.yaml
+kubectl get ippools.ipam.cluster.x-k8s.io -A -o yaml > backup-ippools.yaml
+```
+
+### Step 3: Remove the manual deployment
+
+If deployed via raw manifests:
+
+```bash
+# Delete only the controller deployment, service, and associated RBAC
+# Do NOT delete CRDs -- they hold your cluster state
+kubectl delete deploy caphv-controller-manager -n caphv-system
+kubectl delete service caphv-controller-manager-metrics-service -n caphv-system
+kubectl delete service caphv-webhook-service -n caphv-system
+kubectl delete validatingwebhookconfiguration caphv-validating-webhook-configuration
+kubectl delete clusterrole caphv-manager-role caphv-metrics-reader caphv-proxy-role
+kubectl delete clusterrolebinding caphv-manager-rolebinding caphv-proxy-rolebinding
+```
+
+If deployed via Helm:
+
+```bash
+helm uninstall caphv -n caphv-system
+```
+
+**Important**: Helm uninstall removes CRDs only if they were installed by Helm and
+`keep` annotations are absent. Verify CRDs still exist after uninstall:
+
+```bash
+kubectl get crd | grep harvester
+```
+
+If CRDs were removed, re-apply them before proceeding:
+
+```bash
+kubectl apply -f https://github.com/jniedergang/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml --selector='apiextensions.k8s.io/v1=CustomResourceDefinition'
+```
+
+### Step 4: Create the CAPIProvider resource
+
+```bash
+kubectl apply -f capiprovider-harvester.yaml
+```
+
+### Step 5: Verify Turtles picks up the provider
+
+```bash
+# Watch until status shows Installed
+kubectl get capiprovider -n caphv-system -w
+
+# Verify the controller pod is running
+kubectl get pods -n caphv-system
+
+# Verify controller logs show no errors
+kubectl logs -n caphv-system deploy/caphv-controller-manager -c manager --tail=50
+```
+
+### Step 6: Verify existing clusters are intact
+
+```bash
+# All clusters should show Phase=Provisioned, Ready=True
+kubectl get clusters.cluster.x-k8s.io -A
+
+# All machines should show Phase=Running
+kubectl get machines.cluster.x-k8s.io -A
+
+# Reconciliation resumes automatically -- check controller logs
+kubectl logs -n caphv-system deploy/caphv-controller-manager -c manager | grep -i reconcil | tail -20
+```
+
+Existing workload clusters are unaffected by this migration. The CAPI resources (Cluster,
+Machine, etc.) remain in etcd, and the new controller instance picks up reconciliation
+immediately.
+
+---
+
+## Cluster Lifecycle
+
+### Creating a cluster
+
+#### Via ClusterClass (recommended)
+
+The `caphv-generate` CLI generates all required manifests from a minimal set of parameters.
+This is the recommended approach for production clusters.
+
+```bash
+caphv-generate \
+  --name production-cluster \
+  --namespace prod-ns \
+  --image default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2 \
+  --ssh-keypair default/capi-ssh-key \
+  --network default/production \
+  --gateway 172.16.0.1 \
+  --subnet-mask 255.255.0.0 \
+  --ip-pool prod-ip-pool \
+  --dns 172.16.0.1 \
+  --harvester-kubeconfig ~/.kube/harvester.yaml \
+  --cp-replicas 3 \
+  --worker-replicas 2 \
+  --cpu 4 \
+  --memory 8Gi \
+  --disk-size 80Gi \
+  --k8s-version v1.31.14 \
+  --apply
+```
+
+Or use interactive mode:
+
+```bash
+caphv-generate --interactive
+```
+
+The generator produces 10 objects: Namespace, Secret (Harvester kubeconfig), Cluster (with
+topology referencing ClusterClass `harvester-rke2`), 3 ConfigMaps (CCM, CSI, Calico addons),
+3 ClusterResourceSets, and a MachineHealthCheck. This reduces cluster creation from ~200
+lines of YAML to a single command.
+
+**Important**: The ClusterClass `harvester-rke2` must exist in the same namespace as the
+Cluster (ClusterClass is namespace-scoped in CAPI). It is deployed automatically with the
+controller when `clusterClass.enabled=true` in Helm, or included in
+`infrastructure-components.yaml`.
+
+#### Via manual templates
+
+For full control over every resource, create each object individually:
+
+1. HarvesterCluster -- Defines identity secret, target namespace, IP pool, network config
+2. HarvesterMachineTemplate -- CPU, memory, volumes, networks, SSH config
+3. RKE2ControlPlane -- Control plane configuration, Kubernetes version, replicas
+4. MachineDeployment -- Worker node configuration, replicas
+5. ConfigMaps + ClusterResourceSets -- Cloud provider (CCM), CSI driver, CNI addons
+6. Cluster -- References the above, ties everything together
+
+See the `examples/` directory for complete manifests.
+
+### Scaling
+
+#### Scale workers via ClusterClass topology
+
+```bash
+kubectl patch cluster my-cluster -n my-ns --type merge -p '{
+  "spec": {
+    "topology": {
+      "workers": {
+        "machineDeployments": [{
+          "class": "default-worker",
+          "name": "md-0",
+          "replicas": 3
+        }]
+      }
+    }
+  }
+}'
+```
+
+#### Scale workers via MachineDeployment (manual templates)
+
+```bash
+kubectl scale machinedeployment my-cluster-md-0 -n my-ns --replicas=3
+```
+
+#### Scale control plane
+
+```bash
+# ClusterClass topology
+kubectl patch cluster my-cluster -n my-ns --type merge -p '{
+  "spec": {
+    "topology": {
+      "controlPlane": {
+        "replicas": 5
+      }
+    }
+  }
+}'
+
+# Or directly on RKE2ControlPlane
+kubectl patch rke2controlplane my-cluster-control-plane -n my-ns --type merge -p '{"spec":{"replicas":5}}'
+```
+
+Control plane scaling adds or removes nodes one at a time, maintaining etcd quorum
+throughout the operation.
+
+### Kubernetes version upgrade
+
+Change `spec.topology.version` on the Cluster object:
+
+```bash
+kubectl patch cluster my-cluster -n my-ns --type merge -p '{
+  "spec": {
+    "topology": {
+      "version": "v1.32.2"
+    }
+  }
+}'
+```
+
+The rolling upgrade proceeds as follows:
+
+1. Control plane nodes are upgraded one at a time (respecting etcd quorum)
+2. Each CP node: cordon -> drain -> delete VM -> create new VM with new version -> wait for Ready
+3. After all CP nodes are upgraded, workers are upgraded (one at a time per MachineDeployment)
+4. Worker upgrade follows the same cordon -> drain -> replace cycle
+
+Monitor the upgrade:
+
+```bash
+# Watch machine status in real time
+kubectl get machines -n my-ns -w
+
+# Check RKE2ControlPlane rollout status
+kubectl get rke2controlplane -n my-ns
+
+# Verify Kubernetes version on nodes (from workload cluster)
+kubectl get nodes -o wide
+```
+
+A typical 3 CP + 1 worker upgrade takes approximately 35 minutes.
+
+### Deleting a cluster
+
+```bash
+kubectl delete cluster my-cluster -n my-ns
+```
+
+CAPI cascades the deletion through the ownership chain:
+
+1. Cluster deletion triggers Machine deletion
+2. CAPHV deletes the Harvester VM for each Machine
+3. CAPHV deletes associated PVCs (all volumes)
+4. CAPHV deletes cloud-init secrets on Harvester
+5. CAPHV releases allocated IPs back to the IPPool
+6. CAPI garbage-collects remaining objects (MachineSet, MachineDeployment, etc.)
+
+To verify cleanup is complete:
+
+```bash
+# All machines should be gone
+kubectl get machines -n my-ns
+
+# Check Harvester for orphaned VMs (should be empty)
+kubectl get vm -n <harvester-target-namespace> --kubeconfig <harvester-kubeconfig>
+```
+
+---
+
+## MachineHealthCheck and Auto-Remediation
+
+CAPHV supports automatic machine remediation via the standard CAPI MachineHealthCheck (MHC)
+resource. The `caphv-generate` CLI creates an MHC by default with production-appropriate
+settings.
+
+### Default MHC configuration
+
+```yaml
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineHealthCheck
+metadata:
+  name: my-cluster-mhc
+  namespace: my-ns
+spec:
+  clusterName: my-cluster
+  maxUnhealthy: 34%
+  nodeStartupTimeout: 20m
+  unhealthyConditions:
+    - type: Ready
+      status: "False"
+      timeout: 5m
+    - type: Ready
+      status: Unknown
+      timeout: 5m
+```
+
+- **maxUnhealthy: 34%** -- Prevents cascading remediation. With 3 CP nodes, this allows at
+  most 1 simultaneous remediation (34% of 3 = 1.02, rounded down to 1). This protects
+  against etcd quorum loss.
+- **nodeStartupTimeout: 20m** -- Time allowed for a new Machine to become a Ready node.
+  Accounts for VM creation, OS boot, RKE2 installation, and node initialization.
+- **unhealthyConditions** -- A node is considered unhealthy after 5 minutes of `Ready=False`
+  or `Ready=Unknown`.
+
+### Remediation flow
+
+When a node becomes unhealthy:
+
+1. MHC detects the condition after the configured timeout (5 minutes)
+2. MHC marks the Machine for deletion
+3. CAPHV controller handles the Machine deletion:
+   - Removes the etcd member from the cluster (for CP nodes, via `etcdctl member remove`)
+   - Deletes the VM on Harvester
+   - Deletes associated PVCs and cloud-init secrets
+   - Releases the IP back to the pool
+4. CAPI creates a replacement Machine
+5. CAPHV provisions a new VM with a new IP from the pool
+6. RKE2 installs, the node joins the cluster, and becomes Ready
+
+The full cycle (detection through recovery) takes approximately 9 minutes.
+
+### Monitoring MHC
+
+```bash
+# Check MHC status
+kubectl get machinehealthcheck -n my-ns
+
+# Check for machines marked for remediation
+kubectl get machines -n my-ns -o custom-columns=NAME:.metadata.name,PHASE:.status.phase,NODE:.status.nodeRef.name,HEALTHY:.status.conditions[0].status
+
+# Watch the remediation in real time
+kubectl get machines -n my-ns -w
+```
+
+### Tuning MHC for production
+
+For large clusters, consider adjusting:
+
+```yaml
+spec:
+  # Allow more simultaneous remediations for large worker pools
+  maxUnhealthy: 20%
+  # Increase startup timeout for slower infrastructure
+  nodeStartupTimeout: 30m
+  # Longer unhealthy timeout to avoid false positives during rolling upgrades
+  unhealthyConditions:
+    - type: Ready
+      status: "False"
+      timeout: 10m
+```
+
+---
+
+## Monitoring
+
+### Prometheus metrics
+
+The CAPHV controller exposes Prometheus metrics on port 8080, served through the
+kube-rbac-proxy sidecar on port 8443. A ServiceMonitor resource is included in the
+deployment for automatic Prometheus discovery.
+
+### Metric reference
+
+All metrics use the `caphv_` namespace prefix.
+
+#### Machine lifecycle
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `caphv_machine_create_total` | Counter | -- | Total VM creation attempts |
+| `caphv_machine_create_errors_total` | Counter | -- | Failed VM creation attempts |
+| `caphv_machine_creation_duration_seconds` | Histogram | -- | VM creation duration (buckets: 1s to ~512s) |
+| `caphv_machine_delete_total` | Counter | -- | Total VM deletion attempts |
+| `caphv_machine_delete_errors_total` | Counter | -- | Failed VM deletion attempts |
+| `caphv_machine_status` | Gauge | `cluster`, `machine` | Current machine status (1=ready, 0=not ready) |
+| `caphv_machine_reconcile_duration_seconds` | Histogram | `operation` | Machine reconciliation duration (operation: "normal" or "delete") |
+
+#### IP pool
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `caphv_ippool_allocations_total` | Counter | -- | Total IP allocation attempts |
+| `caphv_ippool_allocation_errors_total` | Counter | -- | Failed IP allocation attempts |
+| `caphv_ippool_releases_total` | Counter | -- | Total IP releases |
+
+#### Cluster
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `caphv_cluster_reconcile_duration_seconds` | Histogram | `operation` | Cluster reconciliation duration (operation: "normal" or "delete") |
+| `caphv_cluster_ready` | Gauge | `cluster` | Cluster ready status (1=ready, 0=not ready) |
+
+#### etcd management
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `caphv_etcd_member_remove_total` | Counter | -- | Total etcd member removal attempts |
+| `caphv_etcd_member_remove_errors_total` | Counter | -- | Failed etcd member removals |
+
+#### Node initialization
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `caphv_node_init_total` | Counter | -- | Total node initialization attempts |
+| `caphv_node_init_errors_total` | Counter | -- | Failed node initializations |
+| `caphv_node_init_duration_seconds` | Histogram | -- | Node initialization duration (buckets: 0.5s to ~64s) |
+
+### Grafana dashboard
+
+Import the pre-built dashboard from the repository:
+
+```bash
+# File location in the repository
+config/grafana/caphv-dashboard.json
+```
+
+Import via the Grafana UI (Dashboards -> Import -> Upload JSON file) or via the Grafana API:
+
+```bash
+curl -X POST http://grafana:3000/api/dashboards/db \
+  -H "Authorization: Bearer $GRAFANA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d @config/grafana/caphv-dashboard.json
+```
+
+### Recommended alerts
+
+Set up the following Prometheus alerting rules for production:
+
+```yaml
+groups:
+  - name: caphv
+    rules:
+      - alert: CAPHVMachineCreateErrors
+        expr: increase(caphv_machine_create_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CAPHV machine creation errors detected"
+          description: "{{ $value }} VM creation errors in the last 5 minutes."
+
+      - alert: CAPHVMachineNotReady
+        expr: caphv_machine_status == 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CAPHV machine {{ $labels.machine }} not ready"
+          description: "Machine {{ $labels.machine }} in cluster {{ $labels.cluster }} has been not ready for more than 10 minutes."
+
+      - alert: CAPHVIPPoolAllocationErrors
+        expr: increase(caphv_ippool_allocation_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CAPHV IP pool allocation errors"
+          description: "IP allocation failures detected. Check pool exhaustion or configuration."
+
+      - alert: CAPHVClusterNotReady
+        expr: caphv_cluster_ready == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CAPHV cluster {{ $labels.cluster }} not ready"
+          description: "Cluster {{ $labels.cluster }} has been not ready for more than 15 minutes."
+
+      - alert: CAPHVEtcdRemoveErrors
+        expr: increase(caphv_etcd_member_remove_errors_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CAPHV etcd member removal errors"
+          description: "Failed etcd member removals detected. Check etcd cluster health."
+
+      - alert: CAPHVSlowMachineCreation
+        expr: histogram_quantile(0.95, rate(caphv_machine_creation_duration_seconds_bucket[30m])) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CAPHV machine creation is slow"
+          description: "95th percentile VM creation time exceeds 5 minutes."
+```
+
+---
+
+## Webhooks
+
+CAPHV includes validating admission webhooks for `HarvesterCluster` and `HarvesterMachine`
+resources. These reject invalid configurations at admission time, before the controller
+attempts to reconcile them.
+
+### Enabling webhooks
+
+Webhooks are controlled by the `--enable-webhooks` flag on the controller. When deployed via
+CAPIProvider/Turtles, webhooks are enabled by default in `infrastructure-components.yaml`.
+
+Requirements:
+
+- **cert-manager** must be installed on the management cluster
+- cert-manager creates a self-signed Issuer and Certificate, producing the Secret
+  `caphv-webhook-tls` mounted at `/tmp/k8s-webhook-server/serving-certs/` in the controller
+  pod
+- The ValidatingWebhookConfiguration uses the `cert-manager.io/inject-ca-from` annotation for
+  automatic CA bundle injection
+
+### What is validated
+
+**HarvesterCluster**:
+
+| Field | Validation |
+|-------|-----------|
+| `spec.targetNamespace` | Required, must not be empty |
+| `spec.identitySecret.name` | Required |
+| `spec.identitySecret.namespace` | Required |
+| `spec.loadBalancerConfig.ipamType` | Must be `"dhcp"` or `"pool"` |
+| `spec.vmNetworkConfig.gateway` | Required, must be a valid IP address |
+| `spec.vmNetworkConfig.subnetMask` | Required, must be a valid IP address format |
+| `spec.vmNetworkConfig.ipPoolRef` or `ipPool` | At least one must be set when vmNetworkConfig is specified |
+
+**HarvesterMachine**:
+
+| Field | Validation |
+|-------|-----------|
+| `spec.cpu` | Must be greater than 0 |
+| `spec.memory` | Required, must be a valid Kubernetes resource quantity (e.g., `4Gi`, `8192Mi`) |
+| `spec.sshUser` | Required |
+| `spec.sshKeyPair` | Required |
+| `spec.volumes` | At least one volume required |
+| `spec.volumes[].volumeType` | Must be `"image"` or `"storageClass"` |
+| `spec.volumes[].imageName` | Required when volumeType is `"image"` |
+| `spec.volumes[].storageClass` | Required when volumeType is `"storageClass"` |
+| `spec.networks` | At least one network required |
+| `spec.networkConfig.address` | Required when networkConfig is set |
+| `spec.networkConfig.gateway` | Required and must be a valid IP when networkConfig is set |
+
+### Troubleshooting webhook issues
+
+If resources are being rejected unexpectedly:
+
+```bash
+# Check webhook configuration
+kubectl get validatingwebhookconfigurations caphv-validating-webhook-configuration -o yaml
+
+# Verify the webhook certificate is valid
+kubectl get certificate -n caphv-system
+kubectl get secret caphv-webhook-tls -n caphv-system
+
+# Check webhook service endpoint
+kubectl get endpoints caphv-webhook-service -n caphv-system
+
+# Test with a dry-run create
+kubectl apply --dry-run=server -f my-harvestermachine.yaml
+```
+
+If the webhook is down and blocking operations, temporarily remove it (use with caution):
+
+```bash
+kubectl delete validatingwebhookconfiguration caphv-validating-webhook-configuration
+```
+
+The controller will re-create it on the next restart if webhooks are enabled.
+
+---
+
+## Backup and Disaster Recovery
+
+### What to back up
+
+| Component | Contains | Backup method |
+|-----------|----------|---------------|
+| Management cluster etcd | All CAPI resources (Cluster, Machine, HarvesterCluster, HarvesterMachine, IPPool, etc.) | etcd snapshot |
+| Harvester cluster | VMs, PVCs, VM images, network configurations | Harvester backup / Longhorn backup |
+| Identity secrets | Harvester kubeconfig used by CAPHV to communicate with Harvester | kubectl export or Vault |
+| ClusterResourceSet ConfigMaps | CCM, CSI, CNI addon configurations | kubectl export or Git |
+| IPPool resources | IP allocation state | kubectl export |
+
+### Management cluster etcd backup
+
+This is the most critical backup. All CAPI state lives in the management cluster's etcd.
+
+For RKE2-based management clusters:
+
+```bash
+# On the management cluster node
+sudo /var/lib/rancher/rke2/bin/etcdctl \
+  --endpoints=https://127.0.0.1:2379 \
+  --cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt \
+  --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt \
+  --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key \
+  snapshot save /tmp/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db
+```
+
+RKE2 also takes automatic snapshots (default: every 12 hours, 5 retained). Check with:
+
+```bash
+sudo ls -la /var/lib/rancher/rke2/server/db/snapshots/
+```
+
+### Export CAPI resources
+
+For a portable backup of CAPI resources (useful for migration to a new management cluster):
+
+```bash
+#!/bin/bash
+BACKUP_DIR="caphv-backup-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+for kind in clusters.cluster.x-k8s.io machines.cluster.x-k8s.io \
+  machinedeployments.cluster.x-k8s.io machinesets.cluster.x-k8s.io \
+  rke2controlplanes.controlplane.cluster.x-k8s.io \
+  harvesterclusters.infrastructure.cluster.x-k8s.io \
+  harvestermachines.infrastructure.cluster.x-k8s.io \
+  clusterresourcesets.addons.cluster.x-k8s.io \
+  machinehealthchecks.cluster.x-k8s.io; do
+  kubectl get "$kind" -A -o yaml > "$BACKUP_DIR/$kind.yaml" 2>/dev/null
+done
+
+# Export secrets (kubeconfig, cloud-init)
+kubectl get secrets -A -l cluster.x-k8s.io/cluster-name -o yaml > "$BACKUP_DIR/secrets.yaml"
+
+echo "Backup saved to $BACKUP_DIR/"
+```
+
+### Disaster recovery: rebuild management cluster
+
+If the management cluster is lost but Harvester and its VMs are intact:
+
+1. **Deploy a new management cluster** with RKE2, Rancher, and Turtles
+2. **Install CAPHV** via CAPIProvider (see Installation section above)
+3. **Re-apply CAPI resources** from the backup, pointing to the same Harvester:
+
+```bash
+# Apply in dependency order
+kubectl apply -f "$BACKUP_DIR/harvesterclusters.infrastructure.cluster.x-k8s.io.yaml"
+kubectl apply -f "$BACKUP_DIR/harvestermachines.infrastructure.cluster.x-k8s.io.yaml"
+kubectl apply -f "$BACKUP_DIR/clusters.cluster.x-k8s.io.yaml"
+kubectl apply -f "$BACKUP_DIR/machines.cluster.x-k8s.io.yaml"
+# ... remaining resources
+```
+
+4. **Verify reconciliation**: The CAPHV controller discovers the existing VMs on Harvester
+   and adopts them. No VMs are recreated if they already exist and match the expected state.
+
+```bash
+kubectl get clusters.cluster.x-k8s.io -A
+kubectl get machines.cluster.x-k8s.io -A
+```
+
+### Harvester-side backup
+
+Harvester VMs are backed by Longhorn volumes. Use Harvester's built-in VM backup feature or
+Longhorn's volume backup to an S3-compatible target:
+
+```bash
+# Via Harvester API or UI: create a VM backup
+# This captures all volumes (boot + data disks) as Longhorn snapshots
+```
+
+This is a secondary safety net. The primary recovery path is to re-provision workload
+clusters from the management cluster's CAPI state, since CAPHV can recreate VMs from
+scratch.
+
+---
+
+## Operational Runbooks
+
+### Controller not reconciling
+
+```bash
+# Check controller logs
+kubectl logs -n caphv-system deploy/caphv-controller-manager -c manager --tail=100
+
+# Check if leader election is stuck (multi-replica setups)
+kubectl get lease -n caphv-system
+
+# Restart the controller
+kubectl rollout restart deploy/caphv-controller-manager -n caphv-system
+```
+
+### Machine stuck in Provisioning
+
+```bash
+# Check the machine status
+kubectl describe machine <machine-name> -n <ns>
+
+# Check the HarvesterMachine status
+kubectl describe harvestermachine <machine-name> -n <ns>
+
+# Check the VM on Harvester
+kubectl get vm -n <target-ns> --kubeconfig <harvester-kubeconfig>
+
+# Check cloud-init status on the VM (SSH into it)
+ssh <user>@<vm-ip> 'sudo cloud-init status --long'
+```
+
+### IP pool exhausted
+
+```bash
+# Check current allocations
+kubectl get ippool -n <ns> -o yaml
+
+# Look at allocated IPs in status
+kubectl get ippool <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | jq .
+
+# If IPs are leaked (allocated but no corresponding machine), manually edit the IPPool:
+kubectl edit ippool <pool-name> -n <ns>
+# Remove stale entries from status.allocated
+```
+
+### etcd member removal failed during remediation
+
+If `caphv_etcd_member_remove_errors_total` is increasing:
+
+```bash
+# Check etcd member list from a healthy CP node
+kubectl exec -it <rke2-cp-pod> -n kube-system -- etcdctl member list
+
+# Manually remove a stale member if needed
+kubectl exec -it <rke2-cp-pod> -n kube-system -- etcdctl member remove <member-id>
+```
+
+### Webhook certificate expired
+
+```bash
+# Check certificate status
+kubectl get certificate -n caphv-system
+
+# Force renewal
+kubectl delete secret caphv-webhook-tls -n caphv-system
+# cert-manager will automatically re-issue the certificate
+```

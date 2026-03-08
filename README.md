@@ -321,6 +321,21 @@ Harvester HCI (target)
 | `spec.volumes[].volumeSize` | string | Yes | Disk size (e.g. "40Gi") |
 | `spec.volumes[].bootOrder` | int | No | Boot priority (1 = first) |
 
+## Monitoring
+
+CAPHV exposes custom Prometheus metrics (`caphv_*` namespace) via the controller-runtime metrics endpoint (port 8080, protected by kube-rbac-proxy).
+
+A ServiceMonitor is included in the kustomize build. A ready-to-import Grafana dashboard is at `config/grafana/caphv-dashboard.json`.
+
+Key metrics: `caphv_machine_create_total`, `caphv_machine_creation_duration_seconds`, `caphv_machine_status`, `caphv_ippool_allocations_total`, `caphv_cluster_ready`, `caphv_etcd_member_remove_total`, `caphv_node_init_duration_seconds`.
+
+See [docs/operations.md](docs/operations.md) for the full metrics list and alerting recommendations.
+
+## Documentation
+
+- [Operations Guide](docs/operations.md) — installation via CAPIProvider, cluster lifecycle, monitoring, backup/DR
+- [Troubleshooting](docs/troubleshooting.md) — IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
+
 ## E2E Tests
 
 Integration tests run against a live Harvester + CAPI cluster:
