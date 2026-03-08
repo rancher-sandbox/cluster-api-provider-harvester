@@ -3443,6 +3443,9 @@ var _ = Describe("ReconcileDelete", func() {
 		scope := Scope{
 			Ctx:              context.TODO(),
 			HarvesterMachine: machine,
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+			},
 			HarvesterCluster: &infrav1.HarvesterCluster{
 				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
 			},
@@ -3481,6 +3484,9 @@ var _ = Describe("ReconcileDelete", func() {
 		scope := Scope{
 			Ctx:              context.TODO(),
 			HarvesterMachine: machine,
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+			},
 			HarvesterCluster: &infrav1.HarvesterCluster{
 				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
 			},
@@ -3517,6 +3523,9 @@ var _ = Describe("ReconcileDelete", func() {
 		scope := Scope{
 			Ctx:              context.TODO(),
 			HarvesterMachine: machine,
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+			},
 			HarvesterCluster: &infrav1.HarvesterCluster{
 				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
 			},
@@ -3547,6 +3556,9 @@ var _ = Describe("ReconcileDelete", func() {
 		scope := Scope{
 			Ctx:              context.TODO(),
 			HarvesterMachine: machine,
+			Cluster: &clusterv1.Cluster{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
+			},
 			HarvesterCluster: &infrav1.HarvesterCluster{
 				Spec: infrav1.HarvesterClusterSpec{TargetNamespace: "default"},
 			},

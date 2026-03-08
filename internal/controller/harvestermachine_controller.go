@@ -54,6 +54,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	caphvmetrics "github.com/rancher-sandbox/cluster-api-provider-harvester/internal/metrics"
 	harvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
 )
@@ -244,6 +245,21 @@ func (r *HarvesterMachineReconciler) SetupWithManager(ctx context.Context, mgr c
 
 // ReconcileNormal reconciles the HarvesterMachine object.
 func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconcile.Result, rerr error) {
+	reconcileStart := time.Now()
+
+	defer func() {
+		caphvmetrics.MachineReconcileDuration.WithLabelValues("normal").Observe(time.Since(reconcileStart).Seconds())
+
+		clusterName := hvScope.Cluster.Namespace + "/" + hvScope.Cluster.Name
+		machineName := hvScope.HarvesterMachine.Namespace + "/" + hvScope.HarvesterMachine.Name
+
+		if hvScope.HarvesterMachine.Status.Ready {
+			caphvmetrics.MachineStatus.WithLabelValues(clusterName, machineName).Set(1)
+		} else {
+			caphvmetrics.MachineStatus.WithLabelValues(clusterName, machineName).Set(0)
+		}
+	}()
+
 	logger := log.FromContext(hvScope.Ctx)
 
 	// Return early if the object or Cluster is paused.
@@ -437,8 +453,12 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			Message: "VM provisioning in progress",
 		})
 
+		caphvmetrics.MachineCreateTotal.Inc()
+		createStart := time.Now()
+
 		_, err = createVMFromHarvesterMachine(hvScope)
 		if err != nil {
+			caphvmetrics.MachineCreateErrorsTotal.Inc()
 			logger.Error(err, "unable to create VM from HarvesterMachine information")
 
 			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
@@ -450,6 +470,8 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 			return ctrl.Result{}, err
 		}
+
+		caphvmetrics.MachineCreationDuration.Observe(time.Since(createStart).Seconds())
 
 		conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.MachineCreatedCondition)
 		hvScope.HarvesterMachine.Status.Ready = false
@@ -500,6 +522,9 @@ func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 		return
 	}
 
+	caphvmetrics.NodeInitTotal.Inc()
+	initStart := time.Now()
+
 	locutil.InitializeWorkloadNode(
 		hvScope.Ctx,
 		*hvScope.Logger,
@@ -507,6 +532,8 @@ func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 		hvScope.HarvesterMachine.Name,
 		hvScope.HarvesterMachine.Spec.ProviderID,
 	)
+
+	caphvmetrics.NodeInitDuration.Observe(time.Since(initStart).Seconds())
 }
 
 func getProviderIDFromWorkloadCluster(hvScope *Scope) (string, error) {
@@ -1255,8 +1282,12 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 	}
 
 	// Allocate new IP
+	caphvmetrics.IPPoolAllocationsTotal.Inc()
+
 	allocatedIP, err := locutil.AllocateVMIPFromPool(pool, machineID)
 	if err != nil {
+		caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
+
 		return errors.Wrap(err, "failed to allocate IP from VM IP pool")
 	}
 
@@ -1264,6 +1295,8 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 	_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
 		context.TODO(), pool, metav1.UpdateOptions{})
 	if err != nil {
+		caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
+
 		return errors.Wrap(err, "failed to update VM IP pool after allocation")
 	}
 
@@ -1324,6 +1357,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 		return
 	}
 
+	caphvmetrics.IPPoolReleasesTotal.Inc()
 	logger.Info("Released VM IP back to pool", "ip", machine.Status.AllocatedIPAddress, "machine", machine.Name)
 }
 
@@ -1349,11 +1383,28 @@ func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Sco
 		return
 	}
 
+	caphvmetrics.EtcdMemberRemoveTotal.Inc()
 	locutil.RemoveEtcdMember(hvScope.Ctx, *logger, workloadConfig, hvScope.HarvesterMachine.Name)
 }
 
 // ReconcileDelete deletes a HarvesterMachine with all its dependencies.
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
+	reconcileStart := time.Now()
+	caphvmetrics.MachineDeleteTotal.Inc()
+
+	defer func() {
+		caphvmetrics.MachineReconcileDuration.WithLabelValues("delete").Observe(time.Since(reconcileStart).Seconds())
+
+		if rerr != nil {
+			caphvmetrics.MachineDeleteErrorsTotal.Inc()
+		}
+
+		// Clean up gauge on deletion
+		clusterName := hvScope.Cluster.Namespace + "/" + hvScope.Cluster.Name
+		machineName := hvScope.HarvesterMachine.Namespace + "/" + hvScope.HarvesterMachine.Name
+		caphvmetrics.MachineStatus.DeleteLabelValues(clusterName, machineName)
+	}()
+
 	logger := log.FromContext(hvScope.Ctx)
 	logger.Info("Deleting HarvesterMachine ...")
 

@@ -57,6 +57,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	caphvmetrics "github.com/rancher-sandbox/cluster-api-provider-harvester/internal/metrics"
 	lbclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
 )
@@ -222,6 +223,19 @@ func (r *HarvesterClusterReconciler) SetupWithManager(ctx context.Context, mgr c
 
 // ReconcileNormal is the reconciliation function when not deleting the HarvesterCluster instance.
 func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res ctrl.Result, err error) {
+	reconcileStart := time.Now()
+
+	defer func() {
+		caphvmetrics.ClusterReconcileDuration.WithLabelValues("normal").Observe(time.Since(reconcileStart).Seconds())
+
+		clusterName := scope.HarvesterCluster.Namespace + "/" + scope.HarvesterCluster.Name
+		if scope.HarvesterCluster.Status.Ready {
+			caphvmetrics.ClusterReady.WithLabelValues(clusterName).Set(1)
+		} else {
+			caphvmetrics.ClusterReady.WithLabelValues(clusterName).Set(0)
+		}
+	}()
+
 	logger := log.FromContext(scope.Ctx)
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
@@ -636,6 +650,15 @@ func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient lbcl
 
 // ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it.
 func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
+	reconcileStart := time.Now()
+
+	defer func() {
+		caphvmetrics.ClusterReconcileDuration.WithLabelValues("delete").Observe(time.Since(reconcileStart).Seconds())
+
+		clusterName := scope.HarvesterCluster.Namespace + "/" + scope.HarvesterCluster.Name
+		caphvmetrics.ClusterReady.DeleteLabelValues(clusterName)
+	}()
+
 	logger := log.FromContext(scope.Ctx)
 	logger.Info("Deleting Harvester Cluster ...", "cluster-name", scope.HarvesterCluster.Name, "cluster-namespace", scope.HarvesterCluster.Namespace)
 
