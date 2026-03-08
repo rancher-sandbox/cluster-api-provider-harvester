@@ -22,7 +22,7 @@ variables:
   SKIP_RESOURCE_CLEANUP: "false"
   SKIP_DELETION_TEST: "false"
   ARTIFACTS_FOLDER: "_artifacts"
-  HELM_BINARY_PATH: "/usr/bin/helm"
+  HELM_BINARY_PATH: "/usr/local/bin/helm"
 
   # Harvester-specific
   HARVESTER_KUBECONFIG_B64: ""
@@ -31,12 +31,12 @@ variables:
   SSH_KEYPAIR: "default/capi-ssh-key"
   SSH_USER: "sles"
   VM_NETWORK: "default/production"
-  VOLUME_IMAGE: "default/image-nhtf9"
+  VOLUME_IMAGE: "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2"
   VOLUME_SIZE: "40Gi"
   CPU_COUNT: "2"
   MEMORY_SIZE: "4Gi"
   GATEWAY: "172.16.0.1"
   SUBNET_MASK: "255.255.0.0"
-  IP_POOL_REF: "cert-test-pool"
+  IP_POOL_REF: "capi-vm-pool"
   DNS_SERVERS: "172.16.0.1"
   CNI: "calico"
