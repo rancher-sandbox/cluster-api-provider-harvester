@@ -199,10 +199,10 @@ data:
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 		&corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "harvester-csi-driver-addon",
+				Name:      "cloud-config-addon",
 				Namespace: "test-hv",
 			},
-			Data: map[string]string{"harvester-cloud-provider-deploy.yaml": manifest},
+			Data: map[string]string{"cloud-config.yaml": manifest},
 		}).Build()
 
 	var r *HarvesterClusterReconciler
@@ -246,8 +246,8 @@ data:
 					Server:          "https://192.168.1.109:6443",
 					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{ //nolint:gosec // field names contain "Credentials" but values are not secrets
 						ManifestsConfigMapNamespace:      "test-hv",
-						ManifestsConfigMapName:           "harvester-csi-driver-addon",
-						ManifestsConfigMapKey:            "harvester-cloud-provider-deploy.yaml",
+						ManifestsConfigMapName:           "cloud-config-addon",
+						ManifestsConfigMapKey:            "cloud-config.yaml",
 						CloudConfigCredentialsSecretName: "cloud-config",
 						CloudConfigCredentialsSecretKey:  "cloud-config",
 					},
@@ -261,8 +261,8 @@ data:
 		Expect(r.reconcileCloudProviderConfig(scope)).To(Succeed())
 
 		newCM := &corev1.ConfigMap{}
-		Expect(fakeClient.Get(context.TODO(), types.NamespacedName{Namespace: "test-hv", Name: "harvester-csi-driver-addon"}, newCM)).To(Succeed())
-		Expect(newCM.Data["harvester-cloud-provider-deploy.yaml"]).To(Not(Equal(manifest)))
+		Expect(fakeClient.Get(context.TODO(), types.NamespacedName{Namespace: "test-hv", Name: "cloud-config-addon"}, newCM)).To(Succeed())
+		Expect(newCM.Data["cloud-config.yaml"]).To(Not(Equal(manifest)))
 	})
 })
 

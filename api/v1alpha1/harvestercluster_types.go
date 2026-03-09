@@ -93,6 +93,17 @@ const (
 	VMIPPoolCreatedByControllerCondition clusterv1.ConditionType = "VMIPPoolCreatedByController"
 	// VMIPPoolCreatedByControllerReason documents that the VM IP pool was created by the controller.
 	VMIPPoolCreatedByControllerReason = "VMIPPoolCreatedByController"
+
+	// FleetIntegrationReadyCondition documents whether Fleet labels have been propagated after Turtles import.
+	FleetIntegrationReadyCondition clusterv1.ConditionType = "FleetIntegrationReady"
+	// FleetIntegrationNotApplicableReason documents that Fleet integration is not applicable (no auto-import label).
+	FleetIntegrationNotApplicableReason = "FleetIntegrationNotApplicable"
+	// FleetIntegrationInProgressReason documents that Fleet integration is in progress (waiting for Rancher resources).
+	FleetIntegrationInProgressReason = "FleetIntegrationInProgress"
+	// FleetIntegrationReadyReason documents that Fleet labels have been successfully propagated.
+	FleetIntegrationReadyReason = "FleetIntegrationReady"
+	// FleetIntegrationFailedReason documents that Fleet integration failed.
+	FleetIntegrationFailedReason = "FleetIntegrationFailed"
 )
 
 const (
