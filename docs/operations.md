@@ -38,7 +38,7 @@ spec:
   type: infrastructure
   version: v0.2.3
   fetchConfig:
-    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -99,7 +99,7 @@ spec:
   version: v0.2.3
   enableAutomaticUpdate: true
   fetchConfig:
-    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -116,7 +116,7 @@ kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
   "spec": {
     "version": "v0.3.0",
     "fetchConfig": {
-      "url": "https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml"
+      "url": "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml"
     }
   }
 }'
@@ -140,7 +140,7 @@ kubectl wait --for=condition=Ready capiprovider/harvester -n caphv-system --time
 ```bash
 kubectl get deploy caphv-controller-manager -n caphv-system \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
-# Expected: ghcr.io/jniedergang/cluster-api-provider-harvester:v0.2.3
+# Expected: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.3
 ```
 
 3. **Patch to new version** (manual upgrade test):
@@ -232,7 +232,7 @@ kubectl get crd | grep harvester
 If CRDs were removed, re-apply them before proceeding:
 
 ```bash
-kubectl apply -f https://github.com/jniedergang/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml --selector='apiextensions.k8s.io/v1=CustomResourceDefinition'
+kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml --selector='apiextensions.k8s.io/v1=CustomResourceDefinition'
 ```
 
 ### Step 4: Create the CAPIProvider resource
