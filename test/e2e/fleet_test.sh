@@ -38,7 +38,7 @@ test_fleet() {
         --ip-pool capi-vm-pool \
         --cni calico \
         --cni-mtu 1450 \
-        --fleet-addon-repo https://gitea.home.zypp.fr/jniedergang/caphv-fleet-addons.git \
+        --fleet-addon-repo https://gitea.home.zypp.fr/rancher-sandbox/caphv-fleet-addons.git \
         --harvester-kubeconfig /dev/null 2>/dev/null || echo "GENERATE_FAILED")
 
     if echo "$test_output" | grep -q "GENERATE_FAILED"; then
@@ -56,7 +56,7 @@ test_fleet() {
             --ip-pool capi-vm-pool \
             --cni calico \
             --cni-mtu 1450 \
-            --fleet-addon-repo https://gitea.home.zypp.fr/jniedergang/caphv-fleet-addons.git \
+            --fleet-addon-repo https://gitea.home.zypp.fr/rancher-sandbox/caphv-fleet-addons.git \
             --harvester-kubeconfig "$tmpkc" 2>/dev/null)
         rm -f "$tmpkc"
     fi
