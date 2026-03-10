@@ -88,6 +88,11 @@ const (
 	VMIPPoolCreationFailedReason = "VMIPPoolCreationFailed"
 	// VMIPPoolReadyReason documents that the VM IP pool is ready.
 	VMIPPoolReadyReason = "VMIPPoolReady"
+	// VMIPPoolCreatedByControllerCondition documents that the VM IP pool was created by the controller
+	// (not pre-existing). Only pools with this condition are deleted on cluster deletion.
+	VMIPPoolCreatedByControllerCondition clusterv1.ConditionType = "VMIPPoolCreatedByController"
+	// VMIPPoolCreatedByControllerReason documents that the VM IP pool was created by the controller.
+	VMIPPoolCreatedByControllerReason = "VMIPPoolCreatedByController"
 )
 
 const (

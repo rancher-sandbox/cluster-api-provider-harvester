@@ -151,6 +151,14 @@ spec:
           default: []
           items:
             type: string
+    # CNI plugin for RKE2
+    - name: cni
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "calico"
+          description: "CNI plugin (calico, canal, cilium, none)"
   # --- Patches ---
   patches:
     # Patch VM networks on both CP and worker HarvesterMachineTemplates
@@ -361,6 +369,19 @@ spec:
                   dnsServers:
                   {{ range .dnsServers }}- {{ . }}
                   {{ end }}
+    # Patch CNI on RKE2ControlPlaneTemplate
+    - name: cni
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/serverConfig/cni
+              valueFrom:
+                variable: cni
     # Patch CSI addon ConfigMap name (per-cluster)
     - name: csiAddonConfigMap
       definitions:

@@ -154,4 +154,18 @@ runcmd:
 		Expect(resultStr).To(ContainSubstring("vim"))
 		Expect(resultStr).To(ContainSubstring("git"))
 	})
+
+	It("should return error when list section value is not a list", func() {
+		// First input sets packages as a proper list
+		ci1 := `packages:
+  - vim
+`
+		// Second input has packages as a scalar (not a list)
+		// This should trigger the "unable to cast value to []any" error
+		ci2 := `packages: curl
+`
+		_, err := MergeCloudInitData(ci1, ci2)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unable to cast"))
+	})
 })

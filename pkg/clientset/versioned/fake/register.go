@@ -19,6 +19,7 @@ limitations under the License.
 package fake
 
 import (
+	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
 	harvesterhciv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	k8scnicncfiov1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v4/apis/volumesnapshot/v1"
@@ -29,6 +30,7 @@ import (
 	upgradev1 "github.com/rancher/system-upgrade-controller/pkg/apis/upgrade.cattle.io/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,9 +48,11 @@ var codecs = serializer.NewCodecFactory(scheme)
 var localSchemeBuilder = runtime.SchemeBuilder{
 	catalogv1.AddToScheme,
 	clusterv1beta1.AddToScheme,
+	corev1.AddToScheme,
 	harvesterhciv1beta1.AddToScheme,
 	k8scnicncfiov1.AddToScheme,
 	kubevirtv1.AddToScheme,
+	lbv1beta1.AddToScheme,
 	longhornv1beta2.AddToScheme,
 	managementv3.AddToScheme,
 	monitoringv1.AddToScheme,

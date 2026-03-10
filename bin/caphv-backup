@@ -1,0 +1,195 @@
+#!/usr/bin/env bash
+# caphv-backup — Backup all CAPI resources from the management cluster
+#
+# Creates a timestamped backup directory containing:
+#   - All CAPI CRD resources (Cluster, Machine, HarvesterCluster, etc.)
+#   - Identity secrets (Harvester kubeconfig)
+#   - ClusterResourceSet ConfigMaps
+#   - IPPool allocations (from Harvester)
+#   - Optionally triggers an etcd snapshot on RKE2
+#
+# Usage:
+#   caphv-backup [--output-dir DIR] [--etcd-snapshot] [--namespace NS] [--help]
+#
+# Examples:
+#   caphv-backup                          # Backup all namespaces
+#   caphv-backup --namespace my-cluster   # Backup single namespace
+#   caphv-backup --etcd-snapshot          # Also trigger etcd snapshot (RKE2 only)
+
+set -euo pipefail
+
+# ─── Defaults ────────────────────────────────────────────────────────
+OUTPUT_DIR=""
+ETCD_SNAPSHOT=false
+NAMESPACE=""
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# ─── Functions ───────────────────────────────────────────────────────
+usage() {
+  cat <<'USAGE'
+caphv-backup — Backup CAPI resources from management cluster
+
+USAGE:
+  caphv-backup [flags]
+
+FLAGS:
+  --output-dir DIR     Output directory (default: caphv-backup-YYYYMMDD-HHMMSS)
+  --etcd-snapshot      Trigger an etcd snapshot on RKE2 management cluster
+  --namespace NS       Backup only this namespace (default: all)
+  --help               Show this help
+
+WHAT IS BACKED UP:
+  - Cluster API resources (Cluster, Machine, MachineDeployment, MachineSet, etc.)
+  - Infrastructure resources (HarvesterCluster, HarvesterMachine, HarvesterMachineTemplate)
+  - Control plane resources (RKE2ControlPlane, RKE2ControlPlaneTemplate)
+  - Bootstrap resources (RKE2Config, RKE2ConfigTemplate)
+  - ClusterResourceSets and ConfigMaps
+  - MachineHealthChecks
+  - ClusterClass and templates
+  - Identity secrets (Harvester kubeconfig)
+  - Kubeconfig secrets for workload clusters
+USAGE
+  exit 0
+}
+
+log() { echo "[$(date '+%H:%M:%S')] $*"; }
+warn() { echo "[$(date '+%H:%M:%S')] WARNING: $*" >&2; }
+
+backup_resources() {
+  local kind="$1"
+  local filename="$2"
+  local ns_flag=""
+
+  if [ -n "$NAMESPACE" ]; then
+    ns_flag="-n $NAMESPACE"
+  else
+    ns_flag="-A"
+  fi
+
+  # shellcheck disable=SC2086
+  if kubectl get "$kind" $ns_flag &>/dev/null; then
+    # shellcheck disable=SC2086
+    kubectl get "$kind" $ns_flag -o yaml > "${BACKUP_DIR}/${filename}" 2>/dev/null
+    local count
+    # shellcheck disable=SC2086
+    count=$(kubectl get "$kind" $ns_flag --no-headers 2>/dev/null | wc -l)
+    if [ "$count" -gt 0 ]; then
+      log "  $kind: $count resources"
+    fi
+  fi
+}
+
+# ─── Parse flags ─────────────────────────────────────────────────────
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+    --etcd-snapshot) ETCD_SNAPSHOT=true; shift ;;
+    --namespace) NAMESPACE="$2"; shift 2 ;;
+    --help|-h) usage ;;
+    *) echo "Unknown flag: $1"; usage ;;
+  esac
+done
+
+# ─── Setup ───────────────────────────────────────────────────────────
+if [ -z "$OUTPUT_DIR" ]; then
+  OUTPUT_DIR="caphv-backup-${TIMESTAMP}"
+fi
+
+BACKUP_DIR="$OUTPUT_DIR"
+mkdir -p "$BACKUP_DIR"
+
+log "Starting CAPI backup to ${BACKUP_DIR}/"
+if [ -n "$NAMESPACE" ]; then
+  log "Namespace filter: $NAMESPACE"
+fi
+
+# ─── Backup CAPI core resources ──────────────────────────────────────
+log "Backing up CAPI core resources..."
+backup_resources "clusters.cluster.x-k8s.io" "clusters.yaml"
+backup_resources "machines.cluster.x-k8s.io" "machines.yaml"
+backup_resources "machinedeployments.cluster.x-k8s.io" "machinedeployments.yaml"
+backup_resources "machinesets.cluster.x-k8s.io" "machinesets.yaml"
+backup_resources "machinepools.cluster.x-k8s.io" "machinepools.yaml"
+backup_resources "machinehealthchecks.cluster.x-k8s.io" "machinehealthchecks.yaml"
+backup_resources "clusterresourcesets.addons.cluster.x-k8s.io" "clusterresourcesets.yaml"
+backup_resources "clusterresourcesetbindings.addons.cluster.x-k8s.io" "clusterresourcesetbindings.yaml"
+backup_resources "clusterclasses.cluster.x-k8s.io" "clusterclasses.yaml"
+
+# ─── Backup infrastructure resources ────────────────────────────────
+log "Backing up CAPHV infrastructure resources..."
+backup_resources "harvesterclusters.infrastructure.cluster.x-k8s.io" "harvesterclusters.yaml"
+backup_resources "harvestermachines.infrastructure.cluster.x-k8s.io" "harvestermachines.yaml"
+backup_resources "harvestermachinetemplates.infrastructure.cluster.x-k8s.io" "harvestermachinetemplates.yaml"
+
+# ─── Backup control plane resources ─────────────────────────────────
+log "Backing up RKE2 control plane resources..."
+backup_resources "rke2controlplanes.controlplane.cluster.x-k8s.io" "rke2controlplanes.yaml"
+backup_resources "rke2controlplanetemplates.controlplane.cluster.x-k8s.io" "rke2controlplanetemplates.yaml"
+
+# ─── Backup bootstrap resources ─────────────────────────────────────
+log "Backing up RKE2 bootstrap resources..."
+backup_resources "rke2configs.bootstrap.cluster.x-k8s.io" "rke2configs.yaml"
+backup_resources "rke2configtemplates.bootstrap.cluster.x-k8s.io" "rke2configtemplates.yaml"
+
+# ─── Backup secrets ─────────────────────────────────────────────────
+log "Backing up secrets (identity + kubeconfig)..."
+ns_flag="-A"
+if [ -n "$NAMESPACE" ]; then
+  ns_flag="-n $NAMESPACE"
+fi
+
+# Identity secrets (Harvester kubeconfig)
+# shellcheck disable=SC2086
+kubectl get secrets $ns_flag -l "cluster.x-k8s.io/cluster-name" -o yaml > "${BACKUP_DIR}/cluster-secrets.yaml" 2>/dev/null || true
+
+# Backup kubeconfig secrets specifically
+# shellcheck disable=SC2086
+kubectl get secrets $ns_flag -o json 2>/dev/null | \
+  jq -r '.items[] | select(.metadata.name | test("-kubeconfig$")) | .metadata.namespace + "/" + .metadata.name' \
+  > "${BACKUP_DIR}/kubeconfig-secrets-list.txt" 2>/dev/null || true
+
+count=$(wc -l < "${BACKUP_DIR}/kubeconfig-secrets-list.txt" 2>/dev/null || echo "0")
+log "  Kubeconfig secrets: $count"
+
+# ─── Backup ConfigMaps (CCM, CSI, CNI addons) ───────────────────────
+log "Backing up ConfigMaps (addons)..."
+# shellcheck disable=SC2086
+kubectl get configmaps $ns_flag -o json 2>/dev/null | \
+  jq '{apiVersion: "v1", kind: "ConfigMapList", items: [.items[] | select(.metadata.name | test("ccm-addon|csi-addon|cni-addon|calico-addon|cloud-controller|harvester-csi"))]}' \
+  > "${BACKUP_DIR}/addon-configmaps.yaml" 2>/dev/null || true
+
+# ─── Backup CAPIProvider (if Turtles is used) ───────────────────────
+log "Backing up CAPIProvider resources..."
+backup_resources "capiproviders.turtles-capi.cattle.io" "capiproviders.yaml"
+
+# ─── etcd snapshot ───────────────────────────────────────────────────
+if [ "$ETCD_SNAPSHOT" = true ]; then
+  log "Triggering etcd snapshot..."
+  ETCDCTL="/var/lib/rancher/rke2/bin/etcdctl"
+  ETCD_CERTS="--cacert=/var/lib/rancher/rke2/server/tls/etcd/server-ca.crt --cert=/var/lib/rancher/rke2/server/tls/etcd/server-client.crt --key=/var/lib/rancher/rke2/server/tls/etcd/server-client.key"
+  SNAPSHOT_NAME="caphv-backup-${TIMESTAMP}.db"
+
+  if command -v "$ETCDCTL" &>/dev/null; then
+    # Local RKE2 node
+    # shellcheck disable=SC2086
+    sudo "$ETCDCTL" --endpoints=https://127.0.0.1:2379 $ETCD_CERTS \
+      snapshot save "${BACKUP_DIR}/${SNAPSHOT_NAME}" 2>/dev/null
+    log "  etcd snapshot saved: ${SNAPSHOT_NAME}"
+  else
+    warn "etcdctl not found locally. Run on the management cluster node:"
+    echo "  sudo $ETCDCTL --endpoints=https://127.0.0.1:2379 $ETCD_CERTS snapshot save /tmp/${SNAPSHOT_NAME}"
+  fi
+fi
+
+# ─── Summary ─────────────────────────────────────────────────────────
+file_count=$(find "$BACKUP_DIR" -type f | wc -l)
+total_size=$(du -sh "$BACKUP_DIR" | cut -f1)
+log ""
+log "Backup complete: ${BACKUP_DIR}/"
+log "  Files: $file_count"
+log "  Size: $total_size"
+log ""
+log "To restore on a new management cluster:"
+log "  1. Install CAPI + RKE2 + CAPHV providers"
+log "  2. Apply: kubectl apply -f ${BACKUP_DIR}/"
+log "  3. Or restore etcd snapshot for full state recovery"

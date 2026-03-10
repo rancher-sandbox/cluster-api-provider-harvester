@@ -29,6 +29,7 @@ SUBNET_MASK=""
 IP_POOL=""
 DNS=""
 HARVESTER_KUBECONFIG=""
+CNI="calico"
 CLASS="harvester-rke2"
 DRY_RUN=true
 APPLY=false
@@ -64,6 +65,7 @@ OPTIONAL FLAGS:
   --extra-disk SIZE:SC        Extra data disk (size:storageClass, e.g. 10Gi:longhorn)
   --ssh-user USER             SSH user (default: sles)
   --dns SERVERS               DNS servers, comma-separated (e.g. 172.16.3.6,8.8.8.8)
+  --cni CNI                   CNI plugin: calico, canal, cilium, none (default: calico)
   --class NAME                ClusterClass name (default: harvester-rke2)
   --apply                     Apply manifests directly (default: dry-run/print)
   --interactive               Interactive mode (prompts for all values)
@@ -129,6 +131,7 @@ interactive_mode() {
   prompt SUBNET_MASK "Subnet mask"
   prompt IP_POOL     "IPPool name"
   prompt DNS         "DNS servers (comma-separated, empty to skip)" ""
+  prompt CNI         "CNI plugin (calico/canal/cilium/none)" "calico"
   prompt HARVESTER_KUBECONFIG "Harvester kubeconfig file path"
   prompt CLASS       "ClusterClass name" "harvester-rke2"
 
@@ -327,6 +330,13 @@ spec:
           default: []
           items:
             type: string
+    - name: cni
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "calico"
+          description: "CNI plugin (calico, canal, cilium, none)"
   patches:
     - name: vmNetworks
       definitions:
@@ -526,6 +536,18 @@ spec:
                   dnsServers:
                   {{ range .dnsServers }}- {{ . }}
                   {{ end }}
+    - name: cni
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/serverConfig/cni
+              valueFrom:
+                variable: cni
     - name: csiAddonConfigMap
       definitions:
         - selector:
@@ -682,7 +704,7 @@ metadata:
 spec:
   topology:
     class: ${CLASS}
-    version: ${K8S_VERSION}+rke2r1
+    version: ${K8S_VERSION%+rke2r1}+rke2r1
     controlPlane:
       replicas: ${CP_REPLICAS}
     workers:
@@ -713,6 +735,8 @@ $(build_volumes_yaml "          ")
         value: "${IP_POOL}"
       - name: dnsServers
 $(build_dns_yaml "        ")
+      - name: cni
+        value: "${CNI}"
       - name: identitySecretName
         value: "hv-identity-secret"
       - name: targetNamespace
@@ -1217,6 +1241,7 @@ while [[ $# -gt 0 ]]; do
     --subnet-mask)       SUBNET_MASK="$2";       shift 2 ;;
     --ip-pool)           IP_POOL="$2";           shift 2 ;;
     --dns)               DNS="$2";               shift 2 ;;
+    --cni)               CNI="$2";               shift 2 ;;
     --harvester-kubeconfig) HARVESTER_KUBECONFIG="$2"; shift 2 ;;
     --class)             CLASS="$2";             shift 2 ;;
     --apply)             APPLY=true; DRY_RUN=false; shift ;;

@@ -108,6 +108,13 @@ spec:
               description: "The port for the control plane endpoint."
           required:
             - host
+    - name: cni
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "calico"
+          description: "CNI plugin (calico, canal, cilium, none)"
   patches:
     - name: vmNetwork
       definitions: 
@@ -268,8 +275,20 @@ spec:
             path: /spec/template/spec/updateCloudProviderConfig/manifestsConfigMapNamespace
             valueFrom:
               template: "{{.builtin.cluster.namespace}}"
+    - name: cni
+      definitions:
+      - selector:
+          apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+          kind: RKE2ControlPlaneTemplate
+          matchResources:
+            controlPlane: true
+        jsonPatches:
+          - op: replace
+            path: /spec/template/spec/serverConfig/cni
+            valueFrom:
+              variable: cni
     - name: identitySecretNamespace
-      definitions: 
+      definitions:
       - selector:
           apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
           kind: HarvesterClusterTemplate
