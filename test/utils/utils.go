@@ -20,6 +20,7 @@ package utils
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -68,7 +69,7 @@ func Run(cmd *exec.Cmd) (string, error) {
 // InstallPrometheusOperator installs the prometheus Operator to be used to export the enabled metrics.
 func InstallPrometheusOperator() error {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
-	cmd := exec.Command("kubectl", "create", "-f", url) //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "create", "-f", url) //nolint:gosec
 	_, err := Run(cmd)
 
 	return err
@@ -78,7 +79,7 @@ func InstallPrometheusOperator() error {
 func UninstallPrometheusOperator() {
 	url := fmt.Sprintf(prometheusOperatorURL, prometheusOperatorVersion)
 
-	cmd := exec.Command("kubectl", "delete", "-f", url) //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "delete", "-f", url) //nolint:gosec
 
 	_, err := Run(cmd)
 	if err != nil {
@@ -96,7 +97,7 @@ func IsPrometheusCRDsInstalled() bool {
 		"prometheusagents.monitoring.coreos.com",
 	}
 
-	cmd := exec.Command("kubectl", "get", "crds", "-o", "custom-columns=NAME:.metadata.name") //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "get", "crds", "-o", "custom-columns=NAME:.metadata.name") //nolint:gosec
 
 	output, err := Run(cmd)
 	if err != nil {
@@ -104,6 +105,7 @@ func IsPrometheusCRDsInstalled() bool {
 	}
 
 	crdList := GetNonEmptyLines(output)
+
 	for _, crd := range prometheusCRDs {
 		for _, line := range crdList {
 			if strings.Contains(line, crd) {
@@ -119,7 +121,7 @@ func IsPrometheusCRDsInstalled() bool {
 func UninstallCertManager() {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 
-	cmd := exec.Command("kubectl", "delete", "-f", url) //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "delete", "-f", url) //nolint:gosec
 
 	_, err := Run(cmd)
 	if err != nil {
@@ -131,15 +133,16 @@ func UninstallCertManager() {
 func InstallCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 
-	cmd := exec.Command("kubectl", "apply", "-f", url) //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "apply", "-f", url) //nolint:gosec
 
 	_, err := Run(cmd)
 	if err != nil {
 		return err
 	}
+
 	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
 	// was re-installed after uninstalling on a cluster.
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook", //nolint:gosec
+	cmd = exec.CommandContext(context.Background(), "kubectl", "wait", "deployment.apps/cert-manager-webhook", //nolint:gosec
 		"--for", "condition=Available",
 		"--namespace", "cert-manager",
 		"--timeout", "5m",
@@ -164,7 +167,7 @@ func IsCertManagerCRDsInstalled() bool {
 	}
 
 	// Execute the kubectl command to get all CRDs
-	cmd := exec.Command("kubectl", "get", "crds") //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "get", "crds") //nolint:gosec
 
 	output, err := Run(cmd)
 	if err != nil {
@@ -192,7 +195,7 @@ func LoadImageToKindClusterWithName(name string) error {
 	}
 
 	kindOptions := []string{"load", "docker-image", name, "--name", cluster}
-	cmd := exec.Command("kind", kindOptions...) //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kind", kindOptions...) //nolint:gosec
 	_, err := Run(cmd)
 
 	return err
@@ -203,8 +206,7 @@ func LoadImageToKindClusterWithName(name string) error {
 func GetNonEmptyLines(output string) []string {
 	var res []string
 
-	elements := strings.Split(output, "\n")
-	for _, element := range elements {
+	for element := range strings.SplitSeq(output, "\n") {
 		if element != "" {
 			res = append(res, element)
 		}

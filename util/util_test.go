@@ -68,3 +68,69 @@ var _ = Describe("GenerateNameLimitedTo63", func() {
 		Expect(name).To(Equal(expectedResultingName))
 	})
 })
+
+var _ = Describe("CheckNamespacedName", func() {
+	It("should accept valid namespace/name format", func() {
+		Expect(CheckNamespacedName("default/production")).To(BeTrue())
+	})
+
+	It("should accept names with dots and underscores", func() {
+		Expect(CheckNamespacedName("default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2")).To(BeTrue())
+	})
+
+	It("should reject names without a slash", func() {
+		Expect(CheckNamespacedName("production")).To(BeFalse())
+	})
+
+	It("should reject empty string", func() {
+		Expect(CheckNamespacedName("")).To(BeFalse())
+	})
+
+	It("should reject names with uppercase", func() {
+		Expect(CheckNamespacedName("Default/Production")).To(BeFalse())
+	})
+
+	It("should reject names with multiple slashes", func() {
+		Expect(CheckNamespacedName("a/b/c")).To(BeFalse())
+	})
+
+	It("should reject names with spaces", func() {
+		Expect(CheckNamespacedName("default/my name")).To(BeFalse())
+	})
+})
+
+var _ = Describe("GetNamespacedName", func() {
+	It("should split namespace/name correctly", func() {
+		nn, err := GetNamespacedName("default/production", "fallback-ns")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(nn.Namespace).To(Equal("default"))
+		Expect(nn.Name).To(Equal("production"))
+	})
+
+	It("should use alternative namespace when only name is given", func() {
+		nn, err := GetNamespacedName("production", "fallback-ns")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(nn.Namespace).To(Equal("fallback-ns"))
+		Expect(nn.Name).To(Equal("production"))
+	})
+
+	It("should return error for malformed reference", func() {
+		_, err := GetNamespacedName("Invalid Name!", "fallback-ns")
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("malformed reference"))
+	})
+
+	It("should handle names with dots and underscores in namespace/name format", func() {
+		nn, err := GetNamespacedName("default/image.x86_64", "fallback-ns")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(nn.Namespace).To(Equal("default"))
+		Expect(nn.Name).To(Equal("image.x86_64"))
+	})
+
+	It("should handle names with dots when using fallback namespace", func() {
+		nn, err := GetNamespacedName("my-resource.name", "fallback-ns")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(nn.Namespace).To(Equal("fallback-ns"))
+		Expect(nn.Name).To(Equal("my-resource.name"))
+	})
+})

@@ -2,12 +2,25 @@
 # CAPHV End-to-End Integration Tests
 # Runs against a live Harvester + Rancher Manager + CAPI cluster
 #
+# Environment variables (all optional, with sensible defaults):
+#
+#   CAPHV_RANCHER_SSH       SSH target for Rancher Manager (default: rancher@<rancher-manager-ip>)
+#   CAPHV_HARVESTER_SSH     SSH target for Harvester node (default: rancher@<harvester-ip>)
+#   CAPHV_KUBECTL_RANCHER   kubectl command on Rancher Manager (default: sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml)
+#   CAPHV_KUBECTL_HARVESTER kubectl command on Harvester (default: same as CAPHV_KUBECTL_RANCHER)
+#   CAPHV_NAMESPACE         Namespace for test resources (default: capi-test)
+#   CAPHV_CLUSTER_NAME      Name of the CAPI cluster (default: capi-test)
+#   CAPHV_WORKER_MD         MachineDeployment name for workers (default: capi-test-workers)
+#   CAPHV_TIMEOUT_VM_RUNNING  Seconds to wait for VM Running (default: 600)
+#   CAPHV_TIMEOUT_NODE_READY  Seconds to wait for node Ready (default: 600)
+#   CAPHV_TIMEOUT_VM_DELETED  Seconds to wait for VM deletion (default: 300)
+#   CAPHV_TIMEOUT_REMEDIATION Seconds to wait for remediation (default: 900)
+#
 # Prerequisites:
-#   - SSH access to rancher-manager (172.16.3.20) as rancher
-#   - SSH access to harvester (172.16.3.11) as rancher
-#   - Existing capi-test cluster with 3 CP + 1 worker (Running)
-#   - MachineHealthCheck capi-test-mhc deployed
-#   - IPPool capi-vm-pool with available IPs
+#   - SSH access to Rancher Manager and Harvester nodes
+#   - Existing CAPI cluster with 3 CP + 1 worker (Running)
+#   - MachineHealthCheck deployed
+#   - IPPool with available IPs
 #
 # Usage:
 #   ./test/e2e/run-e2e.sh              # Run all tests
@@ -18,18 +31,18 @@
 
 set -euo pipefail
 
-# --- Configuration ---
-RANCHER_SSH="rancher@172.16.3.20"
-HARVESTER_SSH="rancher@172.16.3.11"
-KUBECTL_RANCHER="sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml"
-KUBECTL_HARVESTER="sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml"
-NAMESPACE="capi-test"
-CLUSTER_NAME="capi-test"
-WORKER_MD="capi-test-workers"
-TIMEOUT_VM_RUNNING=600    # 10 min for VM to reach Running
-TIMEOUT_NODE_READY=600    # 10 min for node to join and become Ready
-TIMEOUT_VM_DELETED=300    # 5 min for VM to be fully deleted
-TIMEOUT_REMEDIATION=900   # 15 min for full remediation cycle
+# --- Configuration (override via CAPHV_* environment variables) ---
+RANCHER_SSH="${CAPHV_RANCHER_SSH:-rancher@<rancher-manager-ip>}"
+HARVESTER_SSH="${CAPHV_HARVESTER_SSH:-rancher@<harvester-ip>}"
+KUBECTL_RANCHER="${CAPHV_KUBECTL_RANCHER:-sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml}"
+KUBECTL_HARVESTER="${CAPHV_KUBECTL_HARVESTER:-$KUBECTL_RANCHER}"
+NAMESPACE="${CAPHV_NAMESPACE:-capi-test}"
+CLUSTER_NAME="${CAPHV_CLUSTER_NAME:-capi-test}"
+WORKER_MD="${CAPHV_WORKER_MD:-${CLUSTER_NAME}-workers}"
+TIMEOUT_VM_RUNNING="${CAPHV_TIMEOUT_VM_RUNNING:-600}"    # 10 min for VM to reach Running
+TIMEOUT_NODE_READY="${CAPHV_TIMEOUT_NODE_READY:-600}"    # 10 min for node to join and become Ready
+TIMEOUT_VM_DELETED="${CAPHV_TIMEOUT_VM_DELETED:-300}"    # 5 min for VM to be fully deleted
+TIMEOUT_REMEDIATION="${CAPHV_TIMEOUT_REMEDIATION:-900}"  # 15 min for full remediation cycle
 
 # --- Colors ---
 RED='\033[0;31m'

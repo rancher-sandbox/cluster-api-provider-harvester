@@ -197,10 +197,18 @@ data:
 			},
 			Data: map[string]string{"harvester-cloud-provider-deploy.yaml": manifest},
 		}).Build()
+
 	var r *HarvesterClusterReconciler
+
 	var scope *ClusterScope
+
 	log := log.FromContext(context.TODO())
+
 	BeforeEach(func() {
+		if os.Getenv("KUBECONFIG") == "" {
+			Skip("KUBECONFIG not set, skipping integration test")
+		}
+
 		hvConfig, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 		Expect(err).ToNot(HaveOccurred())
 		hvClient, err := hvclient.NewForConfig(hvConfig)
@@ -229,7 +237,7 @@ data:
 				Spec: infrav1.HarvesterClusterSpec{
 					TargetNamespace: "default",
 					Server:          "https://192.168.1.109:6443",
-					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{
+					UpdateCloudProviderConfig: infrav1.UpdateCloudProviderConfig{ //nolint:gosec // field names contain "Credentials" but values are not secrets
 						ManifestsConfigMapNamespace:      "test-hv",
 						ManifestsConfigMapName:           "harvester-csi-driver-addon",
 						ManifestsConfigMapKey:            "harvester-cloud-provider-deploy.yaml",
@@ -244,6 +252,7 @@ data:
 
 	It("Should modify the cloud provider manifest", func() {
 		Expect(r.reconcileCloudProviderConfig(scope)).To(Succeed())
+
 		newCM := &corev1.ConfigMap{}
 		Expect(fakeClient.Get(context.TODO(), types.NamespacedName{Namespace: "test-hv", Name: "harvester-csi-driver-addon"}, newCM)).To(Succeed())
 		Expect(newCM.Data["harvester-cloud-provider-deploy.yaml"]).To(Not(Equal(manifest)))

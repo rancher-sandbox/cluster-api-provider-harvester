@@ -64,6 +64,7 @@ func main() {
 	var metricsOptions metrics.Options
 
 	var enableLeaderElection bool
+
 	var enableWebhooks bool
 
 	var probeAddr string
@@ -129,12 +130,14 @@ func main() {
 	//+kubebuilder:scaffold:builder
 
 	if enableWebhooks {
-		if err = infrastructurev1alpha1.SetupHarvesterMachineWebhookWithManager(mgr); err != nil {
+		err = infrastructurev1alpha1.SetupHarvesterMachineWebhookWithManager(mgr)
+		if err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterMachine")
 			os.Exit(1)
 		}
 
-		if err = infrastructurev1alpha1.SetupHarvesterClusterWebhookWithManager(mgr); err != nil {
+		err = infrastructurev1alpha1.SetupHarvesterClusterWebhookWithManager(mgr)
+		if err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterCluster")
 			os.Exit(1)
 		}

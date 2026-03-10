@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package controller contains the HarvesterCluster controller logic.
+// Package controller contains the reconciliation logic for Harvester infrastructure providers.
 package controller
 
 import (
@@ -232,8 +232,10 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	}
 
 	// Reconcile VM IP Pool if VMNetworkConfig is set
-	if err := r.reconcileVMIPPool(scope); err != nil {
+	err = r.reconcileVMIPPool(scope)
+	if err != nil {
 		logger.Error(err, "failed to reconcile VM IP pool")
+
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, err
 	}
 
@@ -844,7 +846,7 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 
 	// IPPool is set, create pool with generated name
 	if vmNetCfg.IPPool == nil {
-		return fmt.Errorf("VMNetworkConfig requires either IPPoolRef or IPPool to be set")
+		return errors.New("VMNetworkConfig requires either IPPoolRef or IPPool to be set")
 	}
 
 	poolName := locutil.GenerateRFC1035Name([]string{

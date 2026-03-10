@@ -18,6 +18,7 @@ limitations under the License.
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -51,22 +52,26 @@ var _ = Describe("Manager", Ordered, func() {
 	// and deploying the controller.
 	BeforeAll(func() {
 		By("creating manager namespace")
+
 		cmd := exec.Command("kubectl", "create", "ns", namespace) //nolint:gosec
 		_, err := utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
 		By("labeling the namespace to enforce the restricted security policy")
+
 		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace, //nolint:gosec
 			"pod-security.kubernetes.io/enforce=restricted")
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
 		By("installing CRDs")
+
 		cmd = exec.Command("make", "install") //nolint:gosec
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
 		By("deploying the controller-manager")
+
 		cmd = exec.Command("make", "deploy", "IMG="+projectImage) //nolint:gosec
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to deploy the controller-manager")
@@ -76,18 +81,22 @@ var _ = Describe("Manager", Ordered, func() {
 	// and deleting the namespace.
 	AfterAll(func() {
 		By("cleaning up the curl pod for metrics")
+
 		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace) //nolint:gosec
 		_, _ = utils.Run(cmd)
 
 		By("undeploying the controller-manager")
+
 		cmd = exec.Command("make", "undeploy") //nolint:gosec
 		_, _ = utils.Run(cmd)
 
 		By("uninstalling CRDs")
+
 		cmd = exec.Command("make", "uninstall") //nolint:gosec
 		_, _ = utils.Run(cmd)
 
 		By("removing manager namespace")
+
 		cmd = exec.Command("kubectl", "delete", "ns", namespace) //nolint:gosec
 		_, _ = utils.Run(cmd)
 	})
@@ -98,7 +107,9 @@ var _ = Describe("Manager", Ordered, func() {
 		specReport := CurrentSpecReport()
 		if specReport.Failed() {
 			By("Fetching controller manager pod logs")
-			cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace) //nolint:gosec
+
+			cmd := exec.CommandContext(context.Background(), "kubectl", "logs", controllerPodName, "-n", namespace) //nolint:gosec
+
 			controllerLogs, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Controller logs:\n %s", controllerLogs)
@@ -107,7 +118,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("Fetching Kubernetes events")
-			cmd = exec.Command("kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp") //nolint:gosec
+
+			cmd = exec.CommandContext(context.Background(), "kubectl", "get", "events", "-n", namespace, "--sort-by=.lastTimestamp") //nolint:gosec
+
 			eventsOutput, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
@@ -116,7 +129,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("Fetching curl-metrics logs")
-			cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace) //nolint:gosec
+
+			cmd = exec.CommandContext(context.Background(), "kubectl", "logs", "curl-metrics", "-n", namespace) //nolint:gosec
+
 			metricsOutput, err := utils.Run(cmd)
 			if err == nil {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Metrics logs:\n %s", metricsOutput)
@@ -125,7 +140,9 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 
 			By("Fetching controller manager pod description")
-			cmd = exec.Command("kubectl", "describe", "pod", controllerPodName, "-n", namespace) //nolint:gosec
+
+			cmd = exec.CommandContext(context.Background(), "kubectl", "describe", "pod", controllerPodName, "-n", namespace) //nolint:gosec
+
 			podDescription, err := utils.Run(cmd)
 			if err == nil {
 				fmt.Println("Pod description:\n", podDescription)
@@ -141,6 +158,7 @@ var _ = Describe("Manager", Ordered, func() {
 	Context("Manager", func() {
 		It("should run successfully", func() {
 			By("validating that the controller-manager pod is running as expected")
+
 			verifyControllerUp := func(g Gomega) {
 				// Get the name of the controller-manager pod
 				cmd := exec.Command("kubectl", "get", //nolint:gosec
@@ -154,6 +172,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 				podOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred(), "Failed to retrieve controller-manager pod information")
+
 				podNames := utils.GetNonEmptyLines(podOutput)
 				g.Expect(podNames).To(HaveLen(1), "expected 1 controller pod running")
 				controllerPodName = podNames[0]
@@ -173,6 +192,7 @@ var _ = Describe("Manager", Ordered, func() {
 
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
+
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName, //nolint:gosec
 				"--clusterrole=cluster-api-provider-harvester-metrics-reader",
 				"--serviceaccount="+namespace+":"+serviceAccountName,
@@ -181,16 +201,19 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred(), "Failed to create ClusterRoleBinding")
 
 			By("validating that the metrics service is available")
+
 			cmd = exec.Command("kubectl", "get", "service", metricsServiceName, "-n", namespace) //nolint:gosec
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Metrics service should exist")
 
 			By("getting the service account token")
+
 			token, err := serviceAccountToken()
 			Expect(err).NotTo(HaveOccurred())
 			Expect(token).NotTo(BeEmpty())
 
 			By("waiting for the metrics endpoint to be ready")
+
 			verifyMetricsEndpointReady := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "endpoints", metricsServiceName, "-n", namespace) //nolint:gosec
 				output, err := utils.Run(cmd)
@@ -200,6 +223,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyMetricsEndpointReady).Should(Succeed())
 
 			By("verifying that the controller manager is serving the metrics server")
+
 			verifyMetricsServerStarted := func(g Gomega) {
 				cmd := exec.Command("kubectl", "logs", controllerPodName, "-n", namespace) //nolint:gosec
 				output, err := utils.Run(cmd)
@@ -210,6 +234,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyMetricsServerStarted).Should(Succeed())
 
 			By("creating the curl-metrics pod to access the metrics endpoint")
+
 			cmd = exec.Command("kubectl", "run", "curl-metrics", "--restart=Never", //nolint:gosec
 				"--namespace", namespace,
 				"--image=curlimages/curl:latest",
@@ -240,6 +265,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
 
 			By("waiting for the curl-metrics pod to complete.")
+
 			verifyCurlUp := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get", "pods", "curl-metrics", //nolint:gosec
 					"-o", "jsonpath={.status.phase}",
@@ -251,6 +277,7 @@ var _ = Describe("Manager", Ordered, func() {
 			Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
 
 			By("getting the metrics by checking curl-metrics logs")
+
 			metricsOutput := getMetricsOutput()
 			Expect(metricsOutput).To(ContainSubstring(
 				"controller_runtime_reconcile_total",
@@ -293,7 +320,7 @@ func serviceAccountToken() (string, error) {
 
 	verifyTokenCreation := func(g Gomega) {
 		// Execute kubectl command to create the token
-		cmd := exec.Command("kubectl", "create", "--raw", fmt.Sprintf( //nolint:gosec
+		cmd := exec.CommandContext(context.Background(), "kubectl", "create", "--raw", fmt.Sprintf( //nolint:gosec
 			"/api/v1/namespaces/%s/serviceaccounts/%s/token",
 			namespace,
 			serviceAccountName,
@@ -319,7 +346,7 @@ func serviceAccountToken() (string, error) {
 func getMetricsOutput() string {
 	By("getting the curl-metrics logs")
 
-	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace) //nolint:gosec
+	cmd := exec.CommandContext(context.Background(), "kubectl", "logs", "curl-metrics", "-n", namespace) //nolint:gosec
 	metricsOutput, err := utils.Run(cmd)
 
 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")

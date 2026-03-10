@@ -21,8 +21,8 @@ import (
 	"net"
 	"net/netip"
 
-	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/types"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	cnip "github.com/containernetworking/plugins/pkg/ip"
 	"github.com/containernetworking/plugins/plugins/ipam/host-local/backend/allocator"
 	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
@@ -256,9 +256,9 @@ func broadcastIP(n net.IPNet) net.IP {
 
 // Determine the last IP of a subnet, excluding the broadcast if IPv4.
 func lastIP(subnet net.IPNet) net.IP {
-	var end net.IP
+	end := make(net.IP, len(subnet.IP))
 	for i := range subnet.IP {
-		end = append(end, subnet.IP[i]|^subnet.Mask[i])
+		end[i] = subnet.IP[i] | ^subnet.Mask[i]
 	}
 
 	if subnet.IP.To4() != nil {
@@ -307,6 +307,7 @@ func AllocateVMIPFromPool(pool *lbv1beta1.IPPool, machineID string) (string, err
 	a := allocator.NewIPAllocator(&rangeSet, store, 0)
 
 	var ipObj *current.IPConfig
+
 	var err error
 
 	// Try to reuse historical allocation first

@@ -54,20 +54,26 @@ data:
 `
 
 var _ = Describe("GetKubeconfigFromClusterAndCheck", func() {
-	var hvKubeconfigB64 string
-	var resultingKubeconfigB64 string
-	var err error
-	var saName string
-	var harvesterServerURL string
-	var kubeconfigBytes []byte
-	var hvRESTConfig *rest.Config
-	var hvClient *versioned.Clientset
+	var (
+		hvKubeconfigB64        string
+		resultingKubeconfigB64 string
+		err                    error
+		saName                 string
+		harvesterServerURL     string
+		kubeconfigBytes        []byte
+		hvRESTConfig           *rest.Config
+		hvClient               *versioned.Clientset
+	)
 
 	BeforeEach(func() {
 		namespace = "default"
 		saName = "test-1"
 		hvKubeconfigB64 = os.Getenv("HV_KUBECONFIG_B64")
 		harvesterServerURL = os.Getenv("HV_SERVER_URL")
+
+		if hvKubeconfigB64 == "" {
+			Skip("HV_KUBECONFIG_B64 not set, skipping integration test")
+		}
 	})
 
 	It("Should return the right name", func() {
@@ -93,6 +99,7 @@ var _ = Describe("GetKubeconfigFromClusterAndCheck", func() {
 
 var _ = Describe("GetConfigMapsFromYAML", func() {
 	var secrets []*corev1.Secret
+
 	indexes := make([]int, 0, maxNumberOfSecrets)
 
 	It("Should return the right name", func() {
@@ -114,10 +121,12 @@ var _ = Describe("GetConfigMapsFromYAML", func() {
 
 // Tests a change in a ConfigMap in YAML.
 var _ = Describe("ChangeValueInConfigMapInYAML", func() {
-	var secretName string
-	var secretNamespace string
-	var key string
-	var value []byte
+	var (
+		secretName      string
+		secretNamespace string
+		key             string
+		value           []byte
+	)
 
 	BeforeEach(func() {
 		secretName = "test-secret"
@@ -133,7 +142,9 @@ var _ = Describe("ChangeValueInConfigMapInYAML", func() {
 		Expect(modifiedYAMLString).To(ContainSubstring("bmV3LXZhbHVl"))
 		documents := strings.Split(modifiedYAMLString, "---")
 		Expect(documents).To(HaveLen(2))
+
 		var secret *corev1.Secret
+
 		for _, document := range documents {
 			if strings.Contains(document, "Secret") {
 				err = yaml.Unmarshal([]byte(document), &secret)

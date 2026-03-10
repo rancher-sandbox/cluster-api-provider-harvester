@@ -21,9 +21,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -62,26 +64,31 @@ func RemoveEtcdMember(ctx context.Context, logger logr.Logger, workloadConfig *r
 	clientset, err := kubernetes.NewForConfig(workloadConfig)
 	if err != nil {
 		logger.Info("Warning: failed to create workload cluster client for etcd cleanup", "error", err)
+
 		return
 	}
 
 	pod, err := findHealthyEtcdPod(ctx, clientset, deletedNodeName)
 	if err != nil {
 		logger.Info("Warning: failed to find healthy etcd pod for cleanup", "error", err)
+
 		return
 	}
 
 	members, err := listEtcdMembers(ctx, clientset, workloadConfig, pod)
 	if err != nil {
 		logger.Info("Warning: failed to list etcd members", "error", err)
+
 		return
 	}
 
 	// RKE2 etcd member names follow the pattern: {nodeName}-{hash}
 	var targetMember *EtcdMember
+
 	for i := range members {
 		if strings.HasPrefix(members[i].Name, deletedNodeName+"-") || members[i].Name == deletedNodeName {
 			targetMember = &members[i]
+
 			break
 		}
 	}
@@ -89,6 +96,7 @@ func RemoveEtcdMember(ctx context.Context, logger logr.Logger, workloadConfig *r
 	if targetMember == nil {
 		logger.Info("No etcd member found matching deleted node, nothing to remove",
 			"deletedNode", deletedNodeName)
+
 		return
 	}
 
@@ -96,6 +104,7 @@ func RemoveEtcdMember(ctx context.Context, logger logr.Logger, workloadConfig *r
 	if err != nil {
 		logger.Info("Warning: failed to remove etcd member",
 			"error", err, "memberName", targetMember.Name, "memberID", targetMember.ID)
+
 		return
 	}
 
@@ -115,7 +124,9 @@ func findHealthyEtcdPod(ctx context.Context, clientset kubernetes.Interface, del
 		if err2 != nil {
 			return nil, fmt.Errorf("failed to list pods in %s: %w", etcdNamespace, err2)
 		}
+
 		pods = &v1.PodList{}
+
 		for i := range allPods.Items {
 			if strings.HasPrefix(allPods.Items[i].Name, "etcd-") {
 				pods.Items = append(pods.Items, allPods.Items[i])
@@ -128,6 +139,7 @@ func findHealthyEtcdPod(ctx context.Context, clientset kubernetes.Interface, del
 		if pod.Spec.NodeName == deletedNodeName {
 			continue
 		}
+
 		if isPodReady(pod) {
 			return pod, nil
 		}
@@ -141,11 +153,13 @@ func isPodReady(pod *v1.Pod) bool {
 	if pod.Status.Phase != v1.PodRunning {
 		return false
 	}
+
 	for _, cond := range pod.Status.Conditions {
 		if cond.Type == v1.PodReady && cond.Status == v1.ConditionTrue {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -166,7 +180,9 @@ func listEtcdMembers(ctx context.Context, clientset kubernetes.Interface, config
 	}
 
 	var resp EtcdMemberListResponse
-	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+
+	err = json.Unmarshal([]byte(stdout), &resp)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse etcdctl member list output: %w (raw: %s)", err, stdout)
 	}
 
@@ -175,7 +191,7 @@ func listEtcdMembers(ctx context.Context, clientset kubernetes.Interface, config
 
 // removeEtcdMemberByID removes an etcd member by its hex ID.
 func removeEtcdMemberByID(ctx context.Context, clientset kubernetes.Interface, config *rest.Config, pod *v1.Pod, memberID uint64) error {
-	hexID := fmt.Sprintf("%x", memberID)
+	hexID := strconv.FormatUint(memberID, 16)
 	cmd := []string{
 		etcdctlPath,
 		"--cacert", etcdCACert,
@@ -194,9 +210,10 @@ func removeEtcdMemberByID(ctx context.Context, clientset kubernetes.Interface, c
 }
 
 // execInPod executes a command in a container via the Kubernetes exec API.
-func execInPod(ctx context.Context, clientset kubernetes.Interface, config *rest.Config,
-	namespace, podName, containerName string, cmd []string) (string, string, error) {
-
+func execInPod(
+	ctx context.Context, clientset kubernetes.Interface, config *rest.Config,
+	namespace, podName, containerName string, cmd []string,
+) (string, string, error) {
 	req := clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(podName).
@@ -215,6 +232,7 @@ func execInPod(ctx context.Context, clientset kubernetes.Interface, config *rest
 	}
 
 	var stdout, stderr bytes.Buffer
+
 	err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdout: &stdout,
 		Stderr: &stderr,
