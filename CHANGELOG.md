@@ -4,6 +4,38 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.2.6] - 2026-03-09
+
+### Added
+
+- **CSI decoupling**: Separated cloud-config Secret into its own ConfigMap (`cloud-config-addon-<name>`) and ClusterResourceSet, decoupling CSI driver from the controller — CSI can now be deployed via Fleet independently
+- **Fleet label automation**: New `reconcileFleetIntegration()` automatically sets `fleetWorkspaceName: fleet-default` on Rancher management cluster and propagates CAPI labels (`cni`, `csi`, `cloud-config`, `cluster-name`) to Fleet cluster after Turtles import
+- **Fleet CSI bundle**: CSI driver manifests in the Fleet addons repo (`/fleet/harvester-csi/`), deployed via Fleet GitRepo in Fleet mode
+- **FleetIntegrationReady condition**: Tracks the status of Fleet label propagation (skipped for non-auto-import clusters)
+
+### Changed
+
+- `updateCloudProviderConfig` now points to `cloud-config-addon-<name>` (key: `cloud-config.yaml`) instead of `harvester-csi-driver-addon-<name>` (key: `harvester-cloud-provider-deploy.yaml`)
+- CSI ConfigMap + CRS only generated in CRS mode (not Fleet mode); in Fleet mode, CSI is deployed via Fleet GitRepo
+- Fleet mode GitRepo now includes `/fleet/harvester-csi` path in addition to CNI config
+- Cluster labels: added `cloud-config: harvester` for CRS matching; Fleet mode uses `csi: harvester` (matches Fleet bundle selector)
+
+## [v0.2.5] - 2026-03-08
+
+### Added
+
+- **Fleet/CAAPF addon management**: CNI configuration can now be deployed via Fleet GitOps instead of ClusterResourceSets — HelmChartConfig for Calico/Canal/Cilium tuning
+- **CAAPF integration**: CAPIProvider manifest for Cluster API Addon Provider Fleet (v0.12.0, CAPI v1beta1 compatible)
+- **CNI configuration flags**: `--pod-cidr`, `--cni-mtu`, `--cni-encapsulation`, `--cni-bgp` in caphv-generate
+- **Fleet addon repository**: Separate Git repository (`caphv-fleet-addons`) with Fleet bundles for Calico, Canal, and Cilium HelmChartConfig
+- **Fleet mode in caphv-generate**: `--fleet-addon-repo` generates a Fleet `GitRepo` with cluster-scoped targeting instead of CNI CRS
+- **E2E fleet test suite**: 3 tests (CAAPF controller, Fleet mode generation, CRS retrocompatibility)
+
+### Changed
+
+- Cluster manifests now include `spec.clusterNetwork.pods.cidrBlocks` for pod CIDR configuration
+- CCM and CSI remain in CRS mode regardless of addon mode (controller-coupled bootstrap dependency)
+
 ## [v0.2.3] - 2026-03-07
 
 ### Added

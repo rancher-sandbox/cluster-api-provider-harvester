@@ -355,7 +355,7 @@ spec:
             - op: replace
               path: /spec/template/spec/updateCloudProviderConfig/manifestsConfigMapName
               valueFrom:
-                template: "harvester-csi-driver-addon-{{ .builtin.cluster.name }}"
+                template: "cloud-config-addon-{{ .builtin.cluster.name }}"
     - name: csiAddonConfigMapNamespace
       definitions:
         - selector:
@@ -394,8 +394,8 @@ spec:
       updateCloudProviderConfig:
         cloudConfigCredentialsSecretKey: cloud-config
         cloudConfigCredentialsSecretName: cloud-config
-        manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
-        manifestsConfigMapName: harvester-csi-driver-addon
+        manifestsConfigMapKey: cloud-config.yaml
+        manifestsConfigMapName: cloud-config-addon
         manifestsConfigMapNamespace: ${NAMESPACE}
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1

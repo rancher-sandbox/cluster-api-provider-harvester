@@ -25,6 +25,7 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 | E2E tests | Kubebuilder scaffold only | 18 integration tests (live cluster) |
 | ClusterClass | Generic example only | Production-ready with vmNetworkConfig, IPPool, sshUser |
 | CLI generator | None | `caphv-generate` script (~30-line clusters) |
+| Fleet/CAAPF addons | Not supported | CSI/CNI via Fleet GitOps with per-cluster CNI tuning |
 | Helm chart | None | Full chart with webhook + ClusterClass support |
 
 ## Prerequisites
@@ -117,6 +118,27 @@ kubectl apply -f cluster.yaml
 ```
 
 The CLI generates: Namespace, Secret, Cluster (topology), ConfigMaps (CCM/CSI/Calico), ClusterResourceSets, and MachineHealthCheck.
+
+### Fleet Mode (optional — GitOps addon management)
+
+With CAAPF installed, addons can be managed via Fleet instead of CRS:
+
+```bash
+bin/caphv-generate \
+  --name my-cluster \
+  --cni calico --cni-mtu 1450 --cni-encapsulation VXLAN \
+  --pod-cidr 10.244.0.0/16 \
+  --fleet-addon-repo https://my-gitea/org/caphv-fleet-addons.git \
+  --image "default/my-vm-image.qcow2" \
+  --ssh-keypair "default/my-ssh-key" \
+  --network "default/my-vm-network" \
+  --gateway 10.0.0.1 --subnet-mask 255.255.255.0 \
+  --ip-pool my-ip-pool \
+  --harvester-kubeconfig ~/.kube/harvester.yaml \
+  --apply
+```
+
+See [docs/fleet-addons.md](docs/fleet-addons.md) for full documentation.
 
 ### 3. Monitor cluster creation
 

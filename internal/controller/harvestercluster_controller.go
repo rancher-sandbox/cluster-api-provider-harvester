@@ -42,8 +42,10 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	kubeclient "k8s.io/client-go/kubernetes"
@@ -484,6 +486,11 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		})
 	}
 
+	// Fleet integration: propagate labels after Turtles import (best-effort, does not block provisioning)
+	if scope.HarvesterCluster.Status.Ready {
+		r.reconcileFleetIntegration(scope)
+	}
+
 	return res, err
 }
 
@@ -838,6 +845,217 @@ func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *Cluster
 	})
 
 	return nil
+}
+
+// reconcileFleetIntegration ensures Fleet labels are propagated after Turtles imports a CAPI cluster
+// into Rancher. Uses unstructured client to avoid registering Rancher types in the scheme.
+// This is a best-effort operation: errors are logged but don't block cluster provisioning.
+func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterScope) {
+	logger := scope.Logger.WithValues("reconciler", "FleetIntegration")
+
+	// Skip if already done
+	if conditions.IsTrue(scope.HarvesterCluster, infrav1.FleetIntegrationReadyCondition) {
+		return
+	}
+
+	// Skip if cluster doesn't have the rancher-auto-import label
+	if scope.Cluster.Labels["cluster-api.cattle.io/rancher-auto-import"] != "true" {
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.FleetIntegrationReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  infrav1.FleetIntegrationNotApplicableReason,
+			Message: "Cluster does not have rancher-auto-import label",
+		})
+
+		return
+	}
+
+	ctx := scope.Ctx
+
+	// 1. Find the provisioning.cattle.io Cluster that Turtles created for this CAPI cluster
+	provClusterList := &unstructured.UnstructuredList{}
+	provClusterList.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "provisioning.cattle.io",
+		Version: "v1",
+		Kind:    "ClusterList",
+	})
+
+	err := r.Client.List(ctx, provClusterList, client.InNamespace(scope.Cluster.Namespace))
+	if err != nil {
+		// CRD might not exist (no Rancher installed) — skip silently
+		logger.V(1).Info("Cannot list provisioning.cattle.io clusters, Rancher CRDs may not be installed", "error", err)
+
+		return
+	}
+
+	// Find the provisioning cluster that matches our CAPI cluster
+	var mgmtClusterName string
+
+	for _, pc := range provClusterList.Items {
+		// Turtles sets the provisioning cluster name to match the CAPI cluster name
+		if pc.GetName() == scope.Cluster.Name {
+			clusterName, found, _ := unstructured.NestedString(pc.Object, "status", "clusterName")
+			if found && clusterName != "" {
+				mgmtClusterName = clusterName
+
+				break
+			}
+		}
+	}
+
+	if mgmtClusterName == "" {
+		logger.V(1).Info("Provisioning cluster not yet created by Turtles or status.clusterName not set, will retry")
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.FleetIntegrationReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.FleetIntegrationInProgressReason,
+			Message: "Waiting for Turtles to create provisioning cluster",
+		})
+
+		return
+	}
+
+	logger.Info("Found management cluster ID", "mgmtCluster", mgmtClusterName)
+
+	// 2. Patch management cluster: set fleetWorkspaceName if empty
+	mgmtCluster := &unstructured.Unstructured{}
+	mgmtCluster.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "management.cattle.io",
+		Version: "v3",
+		Kind:    "Cluster",
+	})
+
+	err = r.Client.Get(ctx, types.NamespacedName{Name: mgmtClusterName}, mgmtCluster)
+	if err != nil {
+		logger.V(1).Info("Cannot get management cluster, will retry", "mgmtCluster", mgmtClusterName, "error", err)
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.FleetIntegrationReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.FleetIntegrationInProgressReason,
+			Message: fmt.Sprintf("Waiting for management cluster %s", mgmtClusterName),
+		})
+
+		return
+	}
+
+	fleetWorkspaceName, _, _ := unstructured.NestedString(mgmtCluster.Object, "spec", "fleetWorkspaceName")
+	if fleetWorkspaceName == "" {
+		logger.Info("Setting fleetWorkspaceName on management cluster", "mgmtCluster", mgmtClusterName)
+
+		patch := []byte(`{"spec":{"fleetWorkspaceName":"fleet-default"}}`)
+
+		err = r.Client.Patch(ctx, mgmtCluster, client.RawPatch(types.MergePatchType, patch))
+		if err != nil {
+			logger.Error(err, "Failed to patch fleetWorkspaceName", "mgmtCluster", mgmtClusterName)
+			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				Type:    infrav1.FleetIntegrationReadyCondition,
+				Status:  apiv1.ConditionFalse,
+				Reason:  infrav1.FleetIntegrationFailedReason,
+				Message: fmt.Sprintf("Failed to set fleetWorkspaceName: %v", err),
+			})
+
+			return
+		}
+	}
+
+	// 3. Find Fleet cluster in fleet-default and propagate labels
+	fleetClusterList := &unstructured.UnstructuredList{}
+	fleetClusterList.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "fleet.cattle.io",
+		Version: "v1alpha1",
+		Kind:    "ClusterList",
+	})
+
+	err = r.Client.List(ctx, fleetClusterList, client.InNamespace("fleet-default"))
+	if err != nil {
+		logger.V(1).Info("Cannot list Fleet clusters, will retry", "error", err)
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.FleetIntegrationReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.FleetIntegrationInProgressReason,
+			Message: "Waiting for Fleet cluster to be created",
+		})
+
+		return
+	}
+
+	// Find Fleet cluster matching the management cluster name
+	var fleetCluster *unstructured.Unstructured
+
+	for i := range fleetClusterList.Items {
+		fc := &fleetClusterList.Items[i]
+		if fc.GetName() == mgmtClusterName {
+			fleetCluster = fc
+
+			break
+		}
+	}
+
+	if fleetCluster == nil {
+		logger.V(1).Info("Fleet cluster not yet created, will retry", "expected", mgmtClusterName)
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.FleetIntegrationReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.FleetIntegrationInProgressReason,
+			Message: fmt.Sprintf("Waiting for Fleet cluster %s in fleet-default", mgmtClusterName),
+		})
+
+		return
+	}
+
+	// 4. Propagate labels from CAPI Cluster to Fleet cluster
+	labelsToPropagate := map[string]string{
+		"cluster.x-k8s.io/cluster-name": scope.Cluster.Name,
+	}
+	// Propagate cni, csi labels from CAPI cluster
+	for _, key := range []string{"cni", "csi", "cloud-config"} {
+		if val, ok := scope.Cluster.Labels[key]; ok {
+			labelsToPropagate[key] = val
+		}
+	}
+
+	existingLabels := fleetCluster.GetLabels()
+	if existingLabels == nil {
+		existingLabels = make(map[string]string)
+	}
+
+	needsUpdate := false
+
+	for k, v := range labelsToPropagate {
+		if existingLabels[k] != v {
+			existingLabels[k] = v
+			needsUpdate = true
+		}
+	}
+
+	if needsUpdate {
+		fleetCluster.SetLabels(existingLabels)
+
+		err = r.Client.Update(ctx, fleetCluster)
+		if err != nil {
+			logger.Error(err, "Failed to update Fleet cluster labels", "fleetCluster", fleetCluster.GetName())
+			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				Type:    infrav1.FleetIntegrationReadyCondition,
+				Status:  apiv1.ConditionFalse,
+				Reason:  infrav1.FleetIntegrationFailedReason,
+				Message: fmt.Sprintf("Failed to update Fleet cluster labels: %v", err),
+			})
+
+			return
+		}
+
+		logger.Info("Fleet cluster labels updated", "fleetCluster", fleetCluster.GetName(), "labels", labelsToPropagate)
+	}
+
+	// 5. Set condition as done
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.FleetIntegrationReadyCondition,
+		Status:  apiv1.ConditionTrue,
+		Reason:  infrav1.FleetIntegrationReadyReason,
+		Message: fmt.Sprintf("Fleet labels propagated to cluster %s in fleet-default", fleetCluster.GetName()),
+	})
+
+	logger.Info("Fleet integration complete", "mgmtCluster", mgmtClusterName, "fleetCluster", fleetCluster.GetName())
 }
 
 // reconcileVMIPPool ensures a VM IP pool exists for static IP allocation if VMNetworkConfig is set.

@@ -31,6 +31,12 @@ IP_POOL_REFS=""
 DNS=""
 HARVESTER_KUBECONFIG=""
 CNI="calico"
+POD_CIDR="10.42.0.0/16"
+CNI_MTU="1500"
+CNI_ENCAPSULATION="VXLANCrossSubnet"
+CNI_BGP="Disabled"
+FLEET_ADDON_REPO=""
+FLEET_ADDON_BRANCH="main"
 CLASS="harvester-rke2"
 DRY_RUN=true
 APPLY=false
@@ -68,13 +74,23 @@ OPTIONAL FLAGS:
   --ssh-user USER             SSH user (default: sles)
   --dns SERVERS               DNS servers, comma-separated (e.g. 172.16.3.6,8.8.8.8)
   --cni CNI                   CNI plugin: calico, canal, cilium, none (default: calico)
+  --pod-cidr CIDR             Pod CIDR (default: 10.42.0.0/16)
+  --cni-mtu N                 MTU for CNI (default: 1500)
+  --cni-encapsulation MODE    Encapsulation: VXLAN, VXLANCrossSubnet, IPIP, IPIPCrossSubnet, None (default: VXLANCrossSubnet)
+  --cni-bgp MODE              BGP mode: Enabled, Disabled (default: Disabled)
+  --fleet-addon-repo URL      URL of Fleet addons git repo (enables Fleet mode)
+  --fleet-addon-branch BR     Branch of Fleet addons repo (default: main)
   --class NAME                ClusterClass name (default: harvester-rke2)
   --apply                     Apply manifests directly (default: dry-run/print)
   --interactive               Interactive mode (prompts for all values)
   --help                      Show this help
 
+ADDON MODES:
+  Without --fleet-addon-repo:  CRS mode (default) — CSI/CNI via ClusterResourceSets
+  With --fleet-addon-repo:     Fleet mode — CSI/CNI via Fleet GitRepo + CAAPF
+
 EXAMPLES:
-  # Generate and print YAML
+  # CRS mode (default)
   caphv-generate \
     --name my-cluster \
     --image "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2" \
@@ -86,8 +102,15 @@ EXAMPLES:
     --dns 172.16.3.6 \
     --harvester-kubeconfig ~/.kube/harvester.yaml
 
-  # Generate and apply
-  caphv-generate --name my-cluster [...] --apply
+  # Fleet mode with CNI tuning
+  caphv-generate \
+    --name my-cluster \
+    --cni calico \
+    --cni-mtu 1450 \
+    --cni-encapsulation VXLAN \
+    --pod-cidr 10.244.0.0/16 \
+    --fleet-addon-repo https://gitea.home.zypp.fr/jniedergang/caphv-fleet-addons.git \
+    [...] --apply
 
   # Interactive mode
   caphv-generate --interactive
@@ -137,6 +160,20 @@ interactive_mode() {
   prompt CNI         "CNI plugin (calico/canal/cilium/none)" "calico"
   prompt HARVESTER_KUBECONFIG "Harvester kubeconfig file path"
   prompt CLASS       "ClusterClass name" "harvester-rke2"
+
+  echo "" >&2
+  echo "--- Advanced CNI Configuration ---" >&2
+  prompt POD_CIDR    "Pod CIDR" "10.42.0.0/16"
+  prompt CNI_MTU     "CNI MTU" "1500"
+  prompt CNI_ENCAPSULATION "CNI encapsulation (VXLAN/VXLANCrossSubnet/IPIP/IPIPCrossSubnet/None)" "VXLANCrossSubnet"
+  prompt CNI_BGP     "CNI BGP (Enabled/Disabled)" "Disabled"
+
+  echo "" >&2
+  echo "--- Addon Management ---" >&2
+  prompt FLEET_ADDON_REPO "Fleet addon repo URL (empty for CRS mode)" ""
+  if [[ -n "$FLEET_ADDON_REPO" ]]; then
+    prompt FLEET_ADDON_BRANCH "Fleet addon branch" "main"
+  fi
 
   local apply_choice
   read -rp "Apply directly? (y/N): " apply_choice || true
@@ -594,7 +631,7 @@ spec:
             - op: replace
               path: /spec/template/spec/updateCloudProviderConfig/manifestsConfigMapName
               valueFrom:
-                template: "harvester-csi-driver-addon-{{ .builtin.cluster.name }}"
+                template: "cloud-config-addon-{{ .builtin.cluster.name }}"
     - name: csiAddonConfigMapNamespace
       definitions:
         - selector:
@@ -633,8 +670,8 @@ spec:
       updateCloudProviderConfig:
         cloudConfigCredentialsSecretKey: cloud-config
         cloudConfigCredentialsSecretName: cloud-config
-        manifestsConfigMapKey: harvester-cloud-provider-deploy.yaml
-        manifestsConfigMapName: harvester-csi-driver-addon
+        manifestsConfigMapKey: cloud-config.yaml
+        manifestsConfigMapName: cloud-config-addon
         manifestsConfigMapNamespace: ${NAMESPACE}
 ---
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
@@ -725,6 +762,28 @@ data:
 EOF
 
   # ─── Cluster (topology) ───
+  # Labels and annotations differ between CRS and Fleet modes
+  local cluster_labels cluster_annotations=""
+  if [[ -n "$FLEET_ADDON_REPO" ]]; then
+    # Fleet mode: cloud-config + CCM in CRS, CSI + CNI via Fleet
+    cluster_labels="    ccm: external
+    cloud-config: harvester
+    csi: harvester
+    cni: ${CNI}
+    cluster-api.cattle.io/rancher-auto-import: \"true\""
+    cluster_annotations="  annotations:
+    caphv.io/cni-mtu: \"${CNI_MTU}\"
+    caphv.io/cni-encapsulation: \"${CNI_ENCAPSULATION}\"
+    caphv.io/cni-bgp: \"${CNI_BGP}\""
+  else
+    # CRS mode: labels for ClusterResourceSet matching
+    cluster_labels="    ccm: external
+    cloud-config: harvester
+    csi: external
+    cni: external
+    cluster-api.cattle.io/rancher-auto-import: \"true\""
+  fi
+
   cat <<EOF
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
@@ -732,11 +791,17 @@ metadata:
   name: ${NAME}
   namespace: ${NAMESPACE}
   labels:
-    ccm: external
-    csi: external
-    cni: external
-    cluster-api.cattle.io/rancher-auto-import: "true"
+${cluster_labels}
+EOF
+  if [[ -n "$cluster_annotations" ]]; then
+    echo "$cluster_annotations"
+  fi
+  cat <<EOF
 spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - "${POD_CIDR}"
   topology:
     class: ${CLASS}
     version: ${K8S_VERSION%+rke2r1}+rke2r1
@@ -779,9 +844,7 @@ $(build_dns_yaml "        ")
 EOF
 
   # ─── ConfigMap: CCM addon (Harvester Cloud Provider) ───
-  # Note: cloud-config data is populated dynamically by the CAPHV controller
-  # via updateCloudProviderConfig. The ConfigMap name must match the CSI addon
-  # pattern: harvester-csi-driver-addon-<cluster-name>
+  # Note: CCM always deployed via CRS (controller-coupled bootstrap dependency)
   cat <<EOF
 apiVersion: v1
 kind: ConfigMap
@@ -879,7 +942,65 @@ data:
 ---
 EOF
 
-  # ─── ConfigMap: CSI addon (Harvester CSI Driver) ───
+  # ─── ClusterResourceSet: CCM (always — CCM stays in CRS mode) ───
+  cat <<EOF
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-ccm
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      ccm: external
+  resources:
+    - kind: ConfigMap
+      name: harvester-ccm-addon
+  strategy: Reconcile
+---
+EOF
+
+  # ─── ConfigMap: cloud-config addon (ALWAYS generated, controller-managed) ───
+  # The CAPHV controller injects the Harvester kubeconfig into this ConfigMap
+  # via updateCloudProviderConfig. Both CCM and CSI mount the cloud-config Secret.
+  # This is decoupled from CSI so CSI can be deployed via Fleet independently.
+  cat <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-config-addon-${NAME}
+  namespace: ${NAMESPACE}
+data:
+  cloud-config.yaml: |
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: cloud-config
+      namespace: kube-system
+    type: Opaque
+---
+EOF
+
+  # ─── ClusterResourceSet: cloud-config (ALWAYS generated) ───
+  cat <<EOF
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-cloud-config
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      cloud-config: harvester
+  resources:
+    - kind: ConfigMap
+      name: cloud-config-addon-${NAME}
+  strategy: Reconcile
+---
+EOF
+
+  # ─── ConfigMap: CSI addon (Harvester CSI Driver) — CRS mode only ───
+  if [[ -z "$FLEET_ADDON_REPO" ]]; then
   cat <<EOF
 apiVersion: v1
 kind: ConfigMap
@@ -887,7 +1008,7 @@ metadata:
   name: harvester-csi-driver-addon-${NAME}
   namespace: ${NAMESPACE}
 data:
-  harvester-cloud-provider-deploy.yaml: |
+  harvester-csi-deploy.yaml: |
     apiVersion: apps/v1
     kind: DaemonSet
     metadata:
@@ -1146,6 +1267,30 @@ data:
 ---
 EOF
 
+  # ─── ClusterResourceSet: CSI (CRS mode only) ───
+  cat <<EOF
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-csi
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      csi: external
+  resources:
+    - kind: ConfigMap
+      name: harvester-csi-driver-addon-${NAME}
+  strategy: Reconcile
+---
+EOF
+
+  fi  # end CRS mode (CSI)
+
+  # ─── CNI ConfigMap + CRS — only in CRS mode ───
+  # In Fleet mode, CNI config is deployed via Fleet HelmChartConfig
+  if [[ -z "$FLEET_ADDON_REPO" ]]; then
+
   # ─── ConfigMap: Calico config ───
   cat <<EOF
 apiVersion: v1
@@ -1177,42 +1322,6 @@ data:
 ---
 EOF
 
-  # ─── ClusterResourceSet: CCM ───
-  cat <<EOF
-apiVersion: addons.cluster.x-k8s.io/v1beta1
-kind: ClusterResourceSet
-metadata:
-  name: crs-harvester-ccm
-  namespace: ${NAMESPACE}
-spec:
-  clusterSelector:
-    matchLabels:
-      ccm: external
-  resources:
-    - kind: ConfigMap
-      name: harvester-ccm-addon
-  strategy: Reconcile
----
-EOF
-
-  # ─── ClusterResourceSet: CSI ───
-  cat <<EOF
-apiVersion: addons.cluster.x-k8s.io/v1beta1
-kind: ClusterResourceSet
-metadata:
-  name: crs-harvester-csi
-  namespace: ${NAMESPACE}
-spec:
-  clusterSelector:
-    matchLabels:
-      csi: external
-  resources:
-    - kind: ConfigMap
-      name: harvester-csi-driver-addon-${NAME}
-  strategy: Reconcile
----
-EOF
-
   # ─── ClusterResourceSet: Calico ───
   cat <<EOF
 apiVersion: addons.cluster.x-k8s.io/v1beta1
@@ -1230,6 +1339,36 @@ spec:
   strategy: Reconcile
 ---
 EOF
+
+  fi  # end CRS mode (CNI only)
+
+  # ─── Fleet mode: GitRepo ───
+  # CSI + CNI deployed via Fleet. CCM + cloud-config stay in CRS (controller-coupled).
+  if [[ -n "$FLEET_ADDON_REPO" ]]; then
+    local fleet_paths=""
+    fleet_paths="    - /fleet/harvester-csi"
+    if [[ "$CNI" != "none" ]]; then
+      fleet_paths="${fleet_paths}
+    - /fleet/${CNI}-config"
+    fi
+    cat <<EOF
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: ${NAME}-addons
+  namespace: fleet-default
+spec:
+  branch: ${FLEET_ADDON_BRANCH}
+  repo: ${FLEET_ADDON_REPO}
+  paths:
+${fleet_paths}
+  targets:
+    - clusterSelector:
+        matchLabels:
+          cluster.x-k8s.io/cluster-name: ${NAME}
+---
+EOF
+  fi
 
   # ─── MachineHealthCheck ───
   cat <<EOF
@@ -1277,6 +1416,12 @@ while [[ $# -gt 0 ]]; do
     --ip-pool-refs)      IP_POOL_REFS="$2";      shift 2 ;;
     --dns)               DNS="$2";               shift 2 ;;
     --cni)               CNI="$2";               shift 2 ;;
+    --pod-cidr)          POD_CIDR="$2";          shift 2 ;;
+    --cni-mtu)           CNI_MTU="$2";           shift 2 ;;
+    --cni-encapsulation) CNI_ENCAPSULATION="$2"; shift 2 ;;
+    --cni-bgp)           CNI_BGP="$2";           shift 2 ;;
+    --fleet-addon-repo)  FLEET_ADDON_REPO="$2";  shift 2 ;;
+    --fleet-addon-branch) FLEET_ADDON_BRANCH="$2"; shift 2 ;;
     --harvester-kubeconfig) HARVESTER_KUBECONFIG="$2"; shift 2 ;;
     --class)             CLASS="$2";             shift 2 ;;
     --apply)             APPLY=true; DRY_RUN=false; shift ;;
