@@ -454,6 +454,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		})
 
 		caphvmetrics.MachineCreateTotal.Inc()
+
 		createStart := time.Now()
 
 		_, err = createVMFromHarvesterMachine(hvScope)
@@ -523,6 +524,7 @@ func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 	}
 
 	caphvmetrics.NodeInitTotal.Inc()
+
 	initStart := time.Now()
 
 	locutil.InitializeWorkloadNode(
@@ -787,7 +789,10 @@ func getImageByName(imageName, defaultNamespace string, hvScope *Scope) (*harves
 		}
 	}
 
-	return nil, fmt.Errorf("VM image %s not found in namespace %s (searched by display name and resource name)", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
+	return nil, fmt.Errorf(
+		"VM image %s not found in namespace %s (searched by display name and resource name)",
+		vmImageNamespacedName.Name, vmImageNamespacedName.Namespace,
+	)
 }
 
 // buildVMTemplate creates a *kubevirtv1.VirtualMachineInstanceTemplateSpec from the CLI Flags and some computed values.
@@ -1416,6 +1421,7 @@ func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Sco
 // ReconcileDelete deletes a HarvesterMachine with all its dependencies.
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
 	reconcileStart := time.Now()
+
 	caphvmetrics.MachineDeleteTotal.Inc()
 
 	defer func() {

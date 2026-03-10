@@ -21,26 +21,30 @@ import (
 	"strings"
 	"time"
 
-	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
-	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	lbv1beta1 "github.com/harvester/harvester-load-balancer/pkg/apis/loadbalancer.harvesterhci.io/v1beta1"
+	harvesterv1beta1 "github.com/harvester/harvester/pkg/apis/harvesterhci.io/v1beta1"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 
-	kubevirtv1 "kubevirt.io/api/core/v1"
-
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	hvfake "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/fake"
+)
+
+const (
+	testBootstrapDataSecretName = "bootstrap-data"
+	testBootstrapSecretName     = "bootstrap"
 )
 
 // =============================================================================
@@ -582,10 +586,12 @@ var _ = Describe("buildNetworkInterfaces", func() {
 		}
 		ifaces := buildNetworkInterfaces(machine)
 		Expect(ifaces).To(HaveLen(5))
+
 		for i, iface := range ifaces {
-			Expect(iface.Name).To(Equal("nic-" + strings.Replace(
-				strings.Replace(string(rune('1'+i)), "\x00", "", -1), "", "", 0)))
+			Expect(iface.Name).To(Equal("nic-" + strings.ReplaceAll(
+				strings.ReplaceAll(string(rune('1'+i)), "\x00", ""), "", "")))
 		}
+
 		Expect(ifaces[0].Name).To(Equal("nic-1"))
 		Expect(ifaces[4].Name).To(Equal("nic-5"))
 	})
@@ -608,8 +614,9 @@ var _ = Describe("buildAffinity", func() {
 		Expect(affinity.PodAntiAffinity).ToNot(BeNil())
 		Expect(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution).To(HaveLen(1))
 		Expect(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].Weight).To(Equal(int32(1)))
-		Expect(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].PodAffinityTerm.TopologyKey).To(Equal("kubernetes.io/hostname"))
-		Expect(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].PodAffinityTerm.LabelSelector.MatchLabels["harvesterhci.io/vmNamePrefix"]).To(Equal("test-vm"))
+		preferred := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		Expect(preferred[0].PodAffinityTerm.TopologyKey).To(Equal("kubernetes.io/hostname"))
+		Expect(preferred[0].PodAffinityTerm.LabelSelector.MatchLabels["harvesterhci.io/vmNamePrefix"]).To(Equal("test-vm"))
 		Expect(affinity.NodeAffinity).To(BeNil())
 		Expect(affinity.PodAffinity).To(BeNil())
 	})
@@ -686,7 +693,8 @@ var _ = Describe("buildAffinity", func() {
 		Expect(affinity.NodeAffinity).To(Equal(nodeAffinity))
 		Expect(affinity.PodAffinity).To(Equal(podAffinity))
 		Expect(affinity.PodAntiAffinity).ToNot(BeNil())
-		Expect(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution[0].PodAffinityTerm.LabelSelector.MatchLabels["harvesterhci.io/vmNamePrefix"]).To(Equal("complex-vm"))
+		preferred := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		Expect(preferred[0].PodAffinityTerm.LabelSelector.MatchLabels["harvesterhci.io/vmNamePrefix"]).To(Equal("complex-vm"))
 	})
 })
 
@@ -700,12 +708,12 @@ var _ = Describe("getCloudInitData", func() {
 		_ = corev1.AddToScheme(scheme)
 
 		bootstrapSecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bootstrap-data", Namespace: "test-ns"},
+			ObjectMeta: metav1.ObjectMeta{Name: testBootstrapDataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		scope := &Scope{
 			Ctx: context.TODO(),
 			Machine: &clusterv1.Machine{
@@ -781,7 +789,7 @@ var _ = Describe("getCloudInitData", func() {
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
 
-		dataSecretName := "empty-value-secret"
+		dataSecretName := "empty-value-secret" //nolint:gosec // test data, not real credentials
 		scope := &Scope{
 			Ctx: context.TODO(),
 			Machine: &clusterv1.Machine{
@@ -859,6 +867,7 @@ var _ = Describe("buildPVCForVolume", func() {
 		Expect(pvc.Namespace).To(Equal("default"))
 		Expect(*pvc.Spec.StorageClassName).To(Equal("longhorn"))
 		Expect(pvc.Spec.AccessModes).To(ContainElement(corev1.ReadWriteMany))
+
 		block := corev1.PersistentVolumeBlock
 		Expect(*pvc.Spec.VolumeMode).To(Equal(block))
 		Expect(pvc.Spec.Resources.Requests["storage"]).To(Equal(resource.MustParse("10Gi")))
@@ -951,23 +960,36 @@ var _ = Describe("getKubevirtNetworksFromHarvesterMachine additional", func() {
 // Tests for getWorkloadClusterConfig
 // =============================================================================
 
+// newWorkloadClusterScope creates a Scope with a fake client for getWorkloadClusterConfig tests.
+// If objects are provided, they are added to the fake client.
+func newWorkloadClusterScope(clusterName, namespace string, objects ...corev1.Secret) *Scope {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = infrav1.AddToScheme(scheme)
+	_ = clusterv1.AddToScheme(scheme)
+
+	builder := fake.NewClientBuilder().WithScheme(scheme)
+	for i := range objects {
+		builder = builder.WithObjects(&objects[i])
+	}
+
+	fakeClient := builder.Build()
+
+	logger := log.FromContext(context.TODO())
+
+	return &Scope{
+		Ctx:              context.TODO(),
+		Logger:           &logger,
+		ReconcilerClient: fakeClient,
+		Cluster: &clusterv1.Cluster{
+			ObjectMeta: metav1.ObjectMeta{Name: clusterName, Namespace: namespace},
+		},
+	}
+}
+
 var _ = Describe("getWorkloadClusterConfig", func() {
 	It("should return error when kubeconfig secret does not exist", func() {
-		scheme := runtime.NewScheme()
-		_ = corev1.AddToScheme(scheme)
-		_ = infrav1.AddToScheme(scheme)
-		_ = clusterv1.AddToScheme(scheme)
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-		logger := log.FromContext(context.TODO())
-		scope := &Scope{
-			Ctx:              context.TODO(),
-			Logger:           &logger,
-			ReconcilerClient: fakeClient,
-			Cluster: &clusterv1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-			},
-		}
+		scope := newWorkloadClusterScope("test-cluster", "test-ns")
 
 		_, err := getWorkloadClusterConfig(scope)
 		Expect(err).To(HaveOccurred())
@@ -975,12 +997,7 @@ var _ = Describe("getWorkloadClusterConfig", func() {
 	})
 
 	It("should return error when secret has no value key", func() {
-		scheme := runtime.NewScheme()
-		_ = corev1.AddToScheme(scheme)
-		_ = infrav1.AddToScheme(scheme)
-		_ = clusterv1.AddToScheme(scheme)
-
-		secret := &corev1.Secret{
+		secret := corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "test-cluster-kubeconfig",
 				Namespace: "test-ns",
@@ -990,20 +1007,7 @@ var _ = Describe("getWorkloadClusterConfig", func() {
 			},
 		}
 
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithObjects(secret).
-			Build()
-
-		logger := log.FromContext(context.TODO())
-		scope := &Scope{
-			Ctx:              context.TODO(),
-			Logger:           &logger,
-			ReconcilerClient: fakeClient,
-			Cluster: &clusterv1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-			},
-		}
+		scope := newWorkloadClusterScope("test-cluster", "test-ns", secret)
 
 		_, err := getWorkloadClusterConfig(scope)
 		Expect(err).To(HaveOccurred())
@@ -1011,12 +1015,7 @@ var _ = Describe("getWorkloadClusterConfig", func() {
 	})
 
 	It("should return error when kubeconfig data is invalid", func() {
-		scheme := runtime.NewScheme()
-		_ = corev1.AddToScheme(scheme)
-		_ = infrav1.AddToScheme(scheme)
-		_ = clusterv1.AddToScheme(scheme)
-
-		secret := &corev1.Secret{
+		secret := corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "bad-cluster-kubeconfig",
 				Namespace: "test-ns",
@@ -1026,20 +1025,7 @@ var _ = Describe("getWorkloadClusterConfig", func() {
 			},
 		}
 
-		fakeClient := fake.NewClientBuilder().
-			WithScheme(scheme).
-			WithObjects(secret).
-			Build()
-
-		logger := log.FromContext(context.TODO())
-		scope := &Scope{
-			Ctx:              context.TODO(),
-			Logger:           &logger,
-			ReconcilerClient: fakeClient,
-			Cluster: &clusterv1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{Name: "bad-cluster", Namespace: "test-ns"},
-			},
-		}
+		scope := newWorkloadClusterScope("bad-cluster", "test-ns", secret)
 
 		_, err := getWorkloadClusterConfig(scope)
 		Expect(err).To(HaveOccurred())
@@ -1211,13 +1197,13 @@ var _ = Describe("buildVMTemplate", func() {
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
 		bootstrapSecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{Name: "bootstrap-data", Namespace: "test-ns"},
+			ObjectMeta: metav1.ObjectMeta{Name: testBootstrapDataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(bootstrapSecret).Build()
 		logger := log.FromContext(context.TODO())
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		scope := &Scope{
 			Ctx:     context.TODO(),
 			Cluster: &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"}},
@@ -1328,7 +1314,7 @@ var _ = Describe("buildVMTemplate", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo dhcp\n")},
@@ -1391,7 +1377,7 @@ var _ = Describe("buildVMTemplate", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -1464,7 +1450,7 @@ var _ = Describe("buildVMTemplate", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -1503,6 +1489,7 @@ var _ = Describe("buildVMTemplate", func() {
 		// Verify the secret was updated (not old data)
 		secret, err := hvClient.CoreV1().Secrets("default").Get(context.TODO(), "test-update-0-cloud-init", metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
+
 		userdata := string(secret.Data["userdata"])
 		Expect(userdata).ToNot(Equal("old-data"))
 		Expect(userdata).To(ContainSubstring("qemu-guest-agent"))
@@ -1565,7 +1552,7 @@ var _ = Describe("createVMFromHarvesterMachine", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
@@ -1631,7 +1618,7 @@ var _ = Describe("createVMFromHarvesterMachine", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap"
+		dataSecretName := testBootstrapSecretName
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 			&corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
@@ -1689,7 +1676,7 @@ var _ = Describe("createVMFromHarvesterMachine", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap"
+		dataSecretName := testBootstrapSecretName
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 			&corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
@@ -1744,7 +1731,7 @@ var _ = Describe("createVMFromHarvesterMachine", func() {
 
 		scheme := runtime.NewScheme()
 		_ = corev1.AddToScheme(scheme)
-		dataSecretName := "bootstrap"
+		dataSecretName := testBootstrapSecretName
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(
 			&corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
@@ -1926,7 +1913,6 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
 		Expect(result.RequeueAfter).To(BeZero())
 		// Status should be not ready when paused
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
@@ -1971,7 +1957,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		// Finalizer should be added
 		Expect(scope.HarvesterMachine.Finalizers).To(ContainElement(infrav1.MachineFinalizer))
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeFalse())
@@ -2077,7 +2063,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo hello\n")},
@@ -2130,7 +2116,7 @@ var _ = Describe("ReconcileNormal", func() {
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
 		// VM was just created, status.Ready should be true at end of ReconcileNormal
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 
 		// Verify the VM was created on Harvester
 		createdVM, getErr := hvClient.KubevirtV1().VirtualMachines("default").Get(context.TODO(), "test-cp-0", metav1.GetOptions{})
@@ -2144,7 +2130,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2205,7 +2191,7 @@ var _ = Describe("ReconcileNormal", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// When VM is running and has IPs but machine was not Ready yet, should set Ready=true and requeue
-		Expect(result.Requeue).To(BeTrue())
+		Expect(result.Requeue).To(BeTrue()) //nolint:staticcheck // result.Requeue still used by controller
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
 		Expect(scope.HarvesterMachine.Status.Addresses).To(HaveLen(1))
 		Expect(scope.HarvesterMachine.Status.Addresses[0].Address).To(Equal("172.16.3.42"))
@@ -2217,7 +2203,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2274,7 +2260,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2337,7 +2323,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		// ProviderID should be set from VM UID (fallback when kubeconfig unavailable)
 		Expect(scope.HarvesterMachine.Spec.ProviderID).To(Equal("harvester://fake-uid-12345"))
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
@@ -2349,7 +2335,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2409,7 +2395,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
 		Expect(scope.HarvesterMachine.Spec.ProviderID).To(Equal("harvester://already-set"))
 	})
@@ -2420,7 +2406,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2472,7 +2458,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2537,7 +2523,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2593,7 +2579,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("runcmd:\n  - echo static\n")},
@@ -2664,7 +2650,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		// Should have allocated an IP
 		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).ToNot(BeEmpty())
 		// EffectiveNetworkConfig should be populated
@@ -2683,7 +2669,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2746,7 +2732,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		// EffectiveNetworkConfig should use machine-level config
 		Expect(scope.EffectiveNetworkConfig).ToNot(BeNil())
 		Expect(scope.EffectiveNetworkConfig.Address).To(Equal("10.0.0.100"))
@@ -2759,7 +2745,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -2817,7 +2803,7 @@ var _ = Describe("ReconcileNormal", func() {
 		_ = infrav1.AddToScheme(scheme)
 		_ = clusterv1.AddToScheme(scheme)
 
-		dataSecretName := "bootstrap-data"
+		dataSecretName := testBootstrapDataSecretName
 		bootstrapSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Name: dataSecretName, Namespace: "test-ns"},
 			Data:       map[string][]byte{"value": []byte("")},
@@ -3022,7 +3008,7 @@ var _ = Describe("getIPAddressesFromVMI", func() {
 			Status: kubevirtv1.VirtualMachineInstanceStatus{
 				Interfaces: []kubevirtv1.VirtualMachineInstanceNetworkInterface{
 					{IP: "172.16.3.42", Name: "nic-1"},
-					{IP: "", Name: "nic-2"},       // should be skipped
+					{IP: "", Name: "nic-2"}, // should be skipped
 					{IP: "172.16.3.43", Name: "nic-3"},
 				},
 			},
@@ -3588,6 +3574,7 @@ var _ = Describe("releaseVMIP", func() {
 		// Verify pool-2 was used (not pool-1)
 		updatedPool, err := hvClient.LoadbalancerV1beta1().IPPools().Get(context.TODO(), "pool-2", metav1.GetOptions{})
 		Expect(err).ToNot(HaveOccurred())
+
 		_, exists := updatedPool.Status.Allocated["172.16.4.42"]
 		Expect(exists).To(BeFalse())
 	})
@@ -3716,7 +3703,7 @@ var _ = Describe("ReconcileDelete", func() {
 		r := &HarvesterMachineReconciler{}
 		result, err := r.ReconcileDelete(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.Requeue).To(BeFalse())
+		Expect(result.RequeueAfter).To(BeZero())
 		// Finalizer should be removed
 		Expect(machine.Finalizers).ToNot(ContainElement(infrav1.MachineFinalizer))
 	})

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: caphv-system
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  version: v0.2.4
+  fetchConfig:
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.4/infrastructure-components.yaml

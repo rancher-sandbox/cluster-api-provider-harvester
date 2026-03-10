@@ -24,9 +24,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/go-logr/logr"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -103,6 +104,7 @@ var _ = Describe("Node initialization utilities", func() {
 // It returns the server and a rest.Config pointing to it.
 func fakeNodeServer(node *v1.Node) (*httptest.Server, *rest.Config) {
 	var mu sync.Mutex
+
 	currentNode := node.DeepCopy()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,40 +112,47 @@ func fakeNodeServer(node *v1.Node) (*httptest.Server, *rest.Config) {
 		defer mu.Unlock()
 
 		// Handle /api/v1/nodes/<name>
-		if strings.HasPrefix(r.URL.Path, "/api/v1/nodes/") {
-			nodeName := strings.TrimPrefix(r.URL.Path, "/api/v1/nodes/")
+		if nodeName, ok := strings.CutPrefix(r.URL.Path, "/api/v1/nodes/"); ok {
 			if nodeName != currentNode.Name {
 				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte(`{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure","message":"nodes \"` + nodeName + `\" not found","reason":"NotFound","code":404}`))
+
 				return
 			}
 
 			switch r.Method {
 			case http.MethodGet:
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(currentNode)
+				//nolint:errchkjson // test helper, unsafe type acceptable
+				_ = json.NewEncoder(w).Encode(currentNode)
 			case http.MethodPatch:
 				// Apply the merge patch to currentNode
-				var patch map[string]interface{}
-				json.NewDecoder(r.Body).Decode(&patch)
+				var patch map[string]any
 
-				if spec, ok := patch["spec"].(map[string]interface{}); ok {
+				_ = json.NewDecoder(r.Body).Decode(&patch)
+
+				if spec, ok := patch["spec"].(map[string]any); ok {
 					if pid, ok := spec["providerID"].(string); ok {
 						currentNode.Spec.ProviderID = pid
 					}
+
 					if taints, ok := spec["taints"]; ok {
-						taintsBytes, _ := json.Marshal(taints)
-						var newTaints []v1.Taint
-						json.Unmarshal(taintsBytes, &newTaints)
-						currentNode.Spec.Taints = newTaints
+						taintsBytes, err := json.Marshal(taints)
+						if err == nil {
+							var newTaints []v1.Taint
+
+							_ = json.Unmarshal(taintsBytes, &newTaints)
+							currentNode.Spec.Taints = newTaints
+						}
 					}
 				}
 
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(currentNode)
+				//nolint:errchkjson // test helper, unsafe type acceptable
+				_ = json.NewEncoder(w).Encode(currentNode)
 			default:
 				w.WriteHeader(http.StatusMethodNotAllowed)
 			}
+
 			return
 		}
 
@@ -179,6 +188,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 				},
 			},
 		}
+
 		server, config := fakeNodeServer(node)
 		defer server.Close()
 
@@ -201,6 +211,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 				ProviderID: "harvester://existing-id",
 			},
 		}
+
 		server, config := fakeNodeServer(node)
 		defer server.Close()
 
@@ -216,6 +227,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 				Name: "existing-node",
 			},
 		}
+
 		server, config := fakeNodeServer(node)
 		defer server.Close()
 
@@ -237,6 +249,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 				},
 			},
 		}
+
 		server, config := fakeNodeServer(node)
 		defer server.Close()
 
@@ -257,6 +270,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 				},
 			},
 		}
+
 		server, config := fakeNodeServer(node)
 		defer server.Close()
 
@@ -266,9 +280,9 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 
 	It("should handle API errors gracefully on a non-404 error", func() {
 		// Create a server that returns 500 for everything
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"internal error","code":500}`))
+			_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"internal error","code":500}`))
 		}))
 		defer server.Close()
 
@@ -292,16 +306,23 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 		// Custom server that fails on PATCH
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
+
 			if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/api/v1/nodes/") {
-				json.NewEncoder(w).Encode(node)
+				//nolint:errchkjson // test helper, unsafe type acceptable
+				_ = json.NewEncoder(w).Encode(node)
+
 				return
 			}
+
 			if r.Method == http.MethodPatch {
 				patchCount++
+
 				w.WriteHeader(http.StatusConflict)
-				w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"conflict","reason":"Conflict","code":409}`))
+				_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"conflict","reason":"Conflict","code":409}`))
+
 				return
 			}
+
 			w.WriteHeader(http.StatusNotFound)
 		}))
 		defer server.Close()

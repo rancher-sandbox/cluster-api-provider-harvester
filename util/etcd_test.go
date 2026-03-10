@@ -23,9 +23,10 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"github.com/go-logr/logr"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/go-logr/logr"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -380,19 +381,23 @@ func fakeEtcdAPIServer(pods []v1.Pod) (*httptest.Server, *rest.Config) {
 				if labelSelector != "" {
 					// Simple label matching for component=etcd,tier=control-plane
 					match := true
-					for _, part := range strings.Split(labelSelector, ",") {
+
+					for part := range strings.SplitSeq(labelSelector, ",") {
 						kv := strings.SplitN(part, "=", 2)
 						if len(kv) == 2 {
 							if pod.Labels[kv[0]] != kv[1] {
 								match = false
+
 								break
 							}
 						}
 					}
+
 					if !match {
 						continue
 					}
 				}
+
 				filtered = append(filtered, pod)
 			}
 
@@ -400,7 +405,9 @@ func fakeEtcdAPIServer(pods []v1.Pod) (*httptest.Server, *rest.Config) {
 				TypeMeta: metav1.TypeMeta{Kind: "PodList", APIVersion: "v1"},
 				Items:    filtered,
 			}
-			json.NewEncoder(w).Encode(podList)
+			//nolint:errchkjson // test helper, unsafe type acceptable
+			_ = json.NewEncoder(w).Encode(podList)
+
 			return
 		}
 
@@ -408,7 +415,8 @@ func fakeEtcdAPIServer(pods []v1.Pod) (*httptest.Server, *rest.Config) {
 		// Return an error since we can't do SPDY in httptest
 		if strings.Contains(r.URL.Path, "/exec") {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"exec not supported in test","code":500}`))
+			_, _ = w.Write([]byte(`{"kind":"Status","apiVersion":"v1","status":"Failure","message":"exec not supported in test","code":500}`))
+
 			return
 		}
 
@@ -444,6 +452,7 @@ var _ = Describe("RemoveEtcdMember with fake API server", func() {
 				Status: v1.PodStatus{Phase: v1.PodRunning, Conditions: []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionTrue}}},
 			},
 		}
+
 		server, config := fakeEtcdAPIServer(pods)
 		defer server.Close()
 

@@ -1,0 +1,42 @@
+managementClusterName: caphv-certification
+
+images:
+  - name: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.4
+
+providers: []
+
+intervals:
+  default/wait-controllers: ["5m", "10s"]
+  default/wait-rancher: ["10m", "30s"]
+  default/wait-cluster: ["30m", "30s"]
+  default/wait-harvester-create-cluster: ["35m", "30s"]
+  default/wait-delete-cluster: ["20m", "30s"]
+
+variables:
+  # Required by turtles framework
+  KUBERNETES_MANAGEMENT_VERSION: "v1.33.7+rke2r1"
+  KUBERNETES_VERSION: "v1.31.14"
+  RKE2_VERSION: "v1.31.14+rke2r1"
+  RANCHER_HOSTNAME: "rancher.home.zypp.fr"
+  USE_EXISTING_CLUSTER: "true"
+  SKIP_RESOURCE_CLEANUP: "false"
+  SKIP_DELETION_TEST: "false"
+  ARTIFACTS_FOLDER: "_artifacts"
+  HELM_BINARY_PATH: "/usr/local/bin/helm"
+
+  # Harvester-specific
+  HARVESTER_KUBECONFIG_B64: ""
+  IDENTITY_SECRET_NAME: "hv-identity-secret"
+  TARGET_NAMESPACE: "default"
+  SSH_KEYPAIR: "default/capi-ssh-key"
+  SSH_USER: "sles"
+  VM_NETWORK: "default/production"
+  VOLUME_IMAGE: "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2"
+  VOLUME_SIZE: "40Gi"
+  CPU_COUNT: "2"
+  MEMORY_SIZE: "4Gi"
+  GATEWAY: "172.16.0.1"
+  SUBNET_MASK: "255.255.0.0"
+  IP_POOL_REF: "capi-vm-pool"
+  DNS_SERVERS: "172.16.0.1"
+  CNI: "calico"

@@ -12,15 +12,19 @@ on:
 
 jobs:
   unit-test:
+    name: unit-tests
     runs-on: ubuntu-latest
+    container:
+      image: registry.opensuse.org/opensuse/tumbleweed:latest
     steps:
+    - name: Install dependencies
+      run: zypper -n install git tar gzip make gcc go
+
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Setup Go
-      uses: actions/setup-go@v5
-      with:
-        go-version-file: go.mod
+    - name: Fix git safe directory
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
     - name: Run unit tests
       run: make test
