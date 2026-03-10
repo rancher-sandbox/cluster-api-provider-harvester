@@ -2848,35 +2848,6 @@ metadata:
 spec:
   selfSigned: {}
 ---
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  labels:
-    app.kubernetes.io/component: metrics
-    app.kubernetes.io/created-by: cluster-api-provider-harvester
-    app.kubernetes.io/instance: controller-manager-metrics-monitor
-    app.kubernetes.io/managed-by: kustomize
-    app.kubernetes.io/name: servicemonitor
-    app.kubernetes.io/part-of: cluster-api-provider-harvester
-    cluster.x-k8s.io/provider: infrastructure-harvester
-    cluster.x-k8s.io/v1alpha2: v1alpha1
-    cluster.x-k8s.io/v1alpha3: v1alpha1
-    cluster.x-k8s.io/v1beta1: v1alpha1
-    control-plane: controller-manager
-  name: caphv-controller-manager-metrics-monitor
-  namespace: caphv-system
-spec:
-  endpoints:
-  - bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-    path: /metrics
-    port: https
-    scheme: https
-    tlsConfig:
-      insecureSkipVerify: true
-  selector:
-    matchLabels:
-      control-plane: controller-manager
----
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
