@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package controller contains the HarvesterMachine controller logic.
 package controller
 
 import (
@@ -55,6 +54,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	caphvmetrics "github.com/rancher-sandbox/cluster-api-provider-harvester/internal/metrics"
 	harvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
 )
@@ -73,7 +73,7 @@ type Scope struct {
 	Machine                *clusterv1.Machine
 	HarvesterCluster       *infrav1.HarvesterCluster
 	HarvesterMachine       *infrav1.HarvesterMachine
-	HarvesterClient        *harvclient.Clientset
+	HarvesterClient        harvclient.Interface
 	ReconcilerClient       client.Client
 	Logger                 *logr.Logger
 	EffectiveNetworkConfig *infrav1.NetworkConfig
@@ -86,6 +86,7 @@ const (
 	hvAnnotationSSH        = "harvesterhci.io/sshNames"
 	hvAnnotationImageID    = "harvesterhci.io/imageId"
 	listImagesSelector     = "spec.displayName"
+	requeueDelay           = 10 * time.Second
 )
 
 var (
@@ -214,7 +215,7 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	if !hvMachine.DeletionTimestamp.IsZero() {
-		return r.ReconcileDelete(hvScope)
+		return r.ReconcileDelete(hvScope) //nolint:contextcheck
 	}
 
 	return r.ReconcileNormal(&hvScope) //nolint:contextcheck
@@ -244,6 +245,21 @@ func (r *HarvesterMachineReconciler) SetupWithManager(ctx context.Context, mgr c
 
 // ReconcileNormal reconciles the HarvesterMachine object.
 func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconcile.Result, rerr error) {
+	reconcileStart := time.Now()
+
+	defer func() {
+		caphvmetrics.MachineReconcileDuration.WithLabelValues("normal").Observe(time.Since(reconcileStart).Seconds())
+
+		clusterName := hvScope.Cluster.Namespace + "/" + hvScope.Cluster.Name
+		machineName := hvScope.HarvesterMachine.Namespace + "/" + hvScope.HarvesterMachine.Name
+
+		if hvScope.HarvesterMachine.Status.Ready {
+			caphvmetrics.MachineStatus.WithLabelValues(clusterName, machineName).Set(1)
+		} else {
+			caphvmetrics.MachineStatus.WithLabelValues(clusterName, machineName).Set(0)
+		}
+	}()
+
 	logger := log.FromContext(hvScope.Ctx)
 
 	// Return early if the object or Cluster is paused.
@@ -304,17 +320,18 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 	// Resolve effective network config: cluster-level pool allocation or machine-level static config
 	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil && hvScope.HarvesterMachine.Spec.NetworkConfig == nil {
 		// Allocate IP from cluster-level VM IP pool
-		if err := r.allocateVMIP(hvScope); err != nil {
-			logger.Error(err, "failed to allocate VM IP from pool")
+		allocErr := r.allocateVMIP(hvScope)
+		if allocErr != nil {
+			logger.Error(allocErr, "failed to allocate VM IP from pool")
 
 			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
 				Type:    infrav1.VMIPAllocatedCondition,
 				Status:  v1.ConditionFalse,
 				Reason:  infrav1.VMIPAllocationFailedReason,
-				Message: fmt.Sprintf("Failed to allocate VM IP: %v", err),
+				Message: fmt.Sprintf("Failed to allocate VM IP: %v", allocErr),
 			})
 
-			return ctrl.Result{RequeueAfter: requeueTimeShort}, err
+			return ctrl.Result{RequeueAfter: requeueTimeShort}, allocErr
 		}
 
 		vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
@@ -436,8 +453,12 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			Message: "VM provisioning in progress",
 		})
 
+		caphvmetrics.MachineCreateTotal.Inc()
+		createStart := time.Now()
+
 		_, err = createVMFromHarvesterMachine(hvScope)
 		if err != nil {
+			caphvmetrics.MachineCreateErrorsTotal.Inc()
 			logger.Error(err, "unable to create VM from HarvesterMachine information")
 
 			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
@@ -449,6 +470,8 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 			return ctrl.Result{}, err
 		}
+
+		caphvmetrics.MachineCreationDuration.Observe(time.Since(createStart).Seconds())
 
 		conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.MachineCreatedCondition)
 		hvScope.HarvesterMachine.Status.Ready = false
@@ -486,6 +509,8 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 // initializeWorkloadNode sets the providerID and removes the cloud-provider
 // uninitialized taint on the workload cluster node corresponding to this machine.
 // Errors are logged as warnings but do not block reconciliation.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 	if hvScope.HarvesterMachine.Spec.ProviderID == "" {
 		return
@@ -497,6 +522,9 @@ func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 		return
 	}
 
+	caphvmetrics.NodeInitTotal.Inc()
+	initStart := time.Now()
+
 	locutil.InitializeWorkloadNode(
 		hvScope.Ctx,
 		*hvScope.Logger,
@@ -504,6 +532,8 @@ func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 		hvScope.HarvesterMachine.Name,
 		hvScope.HarvesterMachine.Spec.ProviderID,
 	)
+
+	caphvmetrics.NodeInitDuration.Observe(time.Since(initStart).Seconds())
 }
 
 func getProviderIDFromWorkloadCluster(hvScope *Scope) (string, error) {
@@ -579,7 +609,7 @@ func isVMRunning(vm *kubevirtv1.VirtualMachine) bool {
 		strategy == kubevirtv1.RunStrategyOnce
 }
 
-func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient *harvclient.Clientset) ([]clusterv1.MachineAddress, error) {
+func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient harvclient.Interface) ([]clusterv1.MachineAddress, error) {
 	ipAddresses := []clusterv1.MachineAddress{}
 
 	vmInstance, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).Get(context.TODO(), existingVM.Name, metav1.GetOptions{})
@@ -631,8 +661,8 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 	targetNS := hvScope.HarvesterCluster.Spec.TargetNamespace
 
 	// Build PVC list for all volumes
-	var pvcs []*v1.PersistentVolumeClaim
-	var disks []diskInfo
+	pvcs := make([]*v1.PersistentVolumeClaim, 0, len(hvScope.HarvesterMachine.Spec.Volumes))
+	disks := make([]diskInfo, 0, len(hvScope.HarvesterMachine.Spec.Volumes))
 
 	for i, vol := range hvScope.HarvesterMachine.Spec.Volumes {
 		diskRandomID := locutil.RandomID()
@@ -724,6 +754,7 @@ func buildPVCForVolume(
 		if err != nil {
 			return nil, errors.Wrapf(err, "unable to find VM image %s", vol.ImageName)
 		}
+
 		scName := "longhorn-" + vmImage.Name
 		pvc.Spec.StorageClassName = &scName
 		pvc.Annotations[hvAnnotationImageID] = vmImage.Namespace + "/" + vmImage.Name
@@ -751,12 +782,12 @@ func getImageByName(imageName, defaultNamespace string, hvScope *Scope) (*harves
 	}
 
 	for _, image := range foundImages.Items {
-		if image.Spec.DisplayName == vmImageNamespacedName.Name {
+		if image.Spec.DisplayName == vmImageNamespacedName.Name || image.Name == vmImageNamespacedName.Name {
 			return &image, nil
 		}
 	}
 
-	return nil, fmt.Errorf("VM image %s not found in namespace %s", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
+	return nil, fmt.Errorf("VM image %s not found in namespace %s (searched by display name and resource name)", vmImageNamespacedName.Name, vmImageNamespacedName.Namespace)
 }
 
 // buildVMTemplate creates a *kubevirtv1.VirtualMachineInstanceTemplateSpec from the CLI Flags and some computed values.
@@ -810,7 +841,16 @@ runcmd:
 		return nil, err
 	}
 
-	finalCloudInit, err := locutil.MergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitUserData)
+	// In DHCP mode, add dhclient bootcmd to work around wicked BPF filter bug on KubeVirt/virtio-net.
+	// Wicked uses AF_PACKET SOCK_DGRAM with a BPF filter that has link-layer offsets, but on SOCK_DGRAM
+	// the kernel presents network-layer data to BPF, causing all DHCP responses to be silently dropped.
+	// ISC dhclient uses AF_PACKET SOCK_RAW (LPF) which works correctly.
+	cloudInitDHCP := ""
+	if hvScope.EffectiveNetworkConfig == nil && len(hvScope.HarvesterMachine.Spec.Networks) > 0 {
+		cloudInitDHCP = buildDHCPCloudInit(hvScope)
+	}
+
+	finalCloudInit, err := locutil.MergeCloudInitData(cloudInitBase, cloudInitSSHSection, cloudInitDHCP, cloudInitUserData)
 	if err != nil {
 		err = fmt.Errorf("error during merging cloud init user data from Harvester: %w", err)
 
@@ -822,41 +862,11 @@ runcmd:
 		"userdata": finalCloudInit,
 	}
 
-	// Build network-config v1 format if EffectiveNetworkConfig is set
-	if hvScope.EffectiveNetworkConfig != nil {
-		netCfg := hvScope.EffectiveNetworkConfig
-		subnetMask := "255.255.0.0" // default
-
-		if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
-			subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
-		}
-
-		// Build network-config v1 format (required for SLES)
-		networkConfigV1 := fmt.Sprintf(`version: 1
-config:
-  - type: physical
-    name: eth0
-    subnets:
-      - type: static
-        address: %s
-        netmask: %s
-        gateway: %s
-  - type: nameserver
-    address:
-`, netCfg.Address, subnetMask, netCfg.Gateway)
-
-		for _, dns := range netCfg.DNSServers {
-			networkConfigV1 += fmt.Sprintf("      - %s\n", dns)
-		}
-
-		if len(netCfg.DNSSearch) > 0 {
-			networkConfigV1 += "    search:\n"
-			for _, search := range netCfg.DNSSearch {
-				networkConfigV1 += fmt.Sprintf("      - %s\n", search)
-			}
-		}
-
-		secretData["networkdata"] = []byte(networkConfigV1)
+	// Build network-config for NICs. For static mode, generate v1 networkdata with IP configuration.
+	// For DHCP mode, skip networkdata entirely — dhclient handles network setup via bootcmd,
+	// and generating networkdata would cause wicked to interfere with the DHCP-assigned IP.
+	if hvScope.EffectiveNetworkConfig != nil && len(hvScope.HarvesterMachine.Spec.Networks) > 0 {
+		secretData["networkdata"] = []byte(buildNetworkDataStatic(hvScope))
 	}
 
 	// create cloud-init secret for reference in Harvester.
@@ -961,10 +971,15 @@ config:
 
 	// Build disk names annotation as JSON array
 	diskNames := make([]string, 0, len(disks))
+
 	for _, d := range disks {
 		diskNames = append(diskNames, d.pvcName)
 	}
-	diskNamesJSON, _ := json.Marshal(diskNames)
+
+	diskNamesJSON, err := json.Marshal(diskNames)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to marshal disk names to JSON")
+	}
 
 	vmTemplate = &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1003,6 +1018,10 @@ config:
 					Requests: v1.ResourceList{
 						"memory": resource.MustParse(hvScope.HarvesterMachine.Spec.Memory),
 					},
+					Limits: v1.ResourceList{
+						"cpu":    *resource.NewQuantity(int64(hvScope.HarvesterMachine.Spec.CPU), resource.DecimalSI),
+						"memory": resource.MustParse(hvScope.HarvesterMachine.Spec.Memory),
+					},
 				},
 			},
 			Affinity: affinity,
@@ -1025,6 +1044,125 @@ func buildNetworkInterfaces(machine *infrav1.HarvesterMachine) []kubevirtv1.Inte
 	}
 
 	return interfaces
+}
+
+// buildNetworkDataStatic generates cloud-init network-config v1 with static IP on eth0
+// and DHCP on additional NICs.
+func buildNetworkDataStatic(hvScope *Scope) string {
+	var b strings.Builder
+
+	netCfg := hvScope.EffectiveNetworkConfig
+	subnetMask := "255.255.0.0" // default
+
+	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
+		subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
+	}
+
+	b.WriteString("version: 1\nconfig:\n")
+
+	for i := range hvScope.HarvesterMachine.Spec.Networks {
+		ethName := "eth" + strconv.Itoa(i)
+
+		fmt.Fprintf(&b, "  - type: physical\n    name: %s\n    subnets:\n", ethName)
+
+		if i == 0 {
+			fmt.Fprintf(&b, "      - type: static\n        address: %s\n        netmask: %s\n        gateway: %s\n",
+				netCfg.Address, subnetMask, netCfg.Gateway)
+		} else {
+			b.WriteString("      - type: dhcp\n")
+		}
+	}
+
+	if len(netCfg.DNSServers) > 0 {
+		b.WriteString("  - type: nameserver\n    address:\n")
+
+		for _, dns := range netCfg.DNSServers {
+			fmt.Fprintf(&b, "      - %s\n", dns)
+		}
+
+		if len(netCfg.DNSSearch) > 0 {
+			b.WriteString("    search:\n")
+
+			for _, search := range netCfg.DNSSearch {
+				fmt.Fprintf(&b, "      - %s\n", search)
+			}
+		}
+	}
+
+	return b.String()
+}
+
+// buildDHCPCloudInit generates cloud-init YAML with write_files and bootcmd entries that
+// configure network interfaces via dhclient. This works around wicked's BPF filter bug:
+// wicked uses AF_PACKET SOCK_DGRAM with a BPF filter that has link-layer offsets, but on
+// SOCK_DGRAM the kernel runs BPF against network-layer data, causing all DHCP responses
+// to be silently dropped. ISC dhclient uses SOCK_RAW (LPF) which works correctly.
+func buildDHCPCloudInit(hvScope *Scope) string {
+	var b strings.Builder
+
+	// dhclient-script: configures IP from DHCP lease, converts netmask to CIDR prefix.
+	// SLES ships a wicked-dependent dhclient-script that fails, so we provide our own.
+	// IMPORTANT: the script must be created in bootcmd (not write_files) because
+	// cloud-init runs bootcmd BEFORE write_files, and dhclient needs the script to exist.
+	dhclientScript := dhclientScriptContent()
+
+	scriptPath := "/usr/local/bin/dhclient-script-caphv.sh"
+
+	b.WriteString("bootcmd:\n")
+
+	// First bootcmd entry: create the dhclient-script file via heredoc
+	b.WriteString("  - |\n")
+	fmt.Fprintf(&b, "    cat > %s << 'DHCSCRIPT'\n", scriptPath)
+
+	for line := range strings.SplitSeq(dhclientScript, "\n") {
+		fmt.Fprintf(&b, "    %s\n", line)
+	}
+
+	b.WriteString("    DHCSCRIPT\n")
+	fmt.Fprintf(&b, "    chmod +x %s\n", scriptPath)
+
+	// Then one entry per NIC to run dhclient
+	for i := range hvScope.HarvesterMachine.Spec.Networks {
+		ethName := "eth" + strconv.Itoa(i)
+		// -1 = try once then fork to background (parent exits, bootcmd continues).
+		// Do NOT use -d (foreground) as it would block cloud-init forever.
+		fmt.Fprintf(&b,
+			"  - ['dhclient', '-1', '-sf', '%s', '-lf', '/tmp/dhclient-%s.lease', '-pf', '/tmp/dhclient-%s.pid', '%s']\n",
+			scriptPath, ethName, ethName, ethName)
+	}
+
+	return b.String()
+}
+
+//nolint:dupword // bash nested loops have consecutive "done" keywords
+func dhclientScriptContent() string {
+	return `#!/bin/bash
+case "$reason" in
+  PREINIT)
+    ip link set dev $interface up
+    ;;
+  BOUND|RENEW|REBIND|REBOOT)
+    ip addr flush dev $interface 2>/dev/null
+    IFS=. read -r a b c d <<< "$new_subnet_mask"
+    prefix=0
+    for octet in $a $b $c $d; do
+      while [ $octet -gt 0 ]; do
+        prefix=$((prefix + (octet & 1)))
+        octet=$((octet >> 1))
+      done
+    done
+    ip addr add $new_ip_address/$prefix dev $interface
+    if [ -n "$new_routers" ]; then
+      ip route add default via $new_routers dev $interface 2>/dev/null
+    fi
+    if [ -n "$new_domain_name_servers" ]; then
+      : > /etc/resolv.conf
+      for dns in $new_domain_name_servers; do
+        echo "nameserver $dns" >> /etc/resolv.conf
+      done
+    fi
+    ;;
+esac`
 }
 
 // buildAffinity merges user-specified NodeAffinity and WorkloadAffinity with default PodAntiAffinity.
@@ -1061,7 +1199,7 @@ func buildAffinity(hvScope *Scope) *v1.Affinity {
 }
 
 func getKubevirtNetworksFromHarvesterMachine(harvesterMachine *infrav1.HarvesterMachine) []kubevirtv1.Network {
-	networks := []kubevirtv1.Network{}
+	networks := make([]kubevirtv1.Network, 0, len(harvesterMachine.Spec.Networks))
 	for i, network := range harvesterMachine.Spec.Networks {
 		networks = append(networks, kubevirtv1.Network{
 			Name: "nic-" + strconv.Itoa(i+1),
@@ -1099,6 +1237,8 @@ func getCloudInitData(hvScope *Scope) (string, error) {
 
 // allocateVMIP allocates an IP from the cluster-level VM IP pool for this machine.
 // It is idempotent: if an IP is already allocated, it returns early.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 	machine := hvScope.HarvesterMachine
 	logger := hvScope.Logger
@@ -1106,59 +1246,85 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 	// Return early if already allocated (idempotent)
 	if machine.Status.AllocatedIPAddress != "" {
 		logger.V(3).Info("VM IP already allocated", "ip", machine.Status.AllocatedIPAddress)
+
 		return nil
 	}
 
 	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
 	if vmNetCfg == nil {
-		return fmt.Errorf("VMNetworkConfig is nil on HarvesterCluster")
+		return errors.New("VMNetworkConfig is nil on HarvesterCluster")
 	}
 
-	poolRef := vmNetCfg.IPPoolRef
-	if poolRef == "" {
-		return fmt.Errorf("VMNetworkConfig.IPPoolRef is empty, ensure reconcileVMIPPool has run")
+	poolRefs := vmNetCfg.GetIPPoolRefs()
+	if len(poolRefs) == 0 {
+		return errors.New("no IPPool references configured, ensure reconcileVMIPPool has run")
 	}
 
-	// Get the pool from Harvester
-	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-		context.TODO(), poolRef, metav1.GetOptions{})
-	if err != nil {
-		return errors.Wrapf(err, "failed to get VM IP pool %s", poolRef)
-	}
-
-	// Check for existing allocation in pool
 	machineID := machine.Namespace + "/" + machine.Name
-	if pool.Status.Allocated != nil {
-		for ip, id := range pool.Status.Allocated {
-			if id == machineID {
-				machine.Status.AllocatedIPAddress = ip
-				logger.Info("Found existing IP allocation in pool", "ip", ip)
-				return nil
+
+	// Try each pool in order until allocation succeeds
+	var lastErr error
+
+	for _, poolRef := range poolRefs {
+		pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+			context.TODO(), poolRef, metav1.GetOptions{})
+		if err != nil {
+			logger.V(1).Info("Failed to get IP pool, trying next", "pool", poolRef, "error", err)
+			lastErr = errors.Wrapf(err, "failed to get VM IP pool %s", poolRef)
+
+			continue
+		}
+
+		// Check for existing allocation in this pool
+		if pool.Status.Allocated != nil {
+			for ip, id := range pool.Status.Allocated {
+				if id == machineID {
+					machine.Status.AllocatedIPAddress = ip
+					machine.Status.AllocatedPoolRef = poolRef
+					logger.Info("Found existing IP allocation in pool", "ip", ip, "pool", poolRef)
+
+					return nil
+				}
 			}
 		}
+
+		// Try to allocate from this pool
+		caphvmetrics.IPPoolAllocationsTotal.Inc()
+
+		allocatedIP, allocErr := locutil.AllocateVMIPFromPool(pool, machineID)
+		if allocErr != nil {
+			logger.V(1).Info("Pool exhausted or allocation failed, trying next", "pool", poolRef, "error", allocErr)
+			lastErr = errors.Wrapf(allocErr, "failed to allocate from pool %s", poolRef)
+
+			continue
+		}
+
+		// Update pool in Harvester
+		_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
+			context.TODO(), pool, metav1.UpdateOptions{})
+		if err != nil {
+			caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
+
+			return errors.Wrapf(err, "failed to update VM IP pool %s after allocation", poolRef)
+		}
+
+		machine.Status.AllocatedIPAddress = allocatedIP
+		machine.Status.AllocatedPoolRef = poolRef
+		logger.Info("Allocated VM IP from pool", "ip", allocatedIP, "pool", poolRef, "machine", machine.Name)
+
+		return nil
 	}
 
-	// Allocate new IP
-	allocatedIP, err := locutil.AllocateVMIPFromPool(pool, machineID)
-	if err != nil {
-		return errors.Wrap(err, "failed to allocate IP from VM IP pool")
-	}
+	// All pools exhausted
+	caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
 
-	// Update pool in Harvester
-	_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
-		context.TODO(), pool, metav1.UpdateOptions{})
-	if err != nil {
-		return errors.Wrap(err, "failed to update VM IP pool after allocation")
-	}
-
-	machine.Status.AllocatedIPAddress = allocatedIP
-	logger.Info("Allocated VM IP from pool", "ip", allocatedIP, "machine", machine.Name)
-
-	return nil
+	return errors.Wrap(lastErr, "all configured IP pools exhausted")
 }
 
 // releaseVMIP releases the allocated IP back to the pool during machine deletion.
 // Errors are logged as warnings but do not block deletion.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 	machine := hvScope.HarvesterMachine
 	logger := hvScope.Logger
@@ -1167,16 +1333,29 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 		return
 	}
 
+	// Determine which pool to release from: use AllocatedPoolRef if available,
+	// fall back to first configured pool for backward compatibility.
 	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
-	if vmNetCfg == nil || vmNetCfg.IPPoolRef == "" {
-		logger.Info("No VMNetworkConfig/IPPoolRef, skipping IP release")
+
+	poolRef := machine.Status.AllocatedPoolRef
+	if poolRef == "" && vmNetCfg != nil {
+		poolRefs := vmNetCfg.GetIPPoolRefs()
+		if len(poolRefs) > 0 {
+			poolRef = poolRefs[0]
+		}
+	}
+
+	if poolRef == "" {
+		logger.Info("No pool reference for IP release, skipping")
+
 		return
 	}
 
 	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-		context.TODO(), vmNetCfg.IPPoolRef, metav1.GetOptions{})
+		context.TODO(), poolRef, metav1.GetOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to get VM IP pool for release, skipping", "error", err)
+
 		return
 	}
 
@@ -1185,11 +1364,14 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 
 	if ip == nil {
 		logger.Info("Warning: failed to parse allocated IP for release", "ip", machine.Status.AllocatedIPAddress)
+
 		return
 	}
 
-	if err := store.Release(ip); err != nil {
-		logger.Info("Warning: failed to release IP from pool", "error", err, "ip", machine.Status.AllocatedIPAddress)
+	releaseErr := store.Release(ip)
+	if releaseErr != nil {
+		logger.Info("Warning: failed to release IP from pool", "error", releaseErr, "ip", machine.Status.AllocatedIPAddress)
+
 		return
 	}
 
@@ -1197,9 +1379,11 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 		context.TODO(), pool, metav1.UpdateOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to update pool after IP release", "error", err)
+
 		return
 	}
 
+	caphvmetrics.IPPoolReleasesTotal.Inc()
 	logger.Info("Released VM IP back to pool", "ip", machine.Status.AllocatedIPAddress, "machine", machine.Name)
 }
 
@@ -1207,6 +1391,8 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 // from the workload cluster before VM deletion. This prevents stale etcd members from
 // blocking replacement nodes from joining the cluster.
 // Errors are logged as warnings but do not block deletion.
+//
+//nolint:funcorder
 func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Scope) {
 	logger := hvScope.Logger
 
@@ -1219,14 +1405,32 @@ func (r *HarvesterMachineReconciler) removeEtcdMemberIfControlPlane(hvScope *Sco
 	if err != nil {
 		logger.Info("Warning: failed to get workload cluster config for etcd cleanup, skipping",
 			"error", err)
+
 		return
 	}
 
+	caphvmetrics.EtcdMemberRemoveTotal.Inc()
 	locutil.RemoveEtcdMember(hvScope.Ctx, *logger, workloadConfig, hvScope.HarvesterMachine.Name)
 }
 
 // ReconcileDelete deletes a HarvesterMachine with all its dependencies.
 func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Result, rerr error) {
+	reconcileStart := time.Now()
+	caphvmetrics.MachineDeleteTotal.Inc()
+
+	defer func() {
+		caphvmetrics.MachineReconcileDuration.WithLabelValues("delete").Observe(time.Since(reconcileStart).Seconds())
+
+		if rerr != nil {
+			caphvmetrics.MachineDeleteErrorsTotal.Inc()
+		}
+
+		// Clean up gauge on deletion
+		clusterName := hvScope.Cluster.Namespace + "/" + hvScope.Cluster.Name
+		machineName := hvScope.HarvesterMachine.Namespace + "/" + hvScope.HarvesterMachine.Name
+		caphvmetrics.MachineStatus.DeleteLabelValues(clusterName, machineName)
+	}()
+
 	logger := log.FromContext(hvScope.Ctx)
 	logger.Info("Deleting HarvesterMachine ...")
 
@@ -1280,7 +1484,7 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 
 			logger.Info("VM delete requested, requeuing to wait for termination before PVC cleanup")
 
-			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: requeueDelay}, nil
 		}
 	}
 
@@ -1303,6 +1507,7 @@ func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvS
 	pvcList, err := hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to list PVCs for cleanup", "error", err)
+
 		return
 	}
 
@@ -1315,6 +1520,7 @@ func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvS
 		err = hvScope.HarvesterClient.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvc.Name, metav1.DeleteOptions{})
 		if err != nil && !apierrors.IsNotFound(err) {
 			logger.Info("Warning: failed to delete orphaned PVC", "pvc", pvc.Name, "error", err)
+
 			continue
 		}
 

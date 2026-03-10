@@ -33,7 +33,7 @@ REGISTRY ?= ghcr.io
 ORG ?= rancher-sandbox
 IMAGE_NAME ?= cluster-api-provider-harvester
 # Image URL to use all building/pushing image targets
-IMG ?= $(REGISTRY)/$(IMAGE_NAME)
+IMG ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME)
 
 # Allow overriding the imagePullPolicy
 PULL_POLICY ?= Always
@@ -57,7 +57,7 @@ GH_VERSION := v2.40.1
 GH_BIN := gh
 GH := $(abspath $(TOOLS_BIN_DIR)/$(GH_BIN))
 # Repo
-GH_ORG_NAME ?= $ORG
+GH_ORG_NAME ?= $(ORG)
 GH_REPO_NAME ?= cluster-api-provider-harvester
 GH_REPO ?= $(GH_ORG_NAME)/$(GH_REPO_NAME)
 
@@ -125,7 +125,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /test/e2e) -coverprofile cover.out
 
 ##@ Build
 .PHONY: manager
@@ -134,7 +134,7 @@ manager: ## Build the harvester manager binary into the ./bin folder
 
 .PHONY: build
 build: generate fmt vet ## Build manager binary.
-	go build -o bin/manager main.go
+	go build -o bin/manager ./cmd/
 
 .PHONY: run
 run: manifests generate fmt vet ## Run a controller from your host.
@@ -208,7 +208,7 @@ set-manifest-pull-policy:
 .PHONY: set-manifest-image
 set-manifest-image:
 	$(info Updating kustomize image patch file for manager resource)
-	sed -i'' -e 's@image: ghcr.io/rancher-sandbox/cluster-api-provider-harvester.*@image: '"${MANIFEST_IMG}:$(MANIFEST_TAG)"'@' $(TARGET_RESOURCE)
+	sed -i'' -e 's@image: .*cluster-api-provider-harvester.*@image: '"${MANIFEST_IMG}:$(MANIFEST_TAG)"'@' $(TARGET_RESOURCE)
 
 ## --------------------------------------
 ## Release
@@ -240,7 +240,7 @@ release: clean-release ## Build and push container images using the latest git t
 	# Build binaries first.
 	# GIT_VERSION=$(RELEASE_TAG) $(MAKE) release-binaries
 	# Set the manifest image to the production bucket.
-	$(MAKE) manifest-modification REGISTRY=$(PROD_REGISTRY)
+	$(MAKE) manifest-modification
 	## Build the manifests
 	$(MAKE) release-manifests
 	# Set the development manifest image to the staging bucket.

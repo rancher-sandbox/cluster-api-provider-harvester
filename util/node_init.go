@@ -22,6 +22,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,6 +51,7 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 	clientset, err := kubernetes.NewForConfig(workloadConfig)
 	if err != nil {
 		logger.Info("Warning: failed to create workload client for node init", "error", err)
+
 		return
 	}
 
@@ -59,7 +61,9 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 			// Node not yet registered in workload cluster, will retry next reconcile
 			return
 		}
+
 		logger.Info("Warning: failed to get workload node for init", "error", err, "node", nodeName)
+
 		return
 	}
 
@@ -72,12 +76,15 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 
 	if needsProviderID {
 		patch := fmt.Sprintf(`{"spec":{"providerID":%q}}`, providerID)
+
 		_, err = clientset.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
 		if err != nil {
 			logger.Info("Warning: failed to set providerID on workload node",
 				"error", err, "node", nodeName, "providerID", providerID)
+
 			return
 		}
+
 		logger.Info("Set providerID on workload node", "node", nodeName, "providerID", providerID)
 	}
 
@@ -86,19 +93,29 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 		node, err = clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 		if err != nil {
 			logger.Info("Warning: failed to re-fetch node after providerID patch", "error", err)
+
 			return
 		}
 
-		newTaints := removeTaint(node.Spec.Taints, uninitializedTaintKey)
+		newTaints := removeTaint(node.Spec.Taints)
 		if len(newTaints) != len(node.Spec.Taints) {
-			taintsJSON, _ := json.Marshal(newTaints)
+			taintsJSON, err := json.Marshal(newTaints)
+			if err != nil {
+				logger.Info("Warning: failed to marshal taints", "error", err, "node", nodeName)
+
+				return
+			}
+
 			patch := fmt.Sprintf(`{"spec":{"taints":%s}}`, taintsJSON)
+
 			_, err = clientset.CoreV1().Nodes().Patch(ctx, nodeName, types.MergePatchType, []byte(patch), metav1.PatchOptions{})
 			if err != nil {
 				logger.Info("Warning: failed to remove uninitialized taint",
 					"error", err, "node", nodeName)
+
 				return
 			}
+
 			logger.Info("Removed cloud-provider uninitialized taint", "node", nodeName)
 		}
 	}
@@ -111,16 +128,19 @@ func hasUninitializedTaint(node *v1.Node) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
-// removeTaint returns a copy of the taint slice with the specified key removed.
-func removeTaint(taints []v1.Taint, key string) []v1.Taint {
+// removeTaint returns a copy of the taint slice with the uninitialized taint key removed.
+func removeTaint(taints []v1.Taint) []v1.Taint {
 	result := make([]v1.Taint, 0, len(taints))
+
 	for _, t := range taints {
-		if t.Key != key {
+		if t.Key != uninitializedTaintKey {
 			result = append(result, t)
 		}
 	}
+
 	return result
 }

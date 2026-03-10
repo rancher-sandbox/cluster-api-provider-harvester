@@ -22,15 +22,16 @@ import (
 	"net"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // HarvesterClusterValidator implements admission.CustomValidator for HarvesterCluster.
 type HarvesterClusterValidator struct{}
 
-// SetupWebhookWithManager sets up the validating webhook for HarvesterCluster.
+// SetupHarvesterClusterWebhookWithManager sets up the validating webhook for HarvesterCluster.
 func SetupHarvesterClusterWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
 		For(&HarvesterCluster{}).
@@ -38,6 +39,7 @@ func SetupHarvesterClusterWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
+//nolint:lll
 // +kubebuilder:webhook:path=/validate-infrastructure-cluster-x-k8s-io-v1alpha1-harvestercluster,mutating=false,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters,verbs=create;update,versions=v1alpha1,name=vharvestercluster.kb.io,admissionReviewVersions=v1
 
 var _ admission.CustomValidator = &HarvesterClusterValidator{}
@@ -48,6 +50,7 @@ func (v *HarvesterClusterValidator) ValidateCreate(_ context.Context, obj runtim
 	if !ok {
 		return nil, fmt.Errorf("expected HarvesterCluster, got %T", obj)
 	}
+
 	return validateHarvesterCluster(c)
 }
 
@@ -57,6 +60,7 @@ func (v *HarvesterClusterValidator) ValidateUpdate(_ context.Context, _, newObj 
 	if !ok {
 		return nil, fmt.Errorf("expected HarvesterCluster, got %T", newObj)
 	}
+
 	return validateHarvesterCluster(c)
 }
 
@@ -75,6 +79,7 @@ func validateHarvesterCluster(r *HarvesterCluster) (admission.Warnings, error) {
 	if r.Spec.IdentitySecret.Name == "" {
 		errs = append(errs, "spec.identitySecret.name is required")
 	}
+
 	if r.Spec.IdentitySecret.Namespace == "" {
 		errs = append(errs, "spec.identitySecret.namespace is required")
 	}
@@ -88,11 +93,13 @@ func validateHarvesterCluster(r *HarvesterCluster) (admission.Warnings, error) {
 		if vmCfg.IPPoolRef == "" && vmCfg.IPPool == nil {
 			errs = append(errs, "spec.vmNetworkConfig requires either ipPoolRef or ipPool")
 		}
+
 		if vmCfg.Gateway == "" {
 			errs = append(errs, "spec.vmNetworkConfig.gateway is required")
 		} else if net.ParseIP(vmCfg.Gateway) == nil {
 			errs = append(errs, fmt.Sprintf("spec.vmNetworkConfig.gateway %q is not a valid IP address", vmCfg.Gateway))
 		}
+
 		if vmCfg.SubnetMask == "" {
 			errs = append(errs, "spec.vmNetworkConfig.subnetMask is required")
 		} else if net.ParseIP(vmCfg.SubnetMask) == nil {

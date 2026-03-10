@@ -1,6 +1,6 @@
 # Cluster API Provider Harvester (CAPHV)
 
-> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.6.1 compatibility and production-ready features.
+> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.7.1 compatibility and production-ready features.
 
 ## Overview
 
@@ -10,10 +10,10 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 
 | Feature | Upstream v0.1.x | This fork v0.2.0 |
 |---------|----------------|-------------------|
-| Harvester compatibility | v1.2.0 | v1.6.1 |
+| Harvester compatibility | v1.2.0 | v1.7.1 |
 | Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
-| IP allocation | Manual / DHCP | Automatic from Harvester IPPool |
-| Cloud-init | Basic | Network-config v1 (SLES), static IP, custom merge |
+| IP allocation | Manual / DHCP | Automatic from Harvester IPPool or DHCP |
+| Cloud-init | Basic | Network-config v1 (SLES), multi-NIC, static IP + DHCP |
 | Cloud provider bootstrap | Manual fixes needed | Automatic (hostNetwork, RBAC, tolerations) |
 | Node initialization | Manual providerID | Automatic from management cluster |
 | etcd cleanup | Manual | Automatic on CP machine deletion |
@@ -23,11 +23,13 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 | MachineHealthCheck | Untested | Tested, full auto-remediation |
 | Rolling K8s upgrade | Untested | Tested (CP + workers) |
 | E2E tests | Kubebuilder scaffold only | 18 integration tests (live cluster) |
-| Helm chart | None | Full chart with webhook support |
+| ClusterClass | Generic example only | Production-ready with vmNetworkConfig, IPPool, sshUser |
+| CLI generator | None | `caphv-generate` script (~30-line clusters) |
+| Helm chart | None | Full chart with webhook + ClusterClass support |
 
 ## Prerequisites
 
-- Harvester HCI v1.6.x cluster
+- Harvester HCI v1.7.x cluster
 - Management cluster (RKE2 recommended) with:
   - Cluster API Core (v1.10+)
   - RKE2 Bootstrap + ControlPlane providers (v0.21+)
@@ -74,7 +76,113 @@ make deploy IMG=<your-registry>/caphv-controller:v0.2.0
 kubectl apply -f out/infrastructure-components.yaml
 ```
 
-## Quick Start
+## Quick Start (ClusterClass — recommended)
+
+Using ClusterClass reduces cluster creation from ~200 lines to ~30 lines of YAML.
+
+### 1. Install the ClusterClass (once per management cluster)
+
+```bash
+# Via Helm (with controller)
+helm install caphv chart/caphv/ \
+  -n caphv-system --create-namespace \
+  --set clusterClass.enabled=true
+
+# Or standalone
+kubectl apply -f templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml
+```
+
+### 2. Generate cluster manifests with the CLI
+
+```bash
+# Generate all manifests
+bin/caphv-generate \
+  --name my-cluster \
+  --image "default/my-vm-image.qcow2" \
+  --ssh-keypair "default/my-ssh-key" \
+  --network "default/my-vm-network" \
+  --gateway 10.0.0.1 \
+  --subnet-mask 255.255.255.0 \
+  --ip-pool my-ip-pool \
+  --dns 10.0.0.53 \
+  --harvester-kubeconfig ~/.kube/harvester.yaml \
+  > cluster.yaml
+
+# Or interactive mode
+bin/caphv-generate --interactive
+
+# Apply
+kubectl apply -f cluster.yaml
+# Or directly: bin/caphv-generate [...] --apply
+```
+
+The CLI generates: Namespace, Secret, Cluster (topology), ConfigMaps (CCM/CSI/Calico), ClusterResourceSets, and MachineHealthCheck.
+
+### 3. Monitor cluster creation
+
+```bash
+kubectl get cluster,machine,harvestermachine -n my-cluster
+```
+
+## User Experience Summary
+
+### Prerequisites (one-time setup)
+
+On the management cluster:
+- Rancher + Turtles installed
+- CAPHV deployed via Helm (`clusterClass.enabled=true`)
+- Rancher `cacerts` setting configured (required for Turtles strict TLS mode with external TLS termination)
+- Harvester kubeconfig available locally
+
+### Create a cluster
+
+**Interactive mode (guided):**
+```bash
+caphv-generate --interactive
+```
+The script asks ~15 questions with sensible defaults, then generates and applies everything.
+
+**Flags mode (scriptable):**
+```bash
+caphv-generate \
+  --name my-cluster \
+  --cp-replicas 3 --worker-replicas 2 \
+  --image "default/my-vm-image.qcow2" \
+  --ssh-keypair "default/my-ssh-key" \
+  --network "default/my-vm-network" \
+  --gateway 10.0.0.1 --subnet-mask 255.255.255.0 \
+  --ip-pool my-ip-pool --dns 10.0.0.53 \
+  --harvester-kubeconfig ~/.kube/harvester.yaml \
+  --apply
+```
+
+### What happens automatically (~16 min)
+
+1. **Namespace** created
+2. **Secret** with Harvester kubeconfig injected
+3. **ClusterClass** + templates deployed in the namespace
+4. **Cluster topology** created — CAPI orchestrates everything:
+   - VMs created on Harvester (IPs allocated from IPPool)
+   - RKE2 bootstrap (control plane then workers)
+   - Cloud-init with static IP, iptables, SSH
+   - Cloud provider + CSI Harvester installed via ClusterResourceSets
+   - MachineHealthCheck active (auto-remediation)
+5. **Rancher** detects the cluster (auto-import label) — deploys agent — cluster visible in the UI
+
+### Result
+
+- Fully functional Kubernetes cluster (RKE2)
+- Visible and manageable in Rancher UI
+- Auto-remediation: if a VM dies, it is automatically recreated (~9 min)
+- Rolling upgrade: change the K8s version in the Cluster spec — rolling update CP then workers
+
+### Day 2 Operations
+
+- **Scale**: modify `replicas` in the Cluster spec
+- **Upgrade K8s**: modify `version` in the Cluster spec
+- **Delete**: `kubectl delete cluster my-cluster -n my-namespace` — everything is cleaned up (VMs, PVCs, secrets)
+
+## Quick Start (manual — full control)
 
 ### 1. Create the identity Secret
 
@@ -120,8 +228,8 @@ spec:
   loadBalancerConfig:
     ipamType: pool
   vmNetworkConfig:
-    gateway: "172.16.0.1"
-    subnetMask: "255.255.0.0"
+    gateway: "10.0.0.1"
+    subnetMask: "255.255.255.0"
     ipPoolRef: default/my-ip-pool
 ```
 
@@ -142,7 +250,7 @@ spec:
       sshKeyPair: default/my-ssh-key
       volumes:
         - volumeType: image
-          imageName: default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2
+          imageName: default/my-vm-image.qcow2
           volumeSize: "40Gi"
           bootOrder: 1
         - volumeType: storageClass     # optional: additional data disk
@@ -195,6 +303,8 @@ Harvester HCI (target)
 | `spec.vmNetworkConfig.subnetMask` | string | Yes* | Subnet mask (e.g. "255.255.0.0") |
 | `spec.vmNetworkConfig.ipPoolRef` | string | No | Reference to Harvester IPPool |
 
+> **DHCP mode**: If `vmNetworkConfig` is omitted and no machine-level `networkConfig` is set, all VM NICs will use DHCP automatically. No IPPool or static IP configuration is needed.
+
 ### HarvesterMachine
 
 | Field | Type | Required | Description |
@@ -210,6 +320,21 @@ Harvester HCI (target)
 | `spec.volumes[].storageClass` | string | For SC | Storage class for blank disk |
 | `spec.volumes[].volumeSize` | string | Yes | Disk size (e.g. "40Gi") |
 | `spec.volumes[].bootOrder` | int | No | Boot priority (1 = first) |
+
+## Monitoring
+
+CAPHV exposes custom Prometheus metrics (`caphv_*` namespace) via the controller-runtime metrics endpoint (port 8080, protected by kube-rbac-proxy).
+
+A ServiceMonitor is included in the kustomize build. A ready-to-import Grafana dashboard is at `config/grafana/caphv-dashboard.json`.
+
+Key metrics: `caphv_machine_create_total`, `caphv_machine_creation_duration_seconds`, `caphv_machine_status`, `caphv_ippool_allocations_total`, `caphv_cluster_ready`, `caphv_etcd_member_remove_total`, `caphv_node_init_duration_seconds`.
+
+See [docs/operations.md](docs/operations.md) for the full metrics list and alerting recommendations.
+
+## Documentation
+
+- [Operations Guide](docs/operations.md) — installation via CAPIProvider, cluster lifecycle, monitoring, backup/DR
+- [Troubleshooting](docs/troubleshooting.md) — IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
 
 ## E2E Tests
 
@@ -240,7 +365,9 @@ make test
 
 | Version | Date | Key changes |
 |---------|------|-------------|
-| v0.2.0 | 2026-03-06 | Harvester v1.6.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
+| v0.2.3 | 2026-03-07 | DHCP VM support, multi-NIC cloud-init |
+| v0.2.1 | 2026-03-06 | ClusterClass (harvester-rke2), CLI generator (caphv-generate), Helm ClusterClass option |
+| v0.2.0 | 2026-03-06 | Harvester v1.7.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
 | v0.1.6 | 2024-xx-xx | Upstream: initial CAPI contract, single disk, DHCP only |
 
 ## License

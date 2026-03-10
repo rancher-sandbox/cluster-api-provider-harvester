@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package controller contains the HarvesterCluster controller logic.
+// Package controller contains the reconciliation logic for Harvester infrastructure providers.
 package controller
 
 import (
@@ -57,6 +57,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	caphvmetrics "github.com/rancher-sandbox/cluster-api-provider-harvester/internal/metrics"
 	lbclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"
 )
@@ -222,6 +223,19 @@ func (r *HarvesterClusterReconciler) SetupWithManager(ctx context.Context, mgr c
 
 // ReconcileNormal is the reconciliation function when not deleting the HarvesterCluster instance.
 func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res ctrl.Result, err error) {
+	reconcileStart := time.Now()
+
+	defer func() {
+		caphvmetrics.ClusterReconcileDuration.WithLabelValues("normal").Observe(time.Since(reconcileStart).Seconds())
+
+		clusterName := scope.HarvesterCluster.Namespace + "/" + scope.HarvesterCluster.Name
+		if scope.HarvesterCluster.Status.Ready {
+			caphvmetrics.ClusterReady.WithLabelValues(clusterName).Set(1)
+		} else {
+			caphvmetrics.ClusterReady.WithLabelValues(clusterName).Set(0)
+		}
+	}()
+
 	logger := log.FromContext(scope.Ctx)
 
 	// Add finalizer first if not exist to avoid the race condition between init and delete
@@ -232,8 +246,10 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	}
 
 	// Reconcile VM IP Pool if VMNetworkConfig is set
-	if err := r.reconcileVMIPPool(scope); err != nil {
+	err = r.reconcileVMIPPool(scope)
+	if err != nil {
 		logger.Error(err, "failed to reconcile VM IP pool")
+
 		return ctrl.Result{RequeueAfter: requeueTimeShort}, err
 	}
 
@@ -634,6 +650,15 @@ func getLoadBalancerIP(harvesterCluster *infrav1.HarvesterCluster, hvClient lbcl
 
 // ReconcileDelete is the part of the Reconcialiation that deletes a HarvesterCluster and everything which depends on it.
 func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.Result, error) {
+	reconcileStart := time.Now()
+
+	defer func() {
+		caphvmetrics.ClusterReconcileDuration.WithLabelValues("delete").Observe(time.Since(reconcileStart).Seconds())
+
+		clusterName := scope.HarvesterCluster.Namespace + "/" + scope.HarvesterCluster.Name
+		caphvmetrics.ClusterReady.DeleteLabelValues(clusterName)
+	}()
+
 	logger := log.FromContext(scope.Ctx)
 	logger.Info("Deleting Harvester Cluster ...", "cluster-name", scope.HarvesterCluster.Name, "cluster-namespace", scope.HarvesterCluster.Namespace)
 
@@ -705,8 +730,9 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 	logger.V(5).Info("IP Pool deleted successfully") //nolint:mnd
 
-	// Delete VM IP pool if created by controller (via VMNetworkConfig)
-	if scope.HarvesterCluster.Spec.VMNetworkConfig != nil && scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef != "" {
+	// Delete VM IP pool only if it was created by the controller (not pre-existing).
+	// Pre-existing pools referenced via IPPoolRef are shared resources and must not be deleted.
+	if conditions.IsTrue(scope.HarvesterCluster, infrav1.VMIPPoolCreatedByControllerCondition) {
 		vmPoolName := scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef
 
 		err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Delete(
@@ -720,8 +746,12 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 
 			logger.Info("VM IP Pool not found, skipping ...", "pool", vmPoolName)
 		} else {
-			logger.Info("VM IP Pool deleted", "pool", vmPoolName)
+			logger.Info("VM IP Pool deleted (was created by controller)", "pool", vmPoolName)
 		}
+
+		conditions.Delete(scope.HarvesterCluster, infrav1.VMIPPoolCreatedByControllerCondition)
+	} else if scope.HarvesterCluster.Spec.VMNetworkConfig != nil && scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef != "" {
+		logger.Info("Skipping VM IP Pool deletion (pre-existing pool)", "pool", scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef)
 	}
 
 	logger.Info("Removing finalizer from HarvesterCluster ...",
@@ -817,26 +847,33 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 		return nil
 	}
 
-	// If IPPoolRef is already set, verify pool exists
-	if vmNetCfg.IPPoolRef != "" {
-		_, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-			context.TODO(), vmNetCfg.IPPoolRef, v1.GetOptions{})
-		if err != nil {
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
-				Type:    infrav1.VMIPPoolReadyCondition,
-				Status:  apiv1.ConditionFalse,
-				Reason:  infrav1.VMIPPoolCreationFailedReason,
-				Message: fmt.Sprintf("Referenced VM IP pool %s not found: %v", vmNetCfg.IPPoolRef, err),
-			})
+	// If IPPoolRefs or IPPoolRef is set, verify all pools exist
+	poolRefs := vmNetCfg.GetIPPoolRefs()
+	if len(poolRefs) > 0 {
+		var readyPools []string
 
-			return errors.Wrapf(err, "referenced VM IP pool %s not found", vmNetCfg.IPPoolRef)
+		for _, ref := range poolRefs {
+			_, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+				context.TODO(), ref, v1.GetOptions{})
+			if err != nil {
+				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+					Type:    infrav1.VMIPPoolReadyCondition,
+					Status:  apiv1.ConditionFalse,
+					Reason:  infrav1.VMIPPoolCreationFailedReason,
+					Message: fmt.Sprintf("Referenced VM IP pool %s not found: %v", ref, err),
+				})
+
+				return errors.Wrapf(err, "referenced VM IP pool %s not found", ref)
+			}
+
+			readyPools = append(readyPools, ref)
 		}
 
 		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
 			Type:    infrav1.VMIPPoolReadyCondition,
 			Status:  apiv1.ConditionTrue,
 			Reason:  infrav1.VMIPPoolReadyReason,
-			Message: fmt.Sprintf("VM IP pool %s is ready", vmNetCfg.IPPoolRef),
+			Message: fmt.Sprintf("VM IP pool(s) ready: %v", readyPools),
 		})
 
 		return nil
@@ -844,7 +881,7 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 
 	// IPPool is set, create pool with generated name
 	if vmNetCfg.IPPool == nil {
-		return fmt.Errorf("VMNetworkConfig requires either IPPoolRef or IPPool to be set")
+		return errors.New("VMNetworkConfig requires either IPPoolRef or IPPool to be set")
 	}
 
 	poolName := locutil.GenerateRFC1035Name([]string{
@@ -923,6 +960,15 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 	scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef = createdPool.Name
 
 	scope.Logger.Info("Created VM IP pool", "name", createdPool.Name)
+
+	// Mark that the controller created this pool so it can be cleaned up on deletion.
+	// Pre-existing pools (referenced via IPPoolRef) won't have this condition.
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.VMIPPoolCreatedByControllerCondition,
+		Status:  apiv1.ConditionTrue,
+		Reason:  infrav1.VMIPPoolCreatedByControllerReason,
+		Message: fmt.Sprintf("VM IP pool %s was created by the controller", createdPool.Name),
+	})
 
 	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
 		Type:    infrav1.VMIPPoolReadyCondition,
