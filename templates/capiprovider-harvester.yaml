@@ -20,8 +20,8 @@ spec:
   # enableAutomaticUpdate: true
   fetchConfig:
     # For pinned version (manual upgrades):
-    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
     # For automatic upgrades (latest release):
-    # url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
+    # url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
   configSecret:
     name: caphv-variables

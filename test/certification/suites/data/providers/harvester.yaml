@@ -13,4 +13,4 @@ spec:
   type: infrastructure
   version: v0.2.4
   fetchConfig:
-    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/download/v0.2.4/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.4/infrastructure-components.yaml

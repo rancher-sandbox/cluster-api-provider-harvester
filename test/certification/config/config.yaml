@@ -1,7 +1,7 @@
 managementClusterName: caphv-certification
 
 images:
-  - name: ghcr.io/jniedergang/cluster-api-provider-harvester:v0.2.4
+  - name: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.4
 
 providers: []
 

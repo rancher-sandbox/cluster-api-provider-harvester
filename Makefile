@@ -30,7 +30,7 @@ TAG ?= dev
 ARCH ?= $(shell go env GOARCH)
 ALL_ARCH = amd64 arm arm64 ppc64le s390x
 REGISTRY ?= ghcr.io
-ORG ?= jniedergang
+ORG ?= rancher-sandbox
 IMAGE_NAME ?= cluster-api-provider-harvester
 # Image URL to use all building/pushing image targets
 IMG ?= $(REGISTRY)/$(ORG)/$(IMAGE_NAME)

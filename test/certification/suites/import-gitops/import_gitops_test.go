@@ -11,7 +11,7 @@ import (
 	"github.com/rancher/turtles/test/e2e"
 	"github.com/rancher/turtles/test/e2e/specs"
 
-	"github.com/jniedergang/cluster-api-provider-harvester/test/certification/suites"
+	"github.com/rancher-sandbox/cluster-api-provider-harvester/test/certification/suites"
 )
 
 var _ = Describe("[Harvester] [RKE2] Create and import CAPI cluster via Turtles", Label(suites.FullTestLabel), func() {
