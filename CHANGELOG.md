@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.2.7] - 2026-03-10
+
+### Fixed
+
+- **Kustomize modernization**: Migrated config from deprecated `bases`, `patchesStrategicMerge`, `vars`, and `commonLabels` to `resources`, `patches`, `replacements`, and `labels` — eliminates 5 deprecation warnings from kustomize builds
+- **Finalizer naming conventions**: Renamed finalizers to include `/finalizer` path segment per Kubernetes conventions (`harvestermachine.infrastructure.cluster.x-k8s.io/finalizer`, `harvestercluster.infrastructure.cluster.x-k8s.io/finalizer`); includes dual-finalizer migration for existing clusters
+- **Context propagation**: Replaced all `context.TODO()` / `context.Background()` in production code with proper context propagation from reconciler scope
+- **IP pool error handling**: Added error handling for `netip.AddrFromSlice()` calls in ippool.go
+- **Typo fix**: Corrected "invalide" to "invalid" in ippool.go error message
+- **Privileged container documentation**: Added comment explaining privileged container requirement in manager deployment
+- **Regenerated infrastructure-components.yaml** without deprecation warnings
+
 ## [v0.2.6] - 2026-03-09
 
 ### Added

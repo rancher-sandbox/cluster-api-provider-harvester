@@ -6,9 +6,9 @@
 
 CAPHV is a [Cluster API](https://cluster-api.sigs.k8s.io/) Infrastructure Provider for provisioning Kubernetes clusters on [Harvester HCI](https://harvesterhci.io/).
 
-This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
+This fork adds significant enhancements over upstream v0.1.6:
 
-| Feature | Upstream v0.1.x | This fork v0.2.0 |
+| Feature | Upstream v0.1.x | This fork (v0.2.x) |
 |---------|----------------|-------------------|
 | Harvester compatibility | v1.2.0 | v1.7.1 |
 | Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
@@ -43,35 +43,55 @@ This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 
 ## Installation
 
-### Option 1: Helm Chart
+### Option 1: CAPIProvider via Rancher Turtles (recommended for production)
+
+```yaml
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  version: v0.2.7
+  fetchConfig:
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.7/infrastructure-components.yaml
+  configSecret:
+    name: caphv-variables
+```
+
+See [docs/operations.md](docs/operations.md) for full CAPIProvider deployment, upgrade, and migration instructions.
+
+### Option 2: Helm Chart
 
 ```bash
 # Without webhooks
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
-  --set image.repository=<your-registry>/caphv-controller \
-  --set image.tag=v0.2.0
+  --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
+  --set image.tag=v0.2.7
 
 # With webhooks (requires cert-manager)
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
-  --set image.repository=<your-registry>/caphv-controller \
-  --set image.tag=v0.2.0 \
+  --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
+  --set image.tag=v0.2.7 \
   --set webhooks.enabled=true \
   --set webhooks.certManager.enabled=true
 ```
 
-### Option 2: Kustomize
+### Option 3: Kustomize
 
 ```bash
 # Build and push the image
-make docker-build docker-push IMG=<your-registry>/caphv-controller:v0.2.0
+make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
 
 # Deploy
-make deploy IMG=<your-registry>/caphv-controller:v0.2.0
+make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
 ```
 
-### Option 3: Manual (standalone manifests)
+### Option 4: Manual (standalone manifests)
 
 ```bash
 kubectl apply -f out/infrastructure-components.yaml
@@ -356,6 +376,7 @@ See [docs/operations.md](docs/operations.md) for the full metrics list and alert
 ## Documentation
 
 - [Operations Guide](docs/operations.md) — installation via CAPIProvider, cluster lifecycle, monitoring, backup/DR
+- [Fleet Addons Guide](docs/fleet-addons.md) — Fleet/CAAPF addon management for CSI and CNI
 - [Troubleshooting](docs/troubleshooting.md) — IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
 
 ## E2E Tests
@@ -377,7 +398,7 @@ Integration tests run against a live Harvester + CAPI cluster:
 make build
 
 # Build container image
-make docker-build IMG=<registry>/caphv-controller:v0.2.0
+make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
 
 # Run unit tests
 make test
@@ -387,6 +408,10 @@ make test
 
 | Version | Date | Key changes |
 |---------|------|-------------|
+| v0.2.7 | 2026-03-10 | Code quality fixes for SURE-11421 review: kustomize modernization, finalizer naming conventions, context propagation, error handling |
+| v0.2.6 | 2026-03-09 | CSI decoupling, Fleet label automation, Fleet CSI bundle |
+| v0.2.5 | 2026-03-08 | Fleet/CAAPF addon management, CNI configuration flags |
+| v0.2.4 | 2026-03-08 | CAPIProvider in Turtles, P0 milestone complete |
 | v0.2.3 | 2026-03-07 | DHCP VM support, multi-NIC cloud-init |
 | v0.2.1 | 2026-03-06 | ClusterClass (harvester-rke2), CLI generator (caphv-generate), Helm ClusterClass option |
 | v0.2.0 | 2026-03-06 | Harvester v1.7.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |

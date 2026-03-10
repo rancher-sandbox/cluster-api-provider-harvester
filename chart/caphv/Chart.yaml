@@ -2,11 +2,10 @@ apiVersion: v2
 name: caphv
 description: Cluster API Provider Harvester (CAPHV) - Infrastructure provider for provisioning Kubernetes clusters on Harvester HCI
 type: application
-version: 0.2.3
-appVersion: "v0.2.3"
+version: 0.2.7
+appVersion: "v0.2.7"
 home: https://github.com/rancher-sandbox/cluster-api-provider-harvester
 sources:
-  - https://github.com/rancher-sandbox/cluster-api-provider-harvester
   - https://github.com/rancher-sandbox/cluster-api-provider-harvester
 keywords:
   - cluster-api

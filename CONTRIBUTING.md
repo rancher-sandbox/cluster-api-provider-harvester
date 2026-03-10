@@ -8,7 +8,7 @@ Thank you for your interest in contributing to CAPHV (Cluster API Provider Harve
 
 - Go 1.24+ (see `go.mod` for exact version)
 - `kubectl` configured with access to a management cluster
-- Access to a Harvester HCI cluster (v1.4+)
+- Access to a Harvester HCI cluster (v1.7+)
 - [cert-manager](https://cert-manager.io/) installed on the management cluster (for webhooks)
 - Docker or Podman (for building container images)
 

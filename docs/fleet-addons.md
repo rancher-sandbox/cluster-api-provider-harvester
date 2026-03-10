@@ -21,17 +21,20 @@ CAPHV supports two addon management modes for deploying CNI configuration to wor
          ConfigMap     GitRepo ──► caphv-fleet-addons repo
          + CRS              │         ├── calico-config/
                             │         ├── canal-config/
-                            │         └── cilium-config/
+                            │         ├── cilium-config/
+                            │         └── harvester-csi/
                             ▼
                     Workload Cluster
                     ├── CCM (always CRS)
-                    ├── CSI (always CRS — controller-coupled)
+                    ├── CSI (CRS or Fleet — decoupled in v0.2.6)
                     └── CNI config (CRS or Fleet)
 ```
 
-### Why CCM and CSI stay in CRS
+### Why CCM stays in CRS
 
-The CAPHV controller (`reconcileCloudProviderConfig()`) injects the Harvester kubeconfig into the `cloud-config` Secret via the CSI ConfigMap CRS mechanism. Both the CCM and CSI depend on this Secret being present at bootstrap time, before Fleet agent can even connect. The controller is coupled to the CSI ConfigMap for kubeconfig injection — decoupling requires significant controller changes.
+The CCM depends on the `cloud-config` Secret being present at bootstrap time, before the Fleet agent can connect. The controller injects the Harvester kubeconfig into this Secret via a dedicated ConfigMap/CRS (`cloud-config-addon-<name>`).
+
+Since v0.2.6, the CSI driver has been decoupled from the cloud-config Secret and can be deployed via Fleet (see the `harvester-csi` bundle in the Fleet addons repository). In CRS mode, CSI is still deployed via its own ConfigMap/CRS as before.
 
 ### Why not `cni: none` + Fleet
 
@@ -82,8 +85,8 @@ This generates:
 - Cluster with `cni: calico` label and CNI annotations
 - `spec.clusterNetwork.pods.cidrBlocks` for pod CIDR
 - CCM ConfigMap + CRS (always)
-- CSI ConfigMap + CRS (always — controller-coupled)
-- Fleet `GitRepo` targeting the CNI config bundle
+- Cloud-config ConfigMap + CRS (always — contains Harvester kubeconfig)
+- Fleet `GitRepo` targeting the CSI and CNI config bundles
 - MachineHealthCheck
 
 ### CRS Mode (default)
@@ -130,6 +133,10 @@ These are stored as cluster annotations (`caphv.io/cni-*`) for reference and fut
 ```
 caphv-fleet-addons/
   fleet/
+    harvester-csi/
+      fleet.yaml                    # Bundle config (clusterSelector: csi=harvester)
+      manifests/
+        harvester-csi-driver.yaml   # CSI driver manifests
     calico-config/
       fleet.yaml                    # Bundle config (clusterSelector: cni=calico)
       manifests/
