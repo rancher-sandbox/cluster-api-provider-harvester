@@ -727,6 +727,11 @@ spec:
                 description: AllocatedIPAddress is the IP address allocated from the
                   VM IP pool for this machine.
                 type: string
+              allocatedPoolRef:
+                description: |-
+                  AllocatedPoolRef is the name of the IPPool from which AllocatedIPAddress was allocated.
+                  Used for accurate release when multiple pools are configured.
+                type: string
               conditions:
                 items:
                   description: Condition defines an observation of a Cluster API resource
