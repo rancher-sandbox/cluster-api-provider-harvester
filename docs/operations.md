@@ -38,7 +38,7 @@ spec:
   type: infrastructure
   version: v0.2.3
   fetchConfig:
-    url: https://github.com/jniedergang/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -142,7 +142,7 @@ kubectl get crd | grep harvester
 If CRDs were removed, re-apply them before proceeding:
 
 ```bash
-kubectl apply -f https://github.com/jniedergang/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml --selector='apiextensions.k8s.io/v1=CustomResourceDefinition'
+kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/v0.2.3/infrastructure-components.yaml --selector='apiextensions.k8s.io/v1=CustomResourceDefinition'
 ```
 
 ### Step 4: Create the CAPIProvider resource
