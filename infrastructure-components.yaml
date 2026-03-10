@@ -2766,7 +2766,7 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.uid
-        image: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.6
+        image: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
         livenessProbe:
           httpGet:
             path: /healthz
