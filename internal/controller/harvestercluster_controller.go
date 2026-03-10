@@ -880,7 +880,7 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 		Kind:    "ClusterList",
 	})
 
-	err := r.Client.List(ctx, provClusterList, client.InNamespace(scope.Cluster.Namespace))
+	err := r.List(ctx, provClusterList, client.InNamespace(scope.Cluster.Namespace))
 	if err != nil {
 		// CRD might not exist (no Rancher installed) — skip silently
 		logger.V(1).Info("Cannot list provisioning.cattle.io clusters, Rancher CRDs may not be installed", "error", err)
@@ -925,14 +925,14 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 		Kind:    "Cluster",
 	})
 
-	err = r.Client.Get(ctx, types.NamespacedName{Name: mgmtClusterName}, mgmtCluster)
+	err = r.Get(ctx, types.NamespacedName{Name: mgmtClusterName}, mgmtCluster)
 	if err != nil {
 		logger.V(1).Info("Cannot get management cluster, will retry", "mgmtCluster", mgmtClusterName, "error", err)
 		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
 			Type:    infrav1.FleetIntegrationReadyCondition,
 			Status:  apiv1.ConditionFalse,
 			Reason:  infrav1.FleetIntegrationInProgressReason,
-			Message: fmt.Sprintf("Waiting for management cluster %s", mgmtClusterName),
+			Message: "Waiting for management cluster " + mgmtClusterName,
 		})
 
 		return
@@ -944,7 +944,7 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 
 		patch := []byte(`{"spec":{"fleetWorkspaceName":"fleet-default"}}`)
 
-		err = r.Client.Patch(ctx, mgmtCluster, client.RawPatch(types.MergePatchType, patch))
+		err = r.Patch(ctx, mgmtCluster, client.RawPatch(types.MergePatchType, patch))
 		if err != nil {
 			logger.Error(err, "Failed to patch fleetWorkspaceName", "mgmtCluster", mgmtClusterName)
 			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
@@ -966,7 +966,7 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 		Kind:    "ClusterList",
 	})
 
-	err = r.Client.List(ctx, fleetClusterList, client.InNamespace("fleet-default"))
+	err = r.List(ctx, fleetClusterList, client.InNamespace("fleet-default"))
 	if err != nil {
 		logger.V(1).Info("Cannot list Fleet clusters, will retry", "error", err)
 		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
@@ -997,7 +997,7 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 			Type:    infrav1.FleetIntegrationReadyCondition,
 			Status:  apiv1.ConditionFalse,
 			Reason:  infrav1.FleetIntegrationInProgressReason,
-			Message: fmt.Sprintf("Waiting for Fleet cluster %s in fleet-default", mgmtClusterName),
+			Message: "Waiting for Fleet cluster " + mgmtClusterName + " in fleet-default",
 		})
 
 		return
@@ -1031,7 +1031,7 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 	if needsUpdate {
 		fleetCluster.SetLabels(existingLabels)
 
-		err = r.Client.Update(ctx, fleetCluster)
+		err = r.Update(ctx, fleetCluster)
 		if err != nil {
 			logger.Error(err, "Failed to update Fleet cluster labels", "fleetCluster", fleetCluster.GetName())
 			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
