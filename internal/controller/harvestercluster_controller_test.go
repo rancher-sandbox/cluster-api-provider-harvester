@@ -1459,7 +1459,7 @@ var _ = Describe("getLoadBalancerIP", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		ip, err := getLoadBalancerIP(hvCluster, hvFake)
+		ip, err := getLoadBalancerIP(context.TODO(), hvCluster, hvFake)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(ip).To(Equal("172.16.3.50"))
 	})
@@ -1471,7 +1471,7 @@ var _ = Describe("getLoadBalancerIP", func() {
 			Spec:       infrav1.HarvesterClusterSpec{TargetNamespace: "target-ns"},
 		}
 
-		_, err := getLoadBalancerIP(hvCluster, hvFake)
+		_, err := getLoadBalancerIP(context.TODO(), hvCluster, hvFake)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -1492,7 +1492,7 @@ var _ = Describe("getLoadBalancerIP", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = getLoadBalancerIP(hvCluster, hvFake)
+		_, err = getLoadBalancerIP(context.TODO(), hvCluster, hvFake)
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("empty"))
 	})
@@ -1523,7 +1523,7 @@ var _ = Describe("createIPPoolIfNotExists", func() {
 		}
 
 		// IPPools() is cluster-scoped in the fake, so pass "" for namespace
-		pool, err := createIPPoolIfNotExists(hvCluster, hvFake, "default/production", "")
+		pool, err := createIPPoolIfNotExists(context.TODO(), hvCluster, hvFake, "default/production", "")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(pool).ToNot(BeNil())
 		Expect(pool.Name).ToNot(BeEmpty())
@@ -1554,11 +1554,11 @@ var _ = Describe("createIPPoolIfNotExists", func() {
 		}
 
 		// Create pool first (pass "" for namespace since IPPools() is cluster-scoped in fake)
-		pool1, err := createIPPoolIfNotExists(hvCluster, hvFake, "default/vlan1", "")
+		pool1, err := createIPPoolIfNotExists(context.TODO(), hvCluster, hvFake, "default/vlan1", "")
 		Expect(err).ToNot(HaveOccurred())
 
 		// Create again - should get existing pool
-		pool2, err := createIPPoolIfNotExists(hvCluster, hvFake, "default/vlan1", "")
+		pool2, err := createIPPoolIfNotExists(context.TODO(), hvCluster, hvFake, "default/vlan1", "")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(pool2.Name).To(Equal(pool1.Name))
 	})
@@ -1579,7 +1579,7 @@ var _ = Describe("createIPPoolIfNotExists", func() {
 			},
 		}
 
-		pool, err := createIPPoolIfNotExists(hvCluster, hvFake, "default/net1", "")
+		pool, err := createIPPoolIfNotExists(context.TODO(), hvCluster, hvFake, "default/net1", "")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(pool.Name).ToNot(BeEmpty())
 

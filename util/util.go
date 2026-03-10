@@ -46,7 +46,7 @@ const (
 )
 
 // Healthcheck checks if the Harvester server is healthy by querying the /healthz endpoint.
-func Healthcheck(config *clientcmdapi.Config) (bool, error) {
+func Healthcheck(ctx context.Context, config *clientcmdapi.Config) (bool, error) {
 	httpTransport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return false, errors.New("unable to assert http.DefaultTransport as *http.Transport")
@@ -77,7 +77,7 @@ func Healthcheck(config *clientcmdapi.Config) (bool, error) {
 
 	healthcheckUrl := config.Clusters[currentCluster].Server + "/healthz"
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, healthcheckUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthcheckUrl, nil)
 	if err != nil {
 		return false, errors.Wrapf(err, "%s", "http request couldn't be create for url: "+healthcheckUrl)
 	}

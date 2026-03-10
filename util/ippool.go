@@ -158,7 +158,7 @@ func (s *Store) GetByID(id string, _ string) []net.IP {
 func MakeRange(r *lbv1beta1.Range) (*allocator.Range, error) {
 	ip, ipNet, err := net.ParseCIDR(r.Subnet)
 	if err != nil {
-		return nil, errors.Errorf("invalide range %+v", r)
+		return nil, errors.Errorf("invalid range %+v", r)
 	}
 
 	var defaultStart, defaultEnd, defaultGateway, start, end, gateway net.IP
@@ -201,8 +201,15 @@ func MakeRange(r *lbv1beta1.Range) (*allocator.Range, error) {
 	}
 
 	// Ensure start IP is smaller than end IP
-	startAddr, _ := netip.AddrFromSlice(start)
-	endAddr, _ := netip.AddrFromSlice(end)
+	startAddr, ok := netip.AddrFromSlice(start)
+	if !ok {
+		return nil, errors.Errorf("invalid start IP address: %v", start)
+	}
+
+	endAddr, ok := netip.AddrFromSlice(end)
+	if !ok {
+		return nil, errors.Errorf("invalid end IP address: %v", end)
+	}
 
 	if startAddr.Compare(endAddr) > 0 {
 		start, end = end, start

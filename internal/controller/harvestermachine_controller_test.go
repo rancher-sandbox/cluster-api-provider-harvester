@@ -3015,7 +3015,7 @@ var _ = Describe("getIPAddressesFromVMI", func() {
 		}
 		hvClient := hvfake.NewSimpleClientset(vmi)
 
-		addresses, err := getIPAddressesFromVMI(vm, hvClient)
+		addresses, err := getIPAddressesFromVMI(context.TODO(), vm, hvClient)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(addresses).To(HaveLen(2))
 		Expect(addresses[0].Address).To(Equal("172.16.3.42"))
@@ -3030,7 +3030,7 @@ var _ = Describe("getIPAddressesFromVMI", func() {
 		}
 		hvClient := hvfake.NewSimpleClientset() // no VMI
 
-		_, err := getIPAddressesFromVMI(vm, hvClient)
+		_, err := getIPAddressesFromVMI(context.TODO(), vm, hvClient)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -3046,7 +3046,7 @@ var _ = Describe("getIPAddressesFromVMI", func() {
 		}
 		hvClient := hvfake.NewSimpleClientset(vmi)
 
-		addresses, err := getIPAddressesFromVMI(vm, hvClient)
+		addresses, err := getIPAddressesFromVMI(context.TODO(), vm, hvClient)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(addresses).To(BeEmpty())
 	})

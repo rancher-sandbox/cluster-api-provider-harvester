@@ -95,7 +95,7 @@ var _ = Describe("GetKubeconfigFromClusterAndCheck", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Use the GetCloudConfigB64 function and get the resulting cloud-config B64 encoded string
-		resultingKubeconfigB64, err = GetCloudConfigB64(hvClient, saName, namespace, harvesterServerURL)
+		resultingKubeconfigB64, err = GetCloudConfigB64(context.TODO(), hvClient, saName, namespace, harvesterServerURL)
 		Expect(err).ToNot(HaveOccurred())
 
 		// Decode the resulting cloud-config B64 encoded string and validate it
@@ -296,7 +296,7 @@ var _ = Describe("GetDataKeyFromConfigMap in cloud_provider", func() {
 var _ = Describe("createServiceAccountIfNotExists", func() {
 	It("should create a service account when it does not exist", func() {
 		hvClient := hvfake.NewSimpleClientset()
-		err := createServiceAccountIfNotExists(hvClient, "test-sa", "default")
+		err := createServiceAccountIfNotExists(context.TODO(), hvClient, "test-sa", "default")
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the SA was created
@@ -313,7 +313,7 @@ var _ = Describe("createServiceAccountIfNotExists", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		err = createServiceAccountIfNotExists(hvClient, "existing-sa", "default")
+		err = createServiceAccountIfNotExists(context.TODO(), hvClient, "existing-sa", "default")
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
@@ -325,7 +325,7 @@ var _ = Describe("createServiceAccountIfNotExists error handling", func() {
 		hvClient.PrependReactor("get", "serviceaccounts", func(_ k8stesting.Action) (bool, runtime.Object, error) {
 			return true, nil, errors.New("injected API error")
 		})
-		err := createServiceAccountIfNotExists(hvClient, "test-sa", "default")
+		err := createServiceAccountIfNotExists(context.TODO(), hvClient, "test-sa", "default")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("injected API error"))
 	})
@@ -337,7 +337,7 @@ var _ = Describe("createClusterRoleBindingIfNotExists error handling", func() {
 		hvClient.PrependReactor("get", "clusterrolebindings", func(_ k8stesting.Action) (bool, runtime.Object, error) {
 			return true, nil, errors.New("injected CRB error")
 		})
-		err := createClusterRoleBindingIfNotExists(hvClient, "test-crb", "default")
+		err := createClusterRoleBindingIfNotExists(context.TODO(), hvClient, "test-crb", "default")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("injected CRB error"))
 	})
@@ -346,7 +346,7 @@ var _ = Describe("createClusterRoleBindingIfNotExists error handling", func() {
 var _ = Describe("createClusterRoleBindingIfNotExists", func() {
 	It("should create a cluster role binding when it does not exist", func() {
 		hvClient := hvfake.NewSimpleClientset()
-		err := createClusterRoleBindingIfNotExists(hvClient, "test-crb", "default")
+		err := createClusterRoleBindingIfNotExists(context.TODO(), hvClient, "test-crb", "default")
 		Expect(err).ToNot(HaveOccurred())
 
 		// Verify the CRB was created
@@ -369,7 +369,7 @@ var _ = Describe("createClusterRoleBindingIfNotExists", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		err = createClusterRoleBindingIfNotExists(hvClient, "existing-crb", "default")
+		err = createClusterRoleBindingIfNotExists(context.TODO(), hvClient, "existing-crb", "default")
 		Expect(err).ToNot(HaveOccurred())
 	})
 })
@@ -377,7 +377,7 @@ var _ = Describe("createClusterRoleBindingIfNotExists", func() {
 var _ = Describe("getKubeConfig", func() {
 	It("should return error when service account does not exist", func() {
 		hvClient := hvfake.NewSimpleClientset()
-		_, err := getKubeConfig(hvClient, "nonexistent", "default", "https://harvester.local:6443")
+		_, err := getKubeConfig(context.TODO(), hvClient, "nonexistent", "default", "https://harvester.local:6443")
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -417,7 +417,7 @@ var _ = Describe("getKubeConfig", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		result, err := getKubeConfig(hvClient, "test-sa", "default", "https://harvester.local:6443")
+		result, err := getKubeConfig(context.TODO(), hvClient, "test-sa", "default", "https://harvester.local:6443")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(result).ToNot(BeEmpty())
 
@@ -447,7 +447,7 @@ var _ = Describe("getKubeConfig", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// No ingress-expose service - should fail
-		_, err = getKubeConfig(hvClient, "test-sa2", "default", "https://harvester.local:6443")
+		_, err = getKubeConfig(context.TODO(), hvClient, "test-sa2", "default", "https://harvester.local:6443")
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("ingress-expose"))
 	})
@@ -481,7 +481,7 @@ var _ = Describe("getKubeConfig", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		result, err := getKubeConfig(hvClient, "test-sa3", "default", "https://original-url:6443")
+		result, err := getKubeConfig(context.TODO(), hvClient, "test-sa3", "default", "https://original-url:6443")
 		Expect(err).ToNot(HaveOccurred())
 
 		// Decode and check it uses the original URL
@@ -495,7 +495,7 @@ var _ = Describe("GetCloudConfigB64", func() {
 		hvClient := hvfake.NewSimpleClientset()
 		// Don't pre-create SA - createServiceAccountIfNotExists will create it,
 		// but getKubeConfig will fail because there's no token secret or ingress-expose service
-		_, err := GetCloudConfigB64(hvClient, "fail-sa", "default", "https://harvester.local:6443")
+		_, err := GetCloudConfigB64(context.TODO(), hvClient, "fail-sa", "default", "https://harvester.local:6443")
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -525,7 +525,7 @@ var _ = Describe("GetCloudConfigB64", func() {
 		}, metav1.CreateOptions{})
 		Expect(err).ToNot(HaveOccurred())
 
-		result, err := GetCloudConfigB64(hvClient, "cloud-sa", "default", "https://harvester.local:6443")
+		result, err := GetCloudConfigB64(context.TODO(), hvClient, "cloud-sa", "default", "https://harvester.local:6443")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(result).ToNot(BeEmpty())
 

@@ -244,6 +244,8 @@ func (r *HarvesterMachineReconciler) SetupWithManager(ctx context.Context, mgr c
 }
 
 // ReconcileNormal reconciles the HarvesterMachine object.
+//
+//nolint:gocyclo // complexity increased by finalizer migration logic, will decrease once legacy support is removed
 func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconcile.Result, rerr error) {
 	reconcileStart := time.Now()
 
@@ -268,6 +270,16 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 		hvScope.HarvesterMachine.Status.Ready = false
 		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
+
+		return ctrl.Result{}, nil
+	}
+
+	// Migrate legacy finalizer: if the object has the old finalizer but not the new one, swap them.
+	if controllerutil.ContainsFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizerLegacy) &&
+		!controllerutil.ContainsFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer) &&
+		hvScope.HarvesterMachine.DeletionTimestamp.IsZero() {
+		controllerutil.AddFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer)
+		controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizerLegacy)
 
 		return ctrl.Result{}, nil
 	}
@@ -357,7 +369,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 	// check if Harvester has a machine with the same name and namespace
 	existingVM, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
-		context.TODO(), hvScope.HarvesterMachine.Name, metav1.GetOptions{})
+		hvScope.Ctx, hvScope.HarvesterMachine.Name, metav1.GetOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		logger.Error(err, "unable to check existence of VM from Harvester")
 
@@ -379,7 +391,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		})
 
 		if isVMRunning(existingVM) {
-			ipAddresses, err := getIPAddressesFromVMI(existingVM, hvScope.HarvesterClient)
+			ipAddresses, err := getIPAddressesFromVMI(hvScope.Ctx, existingVM, hvScope.HarvesterClient)
 			if err != nil {
 				hvScope.HarvesterMachine.Status.Ready = false
 				hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
@@ -611,10 +623,12 @@ func isVMRunning(vm *kubevirtv1.VirtualMachine) bool {
 		strategy == kubevirtv1.RunStrategyOnce
 }
 
-func getIPAddressesFromVMI(existingVM *kubevirtv1.VirtualMachine, hvClient harvclient.Interface) ([]clusterv1.MachineAddress, error) {
+func getIPAddressesFromVMI(
+	ctx context.Context, existingVM *kubevirtv1.VirtualMachine, hvClient harvclient.Interface,
+) ([]clusterv1.MachineAddress, error) {
 	ipAddresses := []clusterv1.MachineAddress{}
 
-	vmInstance, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).Get(context.TODO(), existingVM.Name, metav1.GetOptions{})
+	vmInstance, err := hvClient.KubevirtV1().VirtualMachineInstances(existingVM.Namespace).Get(ctx, existingVM.Name, metav1.GetOptions{})
 	if err != nil {
 		// if apierrors.IsNotFound(err) {
 		// 	return ipAddresses, fmt.Errorf("no VM instance found for VM %s", existingVM.Name)
@@ -710,7 +724,7 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 	}
 
 	hvCreatedMachine, err := hvScope.HarvesterClient.KubevirtV1().VirtualMachines(targetNS).Create(
-		context.TODO(),
+		hvScope.Ctx,
 		ubuntuVM,
 		metav1.CreateOptions{})
 	if err != nil {
@@ -778,7 +792,7 @@ func getImageByName(imageName, defaultNamespace string, hvScope *Scope) (*harves
 	}
 
 	foundImages, err := hvScope.HarvesterClient.HarvesterhciV1beta1().VirtualMachineImages(vmImageNamespacedName.Namespace).List(
-		context.TODO(), metav1.ListOptions{})
+		hvScope.Ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -809,7 +823,7 @@ func buildVMTemplate(hvScope *Scope,
 	}
 
 	sshKey, err = hvScope.HarvesterClient.HarvesterhciV1beta1().KeyPairs(keyPairFullName.Namespace).Get(
-		context.TODO(), keyPairFullName.Name, metav1.GetOptions{})
+		hvScope.Ctx, keyPairFullName.Name, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			err = fmt.Errorf(
@@ -887,20 +901,20 @@ runcmd:
 
 	// check if secret already exists
 	_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Get(
-		context.TODO(), hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
+		hvScope.Ctx, hvScope.HarvesterMachine.Name+"-cloud-init", metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			hvScope.Logger.V(3).Info("unable to get cloud-init secret, error was different than NotFound")
 		} else {
 			_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Create(
-				context.TODO(), cloudInitSecret, metav1.CreateOptions{})
+				hvScope.Ctx, cloudInitSecret, metav1.CreateOptions{})
 			if err != nil {
 				return nil, errors.Wrap(err, "unable to create cloud-init secret")
 			}
 		}
 	} else {
 		_, err = hvScope.HarvesterClient.CoreV1().Secrets(hvScope.HarvesterCluster.Spec.TargetNamespace).Update(
-			context.TODO(), cloudInitSecret, metav1.UpdateOptions{})
+			hvScope.Ctx, cloudInitSecret, metav1.UpdateOptions{})
 		if err != nil {
 			return nil, errors.Wrap(err, "unable to update cloud-init secret")
 		}
@@ -1272,7 +1286,7 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 
 	for _, poolRef := range poolRefs {
 		pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-			context.TODO(), poolRef, metav1.GetOptions{})
+			hvScope.Ctx, poolRef, metav1.GetOptions{})
 		if err != nil {
 			logger.V(1).Info("Failed to get IP pool, trying next", "pool", poolRef, "error", err)
 			lastErr = errors.Wrapf(err, "failed to get VM IP pool %s", poolRef)
@@ -1306,7 +1320,7 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 
 		// Update pool in Harvester
 		_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
-			context.TODO(), pool, metav1.UpdateOptions{})
+			hvScope.Ctx, pool, metav1.UpdateOptions{})
 		if err != nil {
 			caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
 
@@ -1357,7 +1371,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 	}
 
 	pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
-		context.TODO(), poolRef, metav1.GetOptions{})
+		hvScope.Ctx, poolRef, metav1.GetOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to get VM IP pool for release, skipping", "error", err)
 
@@ -1381,7 +1395,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 	}
 
 	_, err = hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Update(
-		context.TODO(), pool, metav1.UpdateOptions{})
+		hvScope.Ctx, pool, metav1.UpdateOptions{})
 	if err != nil {
 		logger.Info("Warning: failed to update pool after IP release", "error", err)
 
@@ -1493,6 +1507,9 @@ func (r *HarvesterMachineReconciler) ReconcileDelete(hvScope Scope) (res ctrl.Re
 			return ctrl.Result{RequeueAfter: requeueDelay}, nil
 		}
 	}
+
+	// Remove both new and legacy finalizers to handle objects from before the migration.
+	controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizerLegacy)
 
 	if ok := controllerutil.RemoveFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizer); !ok {
 		return ctrl.Result{}, fmt.Errorf("unable to remove finalizer %s from HarvesterMachine %s/%s",

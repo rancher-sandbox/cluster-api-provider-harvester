@@ -71,6 +71,9 @@ spec:
         image: controller:latest
         name: manager
         securityContext:
+          # Privileged required: the controller manages VMs and network resources
+          # on the Harvester cluster via the KubeVirt and load-balancer APIs, which
+          # require elevated permissions for cross-cluster operations.
           privileged: true
         env:
         - name: POD_NAMESPACE

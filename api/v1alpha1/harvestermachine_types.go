@@ -25,9 +25,12 @@ import (
 )
 
 const (
-	// MachineFinalizer allows ReconcileHarvesterMachine to clean up resources associated with HarvesterMachine before.
+	// MachineFinalizer allows ReconcileHarvesterMachine to clean up resources associated with HarvesterMachine before
 	// removing it from the apiserver.
-	MachineFinalizer = "harvestermachine.infrastructure.cluster.x-k8s.io"
+	MachineFinalizer = "harvestermachine.infrastructure.cluster.x-k8s.io/finalizer"
+
+	// MachineFinalizerLegacy is the old finalizer name without path segment, kept for migration.
+	MachineFinalizerLegacy = "harvestermachine.infrastructure.cluster.x-k8s.io"
 )
 
 const (

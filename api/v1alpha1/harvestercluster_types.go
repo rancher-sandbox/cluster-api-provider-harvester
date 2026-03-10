@@ -24,8 +24,12 @@ import (
 )
 
 const (
-	// ClusterFinalizer allows ReconcileHarvesterCluster to clean up resources associated with HarvesterCluster before.
-	ClusterFinalizer = "harvester.infrastructure.cluster.x-k8s.io"
+	// ClusterFinalizer allows ReconcileHarvesterCluster to clean up resources associated with HarvesterCluster before
+	// removing it from the apiserver.
+	ClusterFinalizer = "harvester.infrastructure.cluster.x-k8s.io/finalizer"
+
+	// ClusterFinalizerLegacy is the old finalizer name without path segment, kept for migration.
+	ClusterFinalizerLegacy = "harvester.infrastructure.cluster.x-k8s.io"
 	// DHCP is one of the possible values for the IPAMType field in the LoadBalancerConfig.
 	DHCP = "dhcp"
 	// POOL is one of the possible values for the IPAMType field in the LoadBalancerConfig.

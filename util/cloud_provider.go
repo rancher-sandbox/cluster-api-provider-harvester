@@ -48,25 +48,25 @@ const (
 )
 
 // GetCloudConfigB64 returns the kubeconfig for the service account.
-func GetCloudConfigB64(hvClient lbclient.Interface, saName string, namespace string, harvesterServerURL string) (string, error) {
-	err := createServiceAccountIfNotExists(hvClient, saName, namespace)
+func GetCloudConfigB64(ctx context.Context, hvClient lbclient.Interface, saName string, namespace string, harvesterServerURL string) (string, error) {
+	err := createServiceAccountIfNotExists(ctx, hvClient, saName, namespace)
 	if err != nil {
 		return "", err
 	}
 
-	err = createClusterRoleBindingIfNotExists(hvClient, saName, namespace)
+	err = createClusterRoleBindingIfNotExists(ctx, hvClient, saName, namespace)
 	if err != nil {
 		return "", err
 	}
 
-	kubeconfig, err := getKubeConfig(hvClient, saName, namespace, harvesterServerURL)
+	kubeconfig, err := getKubeConfig(ctx, hvClient, saName, namespace, harvesterServerURL)
 
 	return kubeconfig, err
 }
 
 // createServiceAccountIfNotExists creates a service account if it does not exist.
-func createServiceAccountIfNotExists(hvClient lbclient.Interface, saName string, namespace string) error {
-	_, err := hvClient.CoreV1().ServiceAccounts(namespace).Get(context.Background(), saName, metav1.GetOptions{})
+func createServiceAccountIfNotExists(ctx context.Context, hvClient lbclient.Interface, saName string, namespace string) error {
+	_, err := hvClient.CoreV1().ServiceAccounts(namespace).Get(ctx, saName, metav1.GetOptions{})
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
@@ -78,7 +78,7 @@ func createServiceAccountIfNotExists(hvClient lbclient.Interface, saName string,
 			},
 		}
 
-		_, err := hvClient.CoreV1().ServiceAccounts(namespace).Create(context.Background(), serviceAccount, metav1.CreateOptions{})
+		_, err := hvClient.CoreV1().ServiceAccounts(namespace).Create(ctx, serviceAccount, metav1.CreateOptions{})
 		if err != nil {
 			return err
 		}
@@ -88,8 +88,8 @@ func createServiceAccountIfNotExists(hvClient lbclient.Interface, saName string,
 }
 
 // createClusterRoleBindingIfNotExists creates a cluster role binding for the Cloud Provider's ServiceAccount if it does not exist.
-func createClusterRoleBindingIfNotExists(hvClient lbclient.Interface, saName string, namespace string) error {
-	_, err := hvClient.RbacV1().ClusterRoleBindings().Get(context.Background(), saName, metav1.GetOptions{})
+func createClusterRoleBindingIfNotExists(ctx context.Context, hvClient lbclient.Interface, saName string, namespace string) error {
+	_, err := hvClient.RbacV1().ClusterRoleBindings().Get(ctx, saName, metav1.GetOptions{})
 	if err == nil {
 		return nil
 	} else if !apierrors.IsNotFound(err) {
@@ -113,7 +113,7 @@ func createClusterRoleBindingIfNotExists(hvClient lbclient.Interface, saName str
 		},
 	}
 
-	_, err = hvClient.RbacV1().ClusterRoleBindings().Create(context.Background(), clusterRoleBinding, metav1.CreateOptions{})
+	_, err = hvClient.RbacV1().ClusterRoleBindings().Create(ctx, clusterRoleBinding, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
@@ -122,8 +122,8 @@ func createClusterRoleBindingIfNotExists(hvClient lbclient.Interface, saName str
 }
 
 // getKubeConfig returns a kubeconfig from the Secret associated with the ServiceAccount.
-func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string, harvesterServerURL string) (string, error) {
-	sa, err := hvClient.CoreV1().ServiceAccounts(namespace).Get(context.Background(), saName, metav1.GetOptions{})
+func getKubeConfig(ctx context.Context, hvClient lbclient.Interface, saName string, namespace string, harvesterServerURL string) (string, error) {
+	sa, err := hvClient.CoreV1().ServiceAccounts(namespace).Get(ctx, saName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
@@ -133,7 +133,7 @@ func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string,
 	secretName := serviceAccountName + "-token"
 
 	// Create a secret for the service account
-	_, err = hvClient.CoreV1().Secrets(namespace).Create(context.Background(), &corev1.Secret{
+	_, err = hvClient.CoreV1().Secrets(namespace).Create(ctx, &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: secretName,
 			Annotations: map[string]string{
@@ -157,13 +157,13 @@ func getKubeConfig(hvClient lbclient.Interface, saName string, namespace string,
 
 	time.Sleep(time.Second)
 
-	secret, err := hvClient.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
+	secret, err := hvClient.CoreV1().Secrets(namespace).Get(ctx, secretName, metav1.GetOptions{})
 	if err != nil {
 		return "", err
 	}
 
 	// Get Endpoint from Service
-	vipSVC, err := hvClient.CoreV1().Services("kube-system").Get(context.Background(), "ingress-expose", metav1.GetOptions{})
+	vipSVC, err := hvClient.CoreV1().Services("kube-system").Get(ctx, "ingress-expose", metav1.GetOptions{})
 	if err != nil {
 		return "", errors.Wrap(err, "unable to compute the Harvester Endpoint: problem in getting the ingress-expose service")
 	}
