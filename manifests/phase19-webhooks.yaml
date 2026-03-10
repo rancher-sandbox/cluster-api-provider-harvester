@@ -1,0 +1,90 @@
+# Phase 19 — CAPHV Validating Webhooks
+# Requires: cert-manager installed and running
+# Deploy: kubectl apply -f phase19-webhooks.yaml
+---
+# Self-signed Issuer for webhook TLS
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: caphv-selfsigned
+  namespace: caphv-system
+spec:
+  selfSigned: {}
+---
+# Certificate for webhook server
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: caphv-webhook-cert
+  namespace: caphv-system
+spec:
+  secretName: caphv-webhook-tls
+  issuerRef:
+    name: caphv-selfsigned
+    kind: Issuer
+  dnsNames:
+    - caphv-webhook-service.caphv-system.svc
+    - caphv-webhook-service.caphv-system.svc.cluster.local
+---
+# Service exposing the webhook endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: caphv-webhook-service
+  namespace: caphv-system
+spec:
+  ports:
+    - port: 443
+      targetPort: 9443
+      protocol: TCP
+  selector:
+    control-plane: controller-manager
+---
+# ValidatingWebhookConfiguration with cert-manager CA injection
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: caphv-validating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: caphv-system/caphv-webhook-cert
+webhooks:
+  - name: vharvestermachine.kb.io
+    clientConfig:
+      service:
+        name: caphv-webhook-service
+        namespace: caphv-system
+        path: /validate-infrastructure-cluster-x-k8s-io-v1alpha1-harvestermachine
+    rules:
+      - apiGroups:
+          - infrastructure.cluster.x-k8s.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - harvestermachines
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions:
+      - v1
+  - name: vharvestercluster.kb.io
+    clientConfig:
+      service:
+        name: caphv-webhook-service
+        namespace: caphv-system
+        path: /validate-infrastructure-cluster-x-k8s-io-v1alpha1-harvestercluster
+    rules:
+      - apiGroups:
+          - infrastructure.cluster.x-k8s.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - harvesterclusters
+    failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions:
+      - v1

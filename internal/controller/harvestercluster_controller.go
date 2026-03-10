@@ -231,6 +231,12 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		return ctrl.Result{}, nil
 	}
 
+	// Reconcile VM IP Pool if VMNetworkConfig is set
+	if err := r.reconcileVMIPPool(scope); err != nil {
+		logger.Error(err, "failed to reconcile VM IP pool")
+		return ctrl.Result{RequeueAfter: requeueTimeShort}, err
+	}
+
 	// Set TargetNamespaceReady condition to in progress
 	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
 		Type:    infrav1.TargetNamespaceReadyCondition,
@@ -698,6 +704,26 @@ func (r *HarvesterClusterReconciler) ReconcileDelete(scope *ClusterScope) (ctrl.
 	}
 
 	logger.V(5).Info("IP Pool deleted successfully") //nolint:mnd
+
+	// Delete VM IP pool if created by controller (via VMNetworkConfig)
+	if scope.HarvesterCluster.Spec.VMNetworkConfig != nil && scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef != "" {
+		vmPoolName := scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef
+
+		err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Delete(
+			context.TODO(), vmPoolName, v1.DeleteOptions{})
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				logger.Error(err, "unable to delete VM IP Pool in Harvester", "pool", vmPoolName)
+
+				return ctrl.Result{RequeueAfter: requeueTimeLong}, err
+			}
+
+			logger.Info("VM IP Pool not found, skipping ...", "pool", vmPoolName)
+		} else {
+			logger.Info("VM IP Pool deleted", "pool", vmPoolName)
+		}
+	}
+
 	logger.Info("Removing finalizer from HarvesterCluster ...",
 		"cluster-name", scope.HarvesterCluster.Name,
 		"cluster-namespace", scope.HarvesterCluster.Namespace)
@@ -779,6 +805,130 @@ func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *Cluster
 		Status:  apiv1.ConditionTrue,
 		Reason:  infrav1.CloudProviderConfigGeneratedSuccessfullyReason,
 		Message: "Cloud Provider Config was generated successfully",
+	})
+
+	return nil
+}
+
+// reconcileVMIPPool ensures a VM IP pool exists for static IP allocation if VMNetworkConfig is set.
+func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) error {
+	vmNetCfg := scope.HarvesterCluster.Spec.VMNetworkConfig
+	if vmNetCfg == nil {
+		return nil
+	}
+
+	// If IPPoolRef is already set, verify pool exists
+	if vmNetCfg.IPPoolRef != "" {
+		_, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+			context.TODO(), vmNetCfg.IPPoolRef, v1.GetOptions{})
+		if err != nil {
+			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				Type:    infrav1.VMIPPoolReadyCondition,
+				Status:  apiv1.ConditionFalse,
+				Reason:  infrav1.VMIPPoolCreationFailedReason,
+				Message: fmt.Sprintf("Referenced VM IP pool %s not found: %v", vmNetCfg.IPPoolRef, err),
+			})
+
+			return errors.Wrapf(err, "referenced VM IP pool %s not found", vmNetCfg.IPPoolRef)
+		}
+
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.VMIPPoolReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  infrav1.VMIPPoolReadyReason,
+			Message: fmt.Sprintf("VM IP pool %s is ready", vmNetCfg.IPPoolRef),
+		})
+
+		return nil
+	}
+
+	// IPPool is set, create pool with generated name
+	if vmNetCfg.IPPool == nil {
+		return fmt.Errorf("VMNetworkConfig requires either IPPoolRef or IPPool to be set")
+	}
+
+	poolName := locutil.GenerateRFC1035Name([]string{
+		scope.HarvesterCluster.Namespace,
+		scope.HarvesterCluster.Name,
+		"vm-ippool",
+	})
+
+	// Check if pool already exists
+	existingPool, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+		context.TODO(), poolName, v1.GetOptions{})
+	if err == nil {
+		// Pool exists, update the ref
+		scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef = existingPool.Name
+
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.VMIPPoolReadyCondition,
+			Status:  apiv1.ConditionTrue,
+			Reason:  infrav1.VMIPPoolReadyReason,
+			Message: fmt.Sprintf("VM IP pool %s is ready", existingPool.Name),
+		})
+
+		return nil
+	}
+
+	if !apierrors.IsNotFound(err) {
+		return errors.Wrapf(err, "failed to check for existing VM IP pool %s", poolName)
+	}
+
+	// Create the pool
+	ipPoolToCreate := &lbv1beta1.IPPool{
+		ObjectMeta: v1.ObjectMeta{
+			Name: poolName,
+		},
+		Spec: lbv1beta1.IPPoolSpec{
+			Description: fmt.Sprintf("VM IP Pool for cluster %s/%s", scope.HarvesterCluster.Namespace, scope.HarvesterCluster.Name),
+			Ranges: []lbv1beta1.Range{
+				{
+					Subnet:     vmNetCfg.IPPool.Subnet,
+					Gateway:    vmNetCfg.IPPool.Gateway,
+					RangeStart: vmNetCfg.IPPool.RangeStart,
+					RangeEnd:   vmNetCfg.IPPool.RangeEnd,
+				},
+			},
+			Selector: lbv1beta1.Selector{
+				Network: vmNetCfg.IPPool.VMNetwork,
+			},
+		},
+	}
+
+	createdPool, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Create(
+		context.TODO(), ipPoolToCreate, v1.CreateOptions{})
+	if err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			existingPool, getErr := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
+				context.TODO(), poolName, v1.GetOptions{})
+			if getErr != nil {
+				return errors.Wrapf(getErr, "pool %s already exists but failed to retrieve", poolName)
+			}
+
+			scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef = existingPool.Name
+
+			return nil
+		}
+
+		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			Type:    infrav1.VMIPPoolReadyCondition,
+			Status:  apiv1.ConditionFalse,
+			Reason:  infrav1.VMIPPoolCreationFailedReason,
+			Message: fmt.Sprintf("Failed to create VM IP pool: %v", err),
+		})
+
+		return errors.Wrap(err, "failed to create VM IP pool")
+	}
+
+	scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef = createdPool.Name
+
+	scope.Logger.Info("Created VM IP pool", "name", createdPool.Name)
+
+	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		Type:    infrav1.VMIPPoolReadyCondition,
+		Status:  apiv1.ConditionTrue,
+		Reason:  infrav1.VMIPPoolReadyReason,
+		Message: fmt.Sprintf("VM IP pool %s created successfully", createdPool.Name),
 	})
 
 	return nil

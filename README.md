@@ -1,153 +1,248 @@
-# cluster-api-provider-harvester
+# Cluster API Provider Harvester (CAPHV)
 
-This project has begun as a [Hack Week 23](https://hackweek.opensuse.org/23/projects/cluster-api-provider-for-harvester) project. It is still in a very early phase. Please do not use in Production.
+> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.6.1 compatibility and production-ready features.
 
-## What is Cluster API Provider Harvester (CAPHV)
+## Overview
 
-The [Cluster API](https://cluster-api.sigs.k8s.io/) brings declarative, Kubernetes-style APIs to cluster creation, configuration and management.
+CAPHV is a [Cluster API](https://cluster-api.sigs.k8s.io/) Infrastructure Provider for provisioning Kubernetes clusters on [Harvester HCI](https://harvesterhci.io/).
 
-Cluster API Provider Harvester is __Cluster API Infrastructure Provider__ for provisioning Kubernetes Clusters on [Harvester](https://harvesterhci.io/).
+This fork (v0.2.0) adds significant enhancements over upstream v0.1.6:
 
-At this stage, the Provider has been tested on a single environment, with Harvester v1.2.0 using two Control Plane/Bootstrap providers: [Kubeadm](https://github.com/kubernetes-sigs/cluster-api/tree/main/controlplane/kubeadm) and [RKE2](https://github.com/rancher-sandbox/cluster-api-provider-rke2).
+| Feature | Upstream v0.1.x | This fork v0.2.0 |
+|---------|----------------|-------------------|
+| Harvester compatibility | v1.2.0 | v1.6.1 |
+| Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
+| IP allocation | Manual / DHCP | Automatic from Harvester IPPool |
+| Cloud-init | Basic | Network-config v1 (SLES), static IP, custom merge |
+| Cloud provider bootstrap | Manual fixes needed | Automatic (hostNetwork, RBAC, tolerations) |
+| Node initialization | Manual providerID | Automatic from management cluster |
+| etcd cleanup | Manual | Automatic on CP machine deletion |
+| Validating webhooks | None | HarvesterMachine + HarvesterCluster |
+| Boot order | Not supported | Configurable per-disk |
+| VM runStrategy | Deprecated `spec.running` | `spec.runStrategy: Always` |
+| MachineHealthCheck | Untested | Tested, full auto-remediation |
+| Rolling K8s upgrade | Untested | Tested (CP + workers) |
+| E2E tests | Kubebuilder scaffold only | 18 integration tests (live cluster) |
+| Helm chart | None | Full chart with webhook support |
 
-The [templates](https://github.com/rancher-sandbox/cluster-api-provider-harvester/tree/main/templates) folder contains examples of such configurations.
+## Prerequisites
 
-## Getting Started
-Cluster API Provider Harvester is compliant with the `clusterctl` contract, which means that `clusterctl` simplifies its deployment to the CAPI Management Cluster. In this Getting Started guide, we will be using the Harvester Provider with the `RKE2` provider (also called `CAPRKE2`).
+- Harvester HCI v1.6.x cluster
+- Management cluster (RKE2 recommended) with:
+  - Cluster API Core (v1.10+)
+  - RKE2 Bootstrap + ControlPlane providers (v0.21+)
+  - Rancher Turtles (optional, for automatic Rancher import)
+  - cert-manager (required if webhooks enabled)
+- Harvester identity Secret (kubeconfig for the target Harvester cluster)
+- SSH KeyPair created on Harvester
+- VM image uploaded to Harvester (SLES 15 SP7 recommended)
+- IPPool configured on Harvester (for automatic IP allocation)
 
-### Management Cluster
+## Installation
 
-In order to use this provider, you need to have a management cluster available to you and have your current KUBECONFIG context set to talk to that cluster. If you do not have a cluster available to you, you can create a `kind` cluster. These are the steps needed to achieve that:
-1. Ensure kind is installed (https://kind.sigs.k8s.io/docs/user/quick-start/#installation)
-2. Ensure `clusterctl` (more information [here](https://cluster-api.sigs.k8s.io/user/quick-start#install-clusterctl)) and `kubectl` (more information [here](https://kubernetes.io/docs/tasks/tools/#kubectl)) are installed.
-3. Create a special `kind` configuration file if you intend to use the Docker infrastructure provider:
+### Option 1: Helm Chart
 
 ```bash
-cat > kind-cluster-with-extramounts.yaml <<EOF
+# Without webhooks
+helm install caphv chart/caphv/ \
+  -n caphv-system --create-namespace \
+  --set image.repository=<your-registry>/caphv-controller \
+  --set image.tag=v0.2.0
+
+# With webhooks (requires cert-manager)
+helm install caphv chart/caphv/ \
+  -n caphv-system --create-namespace \
+  --set image.repository=<your-registry>/caphv-controller \
+  --set image.tag=v0.2.0 \
+  --set webhooks.enabled=true \
+  --set webhooks.certManager.enabled=true
+```
+
+### Option 2: Kustomize
+
+```bash
+# Build and push the image
+make docker-build docker-push IMG=<your-registry>/caphv-controller:v0.2.0
+
+# Deploy
+make deploy IMG=<your-registry>/caphv-controller:v0.2.0
+```
+
+### Option 3: Manual (standalone manifests)
+
+```bash
+kubectl apply -f out/infrastructure-components.yaml
+```
+
+## Quick Start
+
+### 1. Create the identity Secret
+
+```bash
+kubectl create secret generic hv-identity-secret \
+  -n <namespace> \
+  --from-file=kubeconfig=<path-to-harvester-kubeconfig>
+```
+
+### 2. Create a Cluster
+
+```yaml
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-name: capi-test
-nodes:
-- role: control-plane
-  extraMounts:
-    - hostPath: /var/run/docker.sock
-      containerPath: /var/run/docker.sock
-EOF
+metadata:
+  name: my-cluster
+  namespace: my-namespace
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: [10.52.0.0/16]
+    services:
+      cidrBlocks: [10.53.0.0/16]
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: RKE2ControlPlane
+    name: my-cluster-cp
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    kind: HarvesterCluster
+    name: my-cluster-hv
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterCluster
+metadata:
+  name: my-cluster-hv
+  namespace: my-namespace
+spec:
+  targetNamespace: default
+  identitySecret:
+    name: hv-identity-secret
+    namespace: my-namespace
+  loadBalancerConfig:
+    ipamType: pool
+  vmNetworkConfig:
+    gateway: "172.16.0.1"
+    subnetMask: "255.255.0.0"
+    ipPoolRef: default/my-ip-pool
 ```
 
-3. Run the following command to create a local kind cluster:
+### 3. Define Machine Templates
+
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  name: my-cluster-machine
+  namespace: my-namespace
+spec:
+  template:
+    spec:
+      cpu: 2
+      memory: "4Gi"
+      sshUser: sles
+      sshKeyPair: default/my-ssh-key
+      volumes:
+        - volumeType: image
+          imageName: default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2
+          volumeSize: "40Gi"
+          bootOrder: 1
+        - volumeType: storageClass     # optional: additional data disk
+          storageClass: longhorn
+          volumeSize: "10Gi"
+      networks:
+        - default/production
+```
+
+### 4. Create Control Plane + Workers
+
+See [templates/](templates/) for complete RKE2 cluster template examples.
+
+## Architecture
+
+```
+Management Cluster (RKE2)
+├── CAPI Core Controller
+├── RKE2 Bootstrap Controller
+├── RKE2 ControlPlane Controller
+├── CAPHV Controller  ◄── this project
+│   ├── HarvesterCluster reconciler
+│   ├── HarvesterMachine reconciler
+│   │   ├── IP allocation from IPPool
+│   │   ├── VM creation (multi-disk, cloud-init, static IP)
+│   │   ├── Cloud provider bootstrap (hostNetwork fix)
+│   │   ├── Node init (providerID + taint removal)
+│   │   └── etcd cleanup on CP deletion
+│   └── Validating webhooks (optional)
+└── Rancher Turtles (optional, auto-import)
+
+Harvester HCI (target)
+├── VMs (created by CAPHV)
+├── IPPool (IP allocation)
+├── VM Images (boot disks)
+└── Longhorn (storage)
+```
+
+## Configuration Reference
+
+### HarvesterCluster
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `spec.targetNamespace` | string | Yes | Namespace on Harvester for VMs |
+| `spec.identitySecret.name` | string | Yes | Secret containing Harvester kubeconfig |
+| `spec.identitySecret.namespace` | string | Yes | Namespace of identity secret |
+| `spec.loadBalancerConfig.ipamType` | string | Yes | `pool` or `dhcp` |
+| `spec.vmNetworkConfig.gateway` | string | Yes* | Gateway IP (*required for pool IPAM) |
+| `spec.vmNetworkConfig.subnetMask` | string | Yes* | Subnet mask (e.g. "255.255.0.0") |
+| `spec.vmNetworkConfig.ipPoolRef` | string | No | Reference to Harvester IPPool |
+
+### HarvesterMachine
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `spec.cpu` | int | Yes | Number of CPU cores (must be > 0) |
+| `spec.memory` | string | Yes | Memory (e.g. "4Gi") |
+| `spec.sshUser` | string | Yes | SSH user for cloud-init |
+| `spec.sshKeyPair` | string | Yes | Harvester SSH KeyPair reference |
+| `spec.volumes` | []Volume | Yes | At least one volume required |
+| `spec.networks` | []string | Yes | At least one network required |
+| `spec.volumes[].volumeType` | string | Yes | `image` or `storageClass` |
+| `spec.volumes[].imageName` | string | For image | Harvester VM image (namespace/name) |
+| `spec.volumes[].storageClass` | string | For SC | Storage class for blank disk |
+| `spec.volumes[].volumeSize` | string | Yes | Disk size (e.g. "40Gi") |
+| `spec.volumes[].bootOrder` | int | No | Boot priority (1 = first) |
+
+## E2E Tests
+
+Integration tests run against a live Harvester + CAPI cluster:
 
 ```bash
-kind create cluster --config kind-cluster-with-extramounts.yaml
+./test/e2e/run-e2e.sh              # Run all (18 tests, ~30min)
+./test/e2e/run-e2e.sh webhook      # Validation tests (~10s)
+./test/e2e/run-e2e.sh scale        # Scale up/down (~7min)
+./test/e2e/run-e2e.sh multidisk    # Multi-disk VM (~7min)
+./test/e2e/run-e2e.sh remediation  # MHC auto-remediation (~14min)
 ```
 
-4. Check your newly created `kind` cluster :
+## Building
 
 ```bash
-kubectl cluster-info
-```
-and get a similar result to this:
+# Build binary
+make build
 
-```
-Kubernetes control plane is running at https://127.0.0.1:40819
-CoreDNS is running at https://127.0.0.1:40819/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+# Build container image
+make docker-build IMG=<registry>/caphv-controller:v0.2.0
 
-To further debug and diagnose cluster problems, use 'kubectl cluster-info dump'.
-```
-
-### Install Harvester Provider to the KinD Cluster
-
-Now, the Harvester and RKE2 providers can be installed with the `clusterctl` command. In this particular case, our manifests will be using the `ResourceSet` feature gate for Cluster API, we will need to set the environment variable `EXP_CLUSTER_RESOURCE_SET` to `true` before running the `clusterctl init` command.
-
-```bash
-export EXP_CLUSTER_RESOURCE_SET=true
-
-$ clusterctl init --infrastructure harvester-harvester --control-plane rke2 --bootstrap rke2
-Fetching providers
-Installing cert-manager Version="v1.14.5"
-Waiting for cert-manager to be available...
-Installing Provider="cluster-api" Version="v1.7.2" TargetNamespace="capi-system"
-Installing Provider="bootstrap-rke2" Version="v0.3.0" TargetNamespace="rke2-bootstrap-system"
-Installing Provider="control-plane-rke2" Version="v0.3.0" TargetNamespace="rke2-control-plane-system"
-Installing Provider="infrastructure-harvester" Version="v0.1.2" TargetNamespace="caphv-system"
-
-Your management cluster has been initialized successfully!
-
-You can now create your first workload cluster by running the following:
-
-  clusterctl generate cluster [name] --kubernetes-version [version] | kubectl apply -f -
-
+# Run unit tests
+make test
 ```
 
-### Create a workload cluster
-Now, you can test out the provider by generating some YAML and applying it to the above `kind` cluster. Such YAML templates can be found in `./templates` directory. We will be interested here in the `RKE2` examples under `./templates`. Please be aware that the file [cluster-template-rke2-dhcp.yaml](./templates/cluster-template-rke2-dhcp.yaml) is a template with placeholders: it cannot be applied directly to the cluster. You need to generate a valid YAML file first. In order to do that, you need to set the following environment variables:
+## Release History
 
-```bash
-export CLUSTER_NAME=test-rk # Name of the cluster that will be created.
-export HARVESTER_ENDPOINT=x.x.x.x # Harvester Clusters IP Adr.
-export NAMESPACE=example-rk # Namespace where the cluster will be created.
-export KUBERNETES_VERSION=v1.26.6 # Kubernetes Version
-export SSH_KEYPAIR=<public-key-name> # should exist in Harvester prior to applying manifest. Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME>
-export VM_IMAGE_NAME=default/jammy-server-cloudimg-amd64.img # Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME> for an image that exists on Harvester
-export CONTROL_PLANE_MACHINE_COUNT=3
-export WORKER_MACHINE_COUNT=2
-export VM_DISK_SIZE=40Gi # Put here the desired disk size
-export RANCHER_TURTLES_LABEL='' # This is used if you are using Rancher CAPI Extension (Turtles) to import the cluster automatically.
-export VM_NETWORK=default/untagged # change here according to your Harvester available VM Networks. Should have the format <TARGET_HARVESTER_NAMESPACE>/<NAME>
-export HARVESTER_KUBECONFIG_B64=XXXYYY #Full Harvester's kubeconfig encoded in Base64. You can use: cat kubeconfig.yaml | base64
-export CLOUD_CONFIG_KUBECONFIG_B64=ZZZZAAA # Kubeconfig generated for the Cloud Provider: https://docs.harvesterhci.io/v1.3/rancher/cloud-provider#deploying-to-the-rke2-custom-cluster-experimental 
-export IP_POOL_NAME=default # for the non-DHCP template, specify the IP pool for the Harvester load balancer. The IP pool must exist in Harvester prior to applying manifest
-export TARGET_HARVESTER_NAMESPACE=default # the namespace on the Harvester cluster where the VMs, load balancers etc. should be created
-```
+| Version | Date | Key changes |
+|---------|------|-------------|
+| v0.2.0 | 2026-03-06 | Harvester v1.6.1, multi-disk, IPPool, webhooks, auto-remediation, e2e tests |
+| v0.1.6 | 2024-xx-xx | Upstream: initial CAPI contract, single disk, DHCP only |
 
-NOTE: The `CLOUD_CONFIG_KUBECONFIG_B64` variable content should be the result of the script available [here](https://docs.harvesterhci.io/v1.3/rancher/cloud-provider#deploying-to-the-rke2-custom-cluster-experimental) -- meaning, the generated kubeconfig -- encoded in BASE64.
+## License
 
-Now, we can generate the YAML using the following command:
-
-```bash
-clusterctl generate yaml --from https://github.com/rancher-sandbox/cluster-api-provider-harvester/blob/main/templates/cluster-template-rke2.yaml > harvester-rke2-clusterctl.yaml
-```
-
-After examining the resulting YAML file, you can apply it to the management cluster:
-```bash
-kubectl apply -f harvester-rke2-clusterctl.yaml
-```
-
-You should see the following output:
-```bash
-namespace/example-rk created
-cluster.cluster.x-k8s.io/test-rk created
-harvestercluster.infrastructure.cluster.x-k8s.io/test-rk-hv created
-secret/hv-identity-secret created
-rke2controlplane.controlplane.cluster.x-k8s.io/test-rk-control-plane created
-rke2configtemplate.bootstrap.cluster.x-k8s.io/test-rk-worker created
-machinedeployment.cluster.x-k8s.io/test-rk-workers created
-harvestermachinetemplate.infrastructure.cluster.x-k8s.io/test-rk-wk-machine created
-harvestermachinetemplate.infrastructure.cluster.x-k8s.io/test-rk-cp-machine created
-clusterresourceset.addons.cluster.x-k8s.io/crs-harvester-ccm created
-clusterresourceset.addons.cluster.x-k8s.io/crs-harvester-csi created
-clusterresourceset.addons.cluster.x-k8s.io/crs-calico-chart-config created
-configmap/cloud-controller-manager-addon created
-configmap/harvester-csi-driver-addon created
-configmap/calico-helm-config created
-```
-
-### Checking the workload cluster:
-After a while you should be able to check functionality of the workload cluster using `clusterctl`:
-
-```bash
-clusterctl describe cluster -n example-rk test-rk
-```
-
-and once the cluster is provisioned, it should look similar to the following:
-
-```
-NAME                                                     READY  SEVERITY  REASON  SINCE  MESSAGE
-Cluster/test-rk                                          True                     7h35m
-├─ClusterInfrastructure - HarvesterCluster/test-rk-hv
-├─ControlPlane - RKE2ControlPlane/test-rk-control-plane  True                     7h35m
-│ └─3 Machines...                                        True                     7h45m  See test-rk-control-plane-dmrg5, test-rk-control-plane-jkdrb, ...
-└─Workers
-  └─MachineDeployment/test-rk-workers                    True                     7h46m
-    └─2 Machines...                                      True                     7h46m  See test-rk-workers-jwjdg-sz7qk, test-rk-workers-jwjdg-vxgbx
-```
+Apache License 2.0 - See [LICENSE](LICENSE) for details.

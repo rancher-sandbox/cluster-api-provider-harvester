@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: caphv-controller-manager-metrics-service
+  namespace: {{ include "caphv.namespace" . }}
+  labels:
+    {{- include "caphv.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+  selector:
+    {{- include "caphv.selectorLabels" . | nindent 4 }}
+---
+{{- if .Values.webhooks.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: caphv-webhook-service
+  namespace: {{ include "caphv.namespace" . }}
+  labels:
+    {{- include "caphv.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: 9443
+      protocol: TCP
+  selector:
+    {{- include "caphv.selectorLabels" . | nindent 4 }}
+{{- end }}

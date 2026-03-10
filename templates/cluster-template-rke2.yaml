@@ -189,6 +189,26 @@ spec:
     name: calico-helm-config
   strategy: Reconcile
 ---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineHealthCheck
+metadata:
+  name: ${CLUSTER_NAME}-mhc
+  namespace: ${NAMESPACE}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  maxUnhealthy: 34%
+  nodeStartupTimeout: 20m
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  unhealthyConditions:
+    - type: Ready
+      status: "False"
+      timeout: 5m
+    - type: Ready
+      status: Unknown
+      timeout: 5m
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -470,7 +490,7 @@ data:
       name: harvester-cloud-provider
       namespace: kube-system
     spec:
-      replicas: 2
+      replicas: 1
       selector:
         matchLabels:
           app.kubernetes.io/component: cloud-provider
@@ -494,6 +514,8 @@ data:
             - mountPath: /etc/kubernetes
               name: cloud-config
           serviceAccountName: harvester-cloud-controller-manager
+          hostNetwork: true
+          dnsPolicy: ClusterFirstWithHostNet
           tolerations:
           - effect: NoSchedule
             key: node-role.kubernetes.io/control-plane
@@ -502,6 +524,9 @@ data:
             key: node.cloudprovider.kubernetes.io/uninitialized
             operator: Equal
             value: "true"
+          - effect: NoSchedule
+            key: node.kubernetes.io/not-ready
+            operator: Exists
           volumes:
             - name: cloud-config
               secret:
@@ -531,6 +556,7 @@ data:
       - create
       - update
       - patch
+      - delete
     - apiGroups:
       - ""
       resources:

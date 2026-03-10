@@ -1,0 +1,101 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: caphv-manager-role
+  labels:
+    {{- include "caphv.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, get, list, patch, update, watch]
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [clusters, clusters/status]
+    verbs: [get, list, watch]
+  - apiGroups: [cluster.x-k8s.io]
+    resources: [machines, machines/status]
+    verbs: [get, list, watch]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvesterclusters]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvesterclusters/finalizers]
+    verbs: [update]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvesterclusters/status]
+    verbs: [get, patch, update]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvestermachines]
+    verbs: [create, delete, get, list, patch, update, watch]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvestermachines/finalizers]
+    verbs: [update]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvestermachines/status]
+    verbs: [get, patch, update]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvesterclustertemplates]
+    verbs: [get, list, watch]
+  - apiGroups: [infrastructure.cluster.x-k8s.io]
+    resources: [harvestermachinetemplates]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: caphv-manager-rolebinding
+  labels:
+    {{- include "caphv.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: caphv-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ include "caphv.namespace" . }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: caphv-leader-election-role
+  namespace: {{ include "caphv.namespace" . }}
+  labels:
+    {{- include "caphv.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [""]
+    resources: [events]
+    verbs: [create, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: caphv-leader-election-rolebinding
+  namespace: {{ include "caphv.namespace" . }}
+  labels:
+    {{- include "caphv.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: caphv-leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: {{ include "caphv.namespace" . }}

@@ -64,6 +64,7 @@ func main() {
 	var metricsOptions metrics.Options
 
 	var enableLeaderElection bool
+	var enableWebhooks bool
 
 	var probeAddr string
 
@@ -72,6 +73,8 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", false,
+		"Enable validating webhooks for HarvesterMachine and HarvesterCluster resources.")
 
 	opts := zap.Options{
 		Development: true,
@@ -81,20 +84,23 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	webhook := webhook.NewServer(webhook.Options{
-		Port: webhookPort,
-	})
-
 	metricsOptions.BindAddress = metricsAddr
-
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsOptions,
-		WebhookServer:          webhook,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "1e1658d6.cluster.x-k8s.io",
-	})
+	}
+
+	if enableWebhooks {
+		webhookServer := webhook.NewServer(webhook.Options{
+			Port: webhookPort,
+		})
+		mgrOpts.WebhookServer = webhookServer
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOpts)
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
@@ -121,6 +127,20 @@ func main() {
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
+
+	if enableWebhooks {
+		if err = infrastructurev1alpha1.SetupHarvesterMachineWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterMachine")
+			os.Exit(1)
+		}
+
+		if err = infrastructurev1alpha1.SetupHarvesterClusterWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterCluster")
+			os.Exit(1)
+		}
+
+		setupLog.Info("webhooks enabled")
+	}
 
 	err = mgr.AddHealthzCheck("healthz", healthz.Ping)
 	if err != nil {

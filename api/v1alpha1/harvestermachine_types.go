@@ -45,6 +45,22 @@ const (
 	VMProvisioningFailedReason = "VMProvisioningFailed"
 	// VMProvisioningReadyReason documents that VM provisioning is complete.
 	VMProvisioningReadyReason = "VMProvisioningReady"
+
+	// VMRunningCondition documents whether the VM is running.
+	VMRunningCondition clusterv1.ConditionType = "VMRunning"
+	// VMRunningReason documents that the VM is running.
+	VMRunningReason = "VMRunning"
+	// VMNotRunningReason documents that the VM is not yet running.
+	VMNotRunningReason = "VMNotRunning"
+
+	// VMIPAllocatedCondition documents that a static IP has been allocated for the VM.
+	VMIPAllocatedCondition clusterv1.ConditionType = "VMIPAllocated"
+	// VMIPAllocationFailedReason documents that IP allocation failed.
+	VMIPAllocationFailedReason = "VMIPAllocationFailed"
+	// VMIPPoolExhaustedReason documents that the IP pool has no available addresses.
+	VMIPPoolExhaustedReason = "VMIPPoolExhausted"
+	// VMIPAllocatedReason documents that an IP was successfully allocated.
+	VMIPAllocatedReason = "VMIPAllocated"
 )
 
 // HarvesterMachineSpec defines the desired state of HarvesterMachine.
@@ -85,6 +101,28 @@ type HarvesterMachineSpec struct {
 	// WorkloadAffinity gives the possibility to define affinity rules with other workloads running on Harvester.
 	// +optional
 	WorkloadAffinity *corev1.PodAffinity `json:"workloadAffinity,omitempty"`
+
+	// NetworkConfig is the static network configuration for this specific machine.
+	// If set, this takes precedence over the cluster-level VMNetworkConfig IP pool allocation.
+	// +optional
+	NetworkConfig *NetworkConfig `json:"networkConfig,omitempty"`
+}
+
+// NetworkConfig defines static network configuration for a VM.
+type NetworkConfig struct {
+	// Address is the static IP address for the VM (e.g. "172.16.3.40").
+	Address string `json:"address"`
+
+	// Gateway is the gateway IP address.
+	Gateway string `json:"gateway"`
+
+	// DNSServers is a list of DNS server IP addresses.
+	// +optional
+	DNSServers []string `json:"dnsServers,omitempty"`
+
+	// DNSSearch is a list of DNS search domains.
+	// +optional
+	DNSSearch []string `json:"dnsSearch,omitempty"`
 }
 
 // Volume defines a volume that should be attached to the VM.
@@ -133,6 +171,10 @@ type HarvesterMachineStatus struct {
 	FailureMessage string                     `json:"failureMessage,omitempty"`
 	Addresses      []clusterv1.MachineAddress `json:"addresses,omitempty"`
 	Initialization Initialization             `json:"initialization,omitempty"`
+
+	// AllocatedIPAddress is the IP address allocated from the VM IP pool for this machine.
+	// +optional
+	AllocatedIPAddress string `json:"allocatedIPAddress,omitempty"`
 }
 
 //+kubebuilder:object:root=true

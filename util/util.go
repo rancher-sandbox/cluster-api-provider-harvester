@@ -160,7 +160,7 @@ func Filter[T any](ss []T, test func(T) bool) (ret []T) {
 
 // CheckNamespacedName checks if the given string is in the format of "namespace/name".
 func CheckNamespacedName(name string) bool {
-	return regexp.MustCompile(`^[a-z0-9-\.]+/[a-z0-9-\.]+$`).MatchString(name)
+	return regexp.MustCompile(`^[a-z0-9-\._]+/[a-z0-9-\._]+$`).MatchString(name)
 }
 
 // GetNamespacedName returns the namespace and name from the given string in the format of "namespace/name".
@@ -175,7 +175,7 @@ func GetNamespacedName(name string, alternativeTargetNS string) (types.Namespace
 		}, nil
 	}
 
-	if !regexp.MustCompile(`^[a-z0-9-\.]+$`).MatchString(name) {
+	if !regexp.MustCompile(`^[a-z0-9-\._]+$`).MatchString(name) {
 		return types.NamespacedName{}, errors.New("malformed reference, should be <NAMESPACE>/<NAME>")
 	}
 

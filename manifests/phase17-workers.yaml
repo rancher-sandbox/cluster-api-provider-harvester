@@ -1,0 +1,54 @@
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: RKE2ConfigTemplate
+metadata:
+  name: capi-test-worker-config
+  namespace: capi-test
+spec:
+  template:
+    spec:
+      agentConfig: {}
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+kind: HarvesterMachineTemplate
+metadata:
+  name: capi-test-worker-machine
+  namespace: capi-test
+spec:
+  template:
+    spec:
+      cpu: 2
+      memory: 4Gi
+      sshUser: sles
+      sshKeyPair: default/capi-ssh-key
+      networks:
+        - default/production
+      volumes:
+        - volumeType: image
+          imageName: default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2
+          volumeSize: 40Gi
+          bootOrder: 1
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  name: capi-test-workers
+  namespace: capi-test
+spec:
+  clusterName: capi-test
+  replicas: 1
+  selector:
+    matchLabels: {}
+  template:
+    spec:
+      clusterName: capi-test
+      version: v1.31.6+rke2r1
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          kind: RKE2ConfigTemplate
+          name: capi-test-worker-config
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        kind: HarvesterMachineTemplate
+        name: capi-test-worker-machine
