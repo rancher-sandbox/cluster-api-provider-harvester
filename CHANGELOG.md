@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.2.8] - 2026-03-16
+
+### Fixed
+
+- **CAPI contract compliance**: Added `ObjectMeta` to `HarvesterMachineTemplateResource` per InfraMachineTemplate contract; removed unused `HarvesterClusterTemplate.Status` field
+- **Webhook clarity**: Removed standalone `examples/webhook-deployment.yaml` — webhooks are included in `infrastructure-components.yaml` and deployed automatically
+- **Manifest verification**: Added `verify-manifests` target to `make verify` to catch out-of-sync generated manifests
+- **Release artifacts**: Cluster templates (`cluster-template-*.yaml`) and ClusterClass (`clusterclass-harvester-rke2.yaml`) now included in release assets per clusterctl conventions
+- **v1beta2 readiness**: Documented `status.initialization.provisioned` as forward-looking for CAPI v1beta2; `status.ready` remains the authoritative field for v1beta1
+- **Helm chart deprecated**: Marked as legacy in favor of CAPIProvider/clusterctl installation
+- **CAAPF note**: Added RFD 0051 advisory in Fleet addons documentation
+- **Cleanup**: Removed unused `listImagesSelector` constant
+
 ## [v0.2.7] - 2026-03-10
 
 ### Fixed
