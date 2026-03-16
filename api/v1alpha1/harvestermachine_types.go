@@ -157,7 +157,9 @@ type Volume struct {
 // +kubebuilder:Validation:Enum:=storageClass,image
 type VolumeType string
 
-// Initialization is an object that defines the initialization of the VM on Harvester.
+// Initialization tracks internal VM provisioning state.
+// NOTE: This is forward-looking for the CAPI v1beta2 contract (status.initialization.provisioned).
+// For v1beta1, the authoritative readiness field is status.ready.
 type Initialization struct {
 	// Provisioned shows if the VM has been provisioned.
 	Provisioned bool `json:"provisioned,omitempty"`
@@ -173,7 +175,9 @@ type HarvesterMachineStatus struct {
 	FailureReason  string                     `json:"failureReason,omitempty"`
 	FailureMessage string                     `json:"failureMessage,omitempty"`
 	Addresses      []clusterv1.MachineAddress `json:"addresses,omitempty"`
-	Initialization Initialization             `json:"initialization,omitempty"`
+	// Initialization tracks internal provisioning state (forward-looking for v1beta2 contract).
+	// The authoritative readiness field for v1beta1 is status.ready.
+	Initialization Initialization `json:"initialization,omitempty"`
 
 	// AllocatedIPAddress is the IP address allocated from the VM IP pool for this machine.
 	// +optional

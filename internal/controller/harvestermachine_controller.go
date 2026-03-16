@@ -85,7 +85,6 @@ const (
 	hvAnnotationDiskNames  = "harvesterhci.io/diskNames"
 	hvAnnotationSSH        = "harvesterhci.io/sshNames"
 	hvAnnotationImageID    = "harvesterhci.io/imageId"
-	listImagesSelector     = "spec.displayName"
 	requeueDelay           = 10 * time.Second
 )
 

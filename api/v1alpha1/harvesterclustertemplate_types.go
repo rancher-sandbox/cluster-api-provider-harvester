@@ -38,8 +38,6 @@ type HarvesterClusterTemplate struct {
 
 	// Spec is the specification for the template resource
 	Spec HarvesterClusterTemplateSpec `json:"spec,omitempty"`
-	// Status is the status of the template HarvesterCluster resource
-	Status HarvesterClusterStatus `json:"status,omitempty"`
 }
 
 // HarvesterClusterTemplateResource defines the template resource for HarvesterCluster.

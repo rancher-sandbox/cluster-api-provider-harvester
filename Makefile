@@ -266,6 +266,14 @@ release-manifests: $(RELEASE_DIR) $(KUSTOMIZE) ## Build the manifests to publish
 	# Add metadata to the release artifacts
 	cp metadata.yaml $(RELEASE_DIR)/metadata.yaml
 
+	# Add cluster templates (clusterctl convention: cluster-template-{flavor}.yaml, clusterclass-{name}.yaml)
+	cp templates/cluster-template-rke2.yaml $(RELEASE_DIR)/cluster-template.yaml
+	cp templates/cluster-template-rke2-dhcp.yaml $(RELEASE_DIR)/cluster-template-dhcp.yaml
+	cp templates/cluster-template-rke2-generateCPI.yaml $(RELEASE_DIR)/cluster-template-generateCPI.yaml
+	cp templates/cluster-template-kubeadm.yaml $(RELEASE_DIR)/cluster-template-kubeadm.yaml
+	cp templates/cluster-template-talos.yaml $(RELEASE_DIR)/cluster-template-talos.yaml
+	cp templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml $(RELEASE_DIR)/clusterclass-harvester-rke2.yaml
+
 .PHONY: release-notes
 release-notes: $(RELEASE_DIR) $(GH)
 	if [ -n "${PRE_RELEASE}" ]; then \
@@ -311,7 +319,7 @@ $(ENVTEST): $(LOCALBIN)
 ## Cleanup / Verification
 ## --------------------------------------
 
-ALL_VERIFY_CHECKS = modules gen
+ALL_VERIFY_CHECKS = modules gen manifests
 
 .PHONY: verify
 verify: $(addprefix verify-,$(ALL_VERIFY_CHECKS)) lint-dockerfiles ## Run all verify-* targets
@@ -332,6 +340,13 @@ verify-gen: generate  ## Verify go generated files are up to date
 	@if !(git diff --quiet HEAD); then \
 		git diff; \
 		echo "generated files are out of date, run make generate"; exit 1; \
+	fi
+
+.PHONY: verify-manifests
+verify-manifests: manifests  ## Verify generated manifests are up to date
+	@if !(git diff --quiet HEAD); then \
+		git diff; \
+		echo "generated manifests are out of date, run make manifests"; exit 1; \
 	fi
 
 ##@ clean:

@@ -5,6 +5,10 @@ CAPHV supports two addon management modes for deploying CNI configuration to wor
 1. **CRS mode** (default) — ClusterResourceSets with hardcoded ConfigMaps
 2. **Fleet mode** — Fleet GitRepo via CAAPF (Cluster API Addon Provider Fleet)
 
+> **Note**: CAAPF is subject to design changes tracked in
+> [RFD 0051](https://github.com/SUSE/rancher-architecture/pull/51).
+> The Fleet addon integration may need to adapt as the CAAPF API evolves.
+
 ## Architecture
 
 ```

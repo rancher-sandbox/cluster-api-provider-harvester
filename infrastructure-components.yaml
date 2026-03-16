@@ -732,75 +732,6 @@ spec:
             required:
             - template
             type: object
-          status:
-            description: Status is the status of the template HarvesterCluster resource
-            properties:
-              conditions:
-                description: Conditions defines current service state of the Harvester
-                  cluster.
-                items:
-                  description: Condition defines an observation of a Cluster API resource
-                    operational state.
-                  properties:
-                    lastTransitionTime:
-                      description: |-
-                        lastTransitionTime is the last time the condition transitioned from one status to another.
-                        This should be when the underlying condition changed. If that is not known, then using the time when
-                        the API field changed is acceptable.
-                      format: date-time
-                      type: string
-                    message:
-                      description: |-
-                        message is a human readable message indicating details about the transition.
-                        This field may be empty.
-                      maxLength: 10240
-                      minLength: 1
-                      type: string
-                    reason:
-                      description: |-
-                        reason is the reason for the condition's last transition in CamelCase.
-                        The specific API may choose whether or not this field is considered a guaranteed API.
-                        This field may be empty.
-                      maxLength: 256
-                      minLength: 1
-                      type: string
-                    severity:
-                      description: |-
-                        severity provides an explicit classification of Reason code, so the users or machines can immediately
-                        understand the current situation and act accordingly.
-                        The Severity field MUST be set only when Status=False.
-                      maxLength: 32
-                      type: string
-                    status:
-                      description: status of the condition, one of True, False, Unknown.
-                      type: string
-                    type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
-                        can be useful (see .node.status.conditions), the ability to deconflict is important.
-                      maxLength: 256
-                      minLength: 1
-                      type: string
-                  required:
-                  - lastTransitionTime
-                  - status
-                  - type
-                  type: object
-                type: array
-              failureMessage:
-                description: FailureMessage is a full error message dump of the above
-                  failureReason.
-                type: string
-              failureReason:
-                description: FailureReason is the short name for the reason why a
-                  failure might be happening that makes the cluster not ready.
-                type: string
-              ready:
-                description: Ready describes if the Harvester Cluster can be considered
-                  ready for machine creation.
-                type: boolean
-            type: object
         type: object
     served: true
     storage: true
@@ -1610,8 +1541,9 @@ spec:
               failureReason:
                 type: string
               initialization:
-                description: Initialization is an object that defines the initialization
-                  of the VM on Harvester.
+                description: |-
+                  Initialization tracks internal provisioning state (forward-looking for v1beta2 contract).
+                  The authoritative readiness field for v1beta1 is status.ready.
                 properties:
                   provisioned:
                     description: Provisioned shows if the VM has been provisioned.
@@ -1688,6 +1620,30 @@ spec:
               template:
                 description: Template is the HarvesterMachineTemplate template
                 properties:
+                  metadata:
+                    description: |-
+                      Standard object's metadata.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          annotations is an unstructured key value map stored with a resource that may be
+                          set by external tools to store and retrieve arbitrary metadata. They are not
+                          queryable and should be preserved when modifying objects.
+                          More info: http://kubernetes.io/docs/user-guide/annotations
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          labels is a map of string keys and values that can be used to organize and categorize
+                          (scope and select) objects. May match selectors of replication controllers
+                          and services.
+                          More info: http://kubernetes.io/docs/user-guide/labels
+                        type: object
+                    type: object
                   spec:
                     description: Spec is the specification of the desired behavior
                       of the machine.

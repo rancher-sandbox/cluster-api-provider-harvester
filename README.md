@@ -63,7 +63,11 @@ spec:
 
 See [docs/operations.md](docs/operations.md) for full CAPIProvider deployment, upgrade, and migration instructions.
 
-### Option 2: Helm Chart
+### Option 2: Helm Chart (legacy)
+
+> **Note**: The Helm chart is maintained for compatibility but is not the recommended
+> installation method. Prefer CAPIProvider via Rancher Turtles (Option 1) or `clusterctl init`
+> for production deployments. The chart may be removed in a future release.
 
 ```bash
 # Without webhooks
