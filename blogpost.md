@@ -1,6 +1,6 @@
 # Provisioning Production RKE2 Clusters on Harvester HCI with Cluster API
 
-*How I forked an inactive CAPI infrastructure provider for Harvester and worked to bring it closer to production-grade quality.*
+*How I forked an inactive CAPI infrastructure provider for Harvester and brought it to production-grade quality -- validated by a formal SUSE engineering review.*
 
 ---
 
@@ -10,7 +10,7 @@
 
 The upstream [cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) by the Rancher team at SUSE provided an excellent foundation for this. The project's architecture -- two reconcilers, clean CRD design, IPPool integration, cloud-init generation -- was well thought out and gave me a solid base to build on. Credit to the original authors for laying this groundwork.
 
-That said, the upstream project has been inactive for over a year, with no significant updates since v0.1.6. It hadn't been updated for recent Harvester versions and had several blockers that prevented production use:
+That said, the upstream project had been inactive for over a year, with no significant updates since v0.1.6. It hadn't been updated for recent Harvester versions and had several blockers that prevented production use:
 
 - **IP allocation was broken** -- every VM got the same first IP from the pool
 - **VM image names with underscores failed** -- a regex didn't account for `x86_64` in image names
@@ -21,7 +21,7 @@ That said, the upstream project has been inactive for over a year, with no signi
 - **No etcd cleanup** -- deleting a control plane node left orphaned etcd members
 - **No DHCP support** -- VMs required static IPs in all cases
 
-I forked the project, fixed these issues, and added a number of features with the goal of bringing it closer to production-grade quality. The result is [CAPHV v0.2.3](https://github.com/jniedergang/cluster-api-provider-harvester), which can provision a 3 control-plane + N worker RKE2 cluster on Harvester in about 16 minutes, with zero manual intervention. With the upstream project dormant, this fork aims to keep the provider alive and usable for the community.
+I forked the project, fixed these issues, and added a number of features with the goal of bringing it to production-grade quality. The result is [CAPHV v0.2.8](https://github.com/rancher-sandbox/cluster-api-provider-harvester), which can provision a 3 control-plane + N worker RKE2 cluster on Harvester in about 16 minutes, with zero manual intervention. The code has been formally reviewed by the SUSE CAPI engineering team and received a **Go recommendation** for adoption as the official Harvester infrastructure provider.
 
 ---
 
@@ -68,7 +68,7 @@ CAPHV itself follows the standard CAPI infrastructure provider pattern with two 
 
 ### 1. Automatic IP Allocation from Harvester IPPool
 
-CAPHV integrates with Harvester's native IPPool CRD to automatically allocate IPs for VMs. When a machine is created, it reserves the next available IP from the pool. When deleted, the IP is released back.
+CAPHV integrates with Harvester's native IPPool CRD to automatically allocate IPs for VMs. When a machine is created, it reserves the next available IP from the pool. When deleted, the IP is released back. Multi-pool support allows fallback allocation across multiple IPPools.
 
 The upstream had a critical bug where `Store.Reserve()` didn't update the `Status.Allocated` map, causing every machine to get the same IP. This was fixed with proper allocation tracking.
 
@@ -84,9 +84,9 @@ vmNetworkConfig:
     - 172.16.0.1
 ```
 
-### 2. DHCP Support (New in v0.2.3)
+### 2. DHCP Support
 
-Not every environment uses static IPs. CAPHV now supports DHCP by simply omitting the `vmNetworkConfig`:
+Not every environment uses static IPs. CAPHV supports DHCP by simply omitting the `vmNetworkConfig`:
 
 ```yaml
 # HarvesterCluster spec -- DHCP mode
@@ -176,14 +176,23 @@ When a node is NotReady for 5 minutes, the full remediation cycle runs: VM delet
 
 ### 8. Validating Webhooks
 
-Optional admission webhooks catch configuration errors early:
+Admission webhooks are included in the provider manifest (`infrastructure-components.yaml`) and deployed automatically alongside the controller. They catch configuration errors at admission time:
 
 - CPU must be > 0, memory must be a valid Kubernetes resource quantity
 - SSH user and key pair must be specified
 - At least one volume and one network required
 - Cluster-level: target namespace, identity secret, and IPAM configuration validated
 
-Gated behind `--enable-webhooks` (or `webhooks.enabled=true` in Helm), requires cert-manager for TLS.
+Requires cert-manager for TLS certificate management. Turtles users benefit from automatic [no-cert-manager conversion](https://turtles.docs.rancher.com/turtles/stable/en/overview/features.html#_no_cert_manager) to wrangler-based TLS.
+
+### 9. Fleet Addon Management
+
+CAPHV supports two modes for deploying CNI and CSI drivers to workload clusters:
+
+- **CRS mode** (default) -- ClusterResourceSets with ConfigMaps, simple and self-contained
+- **Fleet mode** -- leverages Fleet via CAAPF (Cluster API Addon Provider Fleet) for GitOps-driven addon deployment
+
+In Fleet mode, a GitRepo resource points to a repository containing Helm-based addon bundles (Calico, Canal, Cilium, Harvester CSI). Cluster labels (`cni: calico`, `csi: harvester`) drive Fleet's cluster selector to deploy the right addons to each cluster. The CCM stays in CRS mode due to bootstrap timing requirements.
 
 ---
 
@@ -269,7 +278,23 @@ metadata:
 
 Turtles creates the provisioning cluster, deploys the cattle-cluster-agent on the workload cluster, and the cluster appears in Rancher UI as Connected + Ready. The `caphv-generate` CLI adds this label by default.
 
-**One gotcha**: if Rancher uses external TLS termination (e.g., Traefik), the `cacerts` setting is empty by default. Turtles in strict mode (`agent-tls-mode=true`) rejects the import. Fix: set the `cacerts` setting to the full certificate chain (e.g., Let's Encrypt E7 intermediate + ISRG Root X1).
+CAPHV is deployed as a CAPIProvider resource, which Turtles manages automatically -- including upgrades, CRD installation, and RBAC setup:
+
+```yaml
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  version: v0.2.8
+  fetchConfig:
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.8/infrastructure-components.yaml
+```
+
+**One gotcha**: if Rancher uses external TLS termination (e.g., Traefik), the `cacerts` setting is empty by default. Turtles in strict mode (`agent-tls-mode=true`) rejects the import. Fix: set the `cacerts` setting to the full certificate chain (e.g., Let's Encrypt intermediate + root CA).
 
 ---
 
@@ -290,11 +315,11 @@ Building a production CAPI provider for KubeVirt/Harvester surfaced several non-
 
 ---
 
-## Testing
+## Testing & Quality
 
-CAPHV has two levels of tests:
+CAPHV has three levels of testing:
 
-**Unit tests (72+ tests, CI):** Cover IP allocation, utility functions, cloud-init generation, etcd helpers, and node initialization. Run on every push via GitHub Actions.
+**Unit tests (195+ tests, CI):** Cover IP allocation, utility functions, cloud-init generation, etcd helpers, node initialization, and controller logic. Controller coverage ~70%, utility coverage ~80%. Run on every push via GitHub Actions on openSUSE Tumbleweed containers.
 
 **Integration tests (18 tests, live cluster):** Four test suites that run against a real Harvester + Rancher + CAPI environment:
 
@@ -305,7 +330,11 @@ CAPHV has two levels of tests:
 | multidisk | 6 | ~7min | Multi-disk VMs, boot order, lsblk check via SSH |
 | remediation | 3 | ~14min | VM deletion, MHC detection, cluster recovery |
 
-Integration tests are skipped automatically in CI (no Harvester cluster available) and can be run locally with `./test/e2e/run-e2e.sh`.
+**Turtles certification tests:** Full lifecycle test using the official Turtles test framework -- ClusterClass topology, VM provisioning, RKE2 bootstrap, Calico CNI, Rancher auto-import, cluster deletion. Passed in ~12 minutes.
+
+**Observability:** 17 Prometheus metrics (`caphv_*` namespace) with a Grafana dashboard (20 panels). ServiceMonitor available for clusters running the Prometheus Operator.
+
+The project underwent a formal code review by the SUSE CAPI engineering team, comparing the implementation against the [reference CAPD provider](https://github.com/kubernetes-sigs/cluster-api/tree/release-1.10/test/infrastructure/docker) and verifying compliance with the [InfraCluster](https://release-1-10.cluster-api.sigs.k8s.io/developer/providers/contracts/infra-cluster) and [InfraMachine](https://release-1-10.cluster-api.sigs.k8s.io/developer/providers/contracts/infra-machine) contracts. The review concluded with a **Go recommendation** for adoption.
 
 ---
 
@@ -318,18 +347,17 @@ Integration tests are skipped automatically in CI (no Harvester cluster availabl
 - A Harvester HCI cluster (v1.7.x)
 - A VM image uploaded to Harvester (e.g., SLES 15 SP7)
 - An SSH key pair created on Harvester
-- cert-manager (optional, for webhooks)
+- cert-manager (for webhook TLS -- or use Turtles' no-cert-manager feature)
 
 ### Install CAPHV
 
+The recommended installation is via CAPIProvider (see the Rancher Integration section above). Alternatively, using `clusterctl`:
+
 ```bash
-# Add the Helm chart
-helm install caphv oci://ghcr.io/jniedergang/charts/caphv \
-  --version v0.2.3 \
-  -n caphv-system --create-namespace \
-  --set clusterClass.enabled=true \
-  --set webhooks.enabled=true
+clusterctl init --infrastructure harvester
 ```
+
+Release artifacts follow [clusterctl conventions](https://cluster-api.sigs.k8s.io/developer/providers/contracts/clusterctl#workload-cluster-templates): `infrastructure-components.yaml`, `metadata.yaml`, cluster templates (`cluster-template-*.yaml`), and ClusterClass definition (`clusterclass-harvester-rke2.yaml`) are all included in each [release](https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases).
 
 ### Create a Harvester Identity Secret
 
@@ -348,10 +376,12 @@ Use the ClusterClass approach (see the example above) or the CLI generator. In a
 
 ## What's Next
 
+- **CAPI IPAM Provider** -- decouple the IP allocation logic into a standalone [IPAM Provider](https://cluster-api.sigs.k8s.io/developer/providers/contracts/ipam) for cleaner separation of concerns and a standard CAPI-compliant API
+- **CAPI v1beta2 migration** -- adopt `status.initialization.provisioned` and new condition types when the v1beta2 contract stabilizes
 - **Harvester v1.8.x compatibility** -- validate against upcoming API changes
-- **Upstream contribution** -- the critical bug fixes (IPPool allocation, runStrategy, cloud-init keys) have been reported upstream ([#139](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/139), [#91](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/91), [PR #140](https://github.com/rancher-sandbox/cluster-api-provider-harvester/pull/140))
+- **CAAPF evolution** -- adapt Fleet addon integration as the CAAPF API evolves ([RFD 0051](https://github.com/SUSE/rancher-architecture/pull/51))
 
-The project is open source: [github.com/jniedergang/cluster-api-provider-harvester](https://github.com/jniedergang/cluster-api-provider-harvester)
+The project is open source: [github.com/rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester)
 
 Feedback and contributions welcome.
 
