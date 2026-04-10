@@ -21,7 +21,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install golangci-lint
-        run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | bash -s -- -b /usr/local/bin v2.2.1
+        run: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | bash -s -- -b /usr/local/bin v2.11.1
 
       - name: Run linter
         run: golangci-lint run --timeout 5m ./...
