@@ -17,7 +17,7 @@ jobs:
       image: registry.opensuse.org/opensuse/tumbleweed:latest
     steps:
       - name: Install dependencies
-        run: zypper -n install git tar gzip curl gawk go nodejs22
+        run: zypper -n install git tar gzip curl gawk go nodejs-default
 
       - name: Clone the code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
