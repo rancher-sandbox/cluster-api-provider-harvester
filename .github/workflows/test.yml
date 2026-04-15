@@ -10,10 +10,15 @@ on:
     - main
     - harvester-*
 
+permissions:
+  contents: read
+
 jobs:
   unit-test:
     name: unit-tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container:
       image: registry.opensuse.org/opensuse/tumbleweed:latest
     steps:
@@ -22,6 +27,8 @@ jobs:
 
     - name: Checkout
       uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      with:
+        persist-credentials: false
 
     - name: Fix git safe directory
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
