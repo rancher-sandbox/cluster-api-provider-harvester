@@ -4,6 +4,42 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.2.9] - 2026-04-15
+
+### Security
+
+- **Supply chain hardening (rancher/rancher-security#1667)**:
+  - All GitHub Actions in `lint.yml`, `test.yml`, and `release.yml` pinned to full 40-char commit SHAs (no more tag references)
+  - Replaced `curl HEAD/install.sh | bash` golangci-lint installer with the official `golangci/golangci-lint-action` (SHA-pinned to v9.2.0)
+  - Added cosign keyless signing of multi-arch container images (OIDC via GitHub Actions identity, no secrets)
+  - Added SLSA build provenance attestation (`actions/attest-build-provenance`) pushed to the registry
+  - Enabled SBOM and provenance generation in `docker/build-push-action` (`sbom: true`, `provenance: mode=max`)
+  - Added workflow-level and job-level least-privilege permissions across all CI workflows
+  - Added `persist-credentials: false` to all `actions/checkout` invocations (defense-in-depth)
+- **Build hygiene**: Restored missing `scripts/ci-lint-dockerfiles.sh` hadolint wrapper that the Makefile referenced but did not exist (pattern shared with cluster-api-provider-rke2 and rancher-turtles)
+
+### Fixed
+
+- **CI Lint workflow**: Upgraded `golangci-lint` from v2.2.1 to v2.11.1 to fix runtime panic on transitive dependencies declaring `go 1.26`
+- **Workflow runtime**: Upgraded `azure/setup-helm` from v4.3.1 to v5.0.0 (Node.js 24, addresses GitHub deprecation warnings for Node 20 EOL 2026-09-16)
+
+### Changed
+
+- **Dependencies**: 8 Dependabot bumps merged (docker actions v3→v4/v5/v6/v7, ginkgo v2.28.1, gomega v1.39.1, prometheus/client_golang v1.23.2)
+- **`.golangci.yml`**: Aligned `run.go` from `1.23` to `1.24` to match `go.mod`
+
+### Verifying release artifacts
+
+The container image and helm chart are signed with cosign using GitHub OIDC. Verify with:
+
+```bash
+cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.9 \
+  --certificate-identity-regexp "^https://github.com/rancher-sandbox/cluster-api-provider-harvester" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+A SLSA provenance attestation is attached to the registry alongside the image.
+
 ## [v0.2.8] - 2026-03-16
 
 ### Fixed
