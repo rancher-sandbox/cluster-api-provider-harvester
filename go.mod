@@ -15,7 +15,7 @@ require (
 	github.com/longhorn/longhorn-manager v1.9.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.28.2
-	github.com/onsi/gomega v1.39.1
+	github.com/onsi/gomega v1.40.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.84.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/rancher/rancher/pkg/apis v0.0.0
