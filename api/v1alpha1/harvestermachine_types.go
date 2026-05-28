@@ -21,7 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 const (
@@ -35,13 +35,13 @@ const (
 
 const (
 	// MachineCreatedCondition documents that the machine has been created.
-	MachineCreatedCondition clusterv1.ConditionType = "MachineCreated"
+	MachineCreatedCondition string = "MachineCreated"
 
 	// MachineNotFoundReason documents that the machine was not found.
 	MachineNotFoundReason = "MachineNotFound"
 
 	// VMProvisioningReadyCondition documents VM creation and provisioning status.
-	VMProvisioningReadyCondition clusterv1.ConditionType = "VMProvisioningReady"
+	VMProvisioningReadyCondition string = "VMProvisioningReady"
 	// VMProvisioningInProgressReason documents that VM provisioning is in progress.
 	VMProvisioningInProgressReason = "VMProvisioningInProgress"
 	// VMProvisioningFailedReason documents that VM provisioning has failed.
@@ -50,14 +50,14 @@ const (
 	VMProvisioningReadyReason = "VMProvisioningReady"
 
 	// VMRunningCondition documents whether the VM is running.
-	VMRunningCondition clusterv1.ConditionType = "VMRunning"
+	VMRunningCondition string = "VMRunning"
 	// VMRunningReason documents that the VM is running.
 	VMRunningReason = "VMRunning"
 	// VMNotRunningReason documents that the VM is not yet running.
 	VMNotRunningReason = "VMNotRunning"
 
 	// VMIPAllocatedCondition documents that a static IP has been allocated for the VM.
-	VMIPAllocatedCondition clusterv1.ConditionType = "VMIPAllocated"
+	VMIPAllocatedCondition string = "VMIPAllocated"
 	// VMIPAllocationFailedReason documents that IP allocation failed.
 	VMIPAllocationFailedReason = "VMIPAllocationFailed"
 	// VMIPPoolExhaustedReason documents that the IP pool has no available addresses.
@@ -170,7 +170,7 @@ type HarvesterMachineStatus struct {
 	// Ready is true when the provider resource is ready.
 	Ready bool `json:"ready,omitempty"`
 
-	Conditions []clusterv1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	FailureReason  string                     `json:"failureReason,omitempty"`
 	FailureMessage string                     `json:"failureMessage,omitempty"`
@@ -216,11 +216,12 @@ func init() {
 }
 
 // GetConditions returns the set of conditions for this object.
-func (m *HarvesterMachine) GetConditions() clusterv1.Conditions {
+// CAPI v1.12+ standard signature returning k8s-aligned []metav1.Condition.
+func (m *HarvesterMachine) GetConditions() []metav1.Condition {
 	return m.Status.Conditions
 }
 
 // SetConditions sets the conditions on this object.
-func (m *HarvesterMachine) SetConditions(conditions clusterv1.Conditions) {
+func (m *HarvesterMachine) SetConditions(conditions []metav1.Condition) {
 	m.Status.Conditions = conditions
 }

@@ -53,7 +53,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiutil "sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -265,9 +265,9 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	}
 
 	// Set TargetNamespaceReady condition to in progress
-	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+	conditions.Set(scope.HarvesterCluster, v1.Condition{
 		Type:    infrav1.TargetNamespaceReadyCondition,
-		Status:  apiv1.ConditionFalse,
+		Status:  v1.ConditionFalse,
 		Reason:  "TargetNamespaceChecking",
 		Message: "Checking if target namespace exists",
 	})
@@ -284,18 +284,18 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 			if err != nil {
 				logger.Error(err, "unable to create TargetNamespace")
 
-				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				conditions.Set(scope.HarvesterCluster, v1.Condition{
 					Type:    infrav1.TargetNamespaceReadyCondition,
-					Status:  apiv1.ConditionFalse,
+					Status:  v1.ConditionFalse,
 					Reason:  infrav1.TargetNamespaceNotReadyReason,
 					Message: fmt.Sprintf("Failed to create target namespace: %v", err),
 				})
 			} else {
 				logger.Error(err, "unable to get TargetNamespace in Harvester, problem with the HarvesterClient")
 
-				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				conditions.Set(scope.HarvesterCluster, v1.Condition{
 					Type:    infrav1.TargetNamespaceReadyCondition,
-					Status:  apiv1.ConditionFalse,
+					Status:  v1.ConditionFalse,
 					Reason:  infrav1.TargetNamespaceNotReadyReason,
 					Message: fmt.Sprintf("Unable to access target namespace: %v", err),
 				})
@@ -303,18 +303,18 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		} else {
 			logger.Error(err, "unable to get TargetNamespace in Harvester, problem with the HarvesterClient")
 
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			conditions.Set(scope.HarvesterCluster, v1.Condition{
 				Type:    infrav1.TargetNamespaceReadyCondition,
-				Status:  apiv1.ConditionFalse,
+				Status:  v1.ConditionFalse,
 				Reason:  infrav1.TargetNamespaceNotReadyReason,
 				Message: fmt.Sprintf("Unable to access target namespace: %v", err),
 			})
 		}
 	} else {
 		// Target namespace exists and is accessible
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.TargetNamespaceReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  infrav1.TargetNamespaceReadyReason,
 			Message: "Target namespace exists and is accessible",
 		})
@@ -422,9 +422,9 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	}
 
 	// Set InfrastructureReady condition to in progress
-	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+	conditions.Set(scope.HarvesterCluster, v1.Condition{
 		Type:    infrav1.InfrastructureReadyCondition,
-		Status:  apiv1.ConditionFalse,
+		Status:  v1.ConditionFalse,
 		Reason:  infrav1.InfrastructureProvisioningInProgressReason,
 		Message: "Infrastructure provisioning in progress",
 	})
@@ -435,9 +435,9 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		if err != nil {
 			logger.V(1).Info("could not create the LoadBalancer, requeuing ...")
 
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			conditions.Set(scope.HarvesterCluster, v1.Condition{
 				Type:    infrav1.InfrastructureReadyCondition,
-				Status:  apiv1.ConditionFalse,
+				Status:  v1.ConditionFalse,
 				Reason:  infrav1.InfrastructureProvisioningFailedReason,
 				Message: fmt.Sprintf("Failed to create LoadBalancer: %v", err),
 			})
@@ -449,9 +449,9 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		if err != nil {
 			logger.Info("LoadBalancer IP is not yet available, requeuing ...")
 
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			conditions.Set(scope.HarvesterCluster, v1.Condition{
 				Type:    infrav1.InfrastructureReadyCondition,
-				Status:  apiv1.ConditionFalse,
+				Status:  v1.ConditionFalse,
 				Reason:  infrav1.InfrastructureProvisioningInProgressReason,
 				Message: "Waiting for LoadBalancer IP to be available",
 			})
@@ -467,17 +467,17 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 		scope.HarvesterCluster.Status.Ready = true
 
 		// Set LoadBalancerReady condition
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.LoadBalancerReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  "LoadBalancerReady",
 			Message: "LoadBalancer is ready with assigned IP",
 		})
 
 		// Set InfrastructureReady condition
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.InfrastructureReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  infrav1.InfrastructureReadyReason,
 			Message: "All infrastructure components are ready",
 		})
@@ -487,9 +487,9 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 
 	// If LoadBalancer is already ready, set InfrastructureReady as well
 	if conditions.IsTrue(scope.HarvesterCluster, infrav1.LoadBalancerReadyCondition) {
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.InfrastructureReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  infrav1.InfrastructureReadyReason,
 			Message: "All infrastructure components are ready",
 		})
@@ -849,9 +849,9 @@ func (r *HarvesterClusterReconciler) reconcileCloudProviderConfig(scope *Cluster
 		}
 	}
 
-	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+	conditions.Set(scope.HarvesterCluster, v1.Condition{
 		Type:    infrav1.CloudProviderConfigReadyCondition,
-		Status:  apiv1.ConditionTrue,
+		Status:  v1.ConditionTrue,
 		Reason:  infrav1.CloudProviderConfigGeneratedSuccessfullyReason,
 		Message: "Cloud Provider Config was generated successfully",
 	})
@@ -872,9 +872,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 
 	// Skip if cluster doesn't have the rancher-auto-import label
 	if scope.Cluster.Labels["cluster-api.cattle.io/rancher-auto-import"] != "true" {
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.FleetIntegrationReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  infrav1.FleetIntegrationNotApplicableReason,
 			Message: "Cluster does not have rancher-auto-import label",
 		})
@@ -917,9 +917,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 
 	if mgmtClusterName == "" {
 		logger.V(1).Info("Provisioning cluster not yet created by Turtles or status.clusterName not set, will retry")
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.FleetIntegrationReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.FleetIntegrationInProgressReason,
 			Message: "Waiting for Turtles to create provisioning cluster",
 		})
@@ -940,9 +940,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 	err = r.Get(ctx, types.NamespacedName{Name: mgmtClusterName}, mgmtCluster)
 	if err != nil {
 		logger.V(1).Info("Cannot get management cluster, will retry", "mgmtCluster", mgmtClusterName, "error", err)
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.FleetIntegrationReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.FleetIntegrationInProgressReason,
 			Message: "Waiting for management cluster " + mgmtClusterName,
 		})
@@ -959,9 +959,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 		err = r.Patch(ctx, mgmtCluster, client.RawPatch(types.MergePatchType, patch))
 		if err != nil {
 			logger.Error(err, "Failed to patch fleetWorkspaceName", "mgmtCluster", mgmtClusterName)
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			conditions.Set(scope.HarvesterCluster, v1.Condition{
 				Type:    infrav1.FleetIntegrationReadyCondition,
-				Status:  apiv1.ConditionFalse,
+				Status:  v1.ConditionFalse,
 				Reason:  infrav1.FleetIntegrationFailedReason,
 				Message: fmt.Sprintf("Failed to set fleetWorkspaceName: %v", err),
 			})
@@ -981,9 +981,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 	err = r.List(ctx, fleetClusterList, client.InNamespace("fleet-default"))
 	if err != nil {
 		logger.V(1).Info("Cannot list Fleet clusters, will retry", "error", err)
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.FleetIntegrationReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.FleetIntegrationInProgressReason,
 			Message: "Waiting for Fleet cluster to be created",
 		})
@@ -1005,9 +1005,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 
 	if fleetCluster == nil {
 		logger.V(1).Info("Fleet cluster not yet created, will retry", "expected", mgmtClusterName)
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.FleetIntegrationReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.FleetIntegrationInProgressReason,
 			Message: "Waiting for Fleet cluster " + mgmtClusterName + " in fleet-default",
 		})
@@ -1046,9 +1046,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 		err = r.Update(ctx, fleetCluster)
 		if err != nil {
 			logger.Error(err, "Failed to update Fleet cluster labels", "fleetCluster", fleetCluster.GetName())
-			conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+			conditions.Set(scope.HarvesterCluster, v1.Condition{
 				Type:    infrav1.FleetIntegrationReadyCondition,
-				Status:  apiv1.ConditionFalse,
+				Status:  v1.ConditionFalse,
 				Reason:  infrav1.FleetIntegrationFailedReason,
 				Message: fmt.Sprintf("Failed to update Fleet cluster labels: %v", err),
 			})
@@ -1060,9 +1060,9 @@ func (r *HarvesterClusterReconciler) reconcileFleetIntegration(scope *ClusterSco
 	}
 
 	// 5. Set condition as done
-	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+	conditions.Set(scope.HarvesterCluster, v1.Condition{
 		Type:    infrav1.FleetIntegrationReadyCondition,
-		Status:  apiv1.ConditionTrue,
+		Status:  v1.ConditionTrue,
 		Reason:  infrav1.FleetIntegrationReadyReason,
 		Message: fmt.Sprintf("Fleet labels propagated to cluster %s in fleet-default", fleetCluster.GetName()),
 	})
@@ -1086,9 +1086,9 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 			_, err := scope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
 				scope.Ctx, ref, v1.GetOptions{})
 			if err != nil {
-				conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+				conditions.Set(scope.HarvesterCluster, v1.Condition{
 					Type:    infrav1.VMIPPoolReadyCondition,
-					Status:  apiv1.ConditionFalse,
+					Status:  v1.ConditionFalse,
 					Reason:  infrav1.VMIPPoolCreationFailedReason,
 					Message: fmt.Sprintf("Referenced VM IP pool %s not found: %v", ref, err),
 				})
@@ -1099,9 +1099,9 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 			readyPools = append(readyPools, ref)
 		}
 
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.VMIPPoolReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  infrav1.VMIPPoolReadyReason,
 			Message: fmt.Sprintf("VM IP pool(s) ready: %v", readyPools),
 		})
@@ -1127,9 +1127,9 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 		// Pool exists, update the ref
 		scope.HarvesterCluster.Spec.VMNetworkConfig.IPPoolRef = existingPool.Name
 
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.VMIPPoolReadyCondition,
-			Status:  apiv1.ConditionTrue,
+			Status:  v1.ConditionTrue,
 			Reason:  infrav1.VMIPPoolReadyReason,
 			Message: fmt.Sprintf("VM IP pool %s is ready", existingPool.Name),
 		})
@@ -1177,9 +1177,9 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 			return nil
 		}
 
-		conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+		conditions.Set(scope.HarvesterCluster, v1.Condition{
 			Type:    infrav1.VMIPPoolReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.VMIPPoolCreationFailedReason,
 			Message: fmt.Sprintf("Failed to create VM IP pool: %v", err),
 		})
@@ -1193,16 +1193,16 @@ func (r *HarvesterClusterReconciler) reconcileVMIPPool(scope *ClusterScope) erro
 
 	// Mark that the controller created this pool so it can be cleaned up on deletion.
 	// Pre-existing pools (referenced via IPPoolRef) won't have this condition.
-	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+	conditions.Set(scope.HarvesterCluster, v1.Condition{
 		Type:    infrav1.VMIPPoolCreatedByControllerCondition,
-		Status:  apiv1.ConditionTrue,
+		Status:  v1.ConditionTrue,
 		Reason:  infrav1.VMIPPoolCreatedByControllerReason,
 		Message: fmt.Sprintf("VM IP pool %s was created by the controller", createdPool.Name),
 	})
 
-	conditions.Set(scope.HarvesterCluster, &clusterv1.Condition{
+	conditions.Set(scope.HarvesterCluster, v1.Condition{
 		Type:    infrav1.VMIPPoolReadyCondition,
-		Status:  apiv1.ConditionTrue,
+		Status:  v1.ConditionTrue,
 		Reason:  infrav1.VMIPPoolReadyReason,
 		Message: fmt.Sprintf("VM IP pool %s created successfully", createdPool.Name),
 	})
@@ -1214,9 +1214,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	logger := log.FromContext(ctx)
 
 	// Set HarvesterConnectionReady condition to in progress
-	conditions.Set(cluster, &clusterv1.Condition{
+	conditions.Set(cluster, v1.Condition{
 		Type:    infrav1.HarvesterConnectionReadyCondition,
-		Status:  apiv1.ConditionFalse,
+		Status:  v1.ConditionFalse,
 		Reason:  "HarvesterConnectionInProgress",
 		Message: "Attempting to connect to Harvester",
 	})
@@ -1227,9 +1227,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 		cluster.Status.FailureMessage = "unable to find the IdentitySecret for Harvester"
 		cluster.Status.Ready = false
 
-		conditions.Set(cluster, &clusterv1.Condition{
+		conditions.Set(cluster, v1.Condition{
 			Type:    infrav1.HarvesterConnectionReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.HarvesterAuthenticationFailedReason,
 			Message: fmt.Sprintf("Failed to get IdentitySecret: %v", err),
 		})
@@ -1245,9 +1245,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 		cluster.Status.FailureMessage = err.Error()
 		cluster.Status.Ready = false
 
-		conditions.Set(cluster, &clusterv1.Condition{
+		conditions.Set(cluster, v1.Condition{
 			Type:    infrav1.HarvesterConnectionReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.HarvesterAuthenticationFailedReason,
 			Message: fmt.Sprintf("Invalid kubeconfig: %v", err),
 		})
@@ -1264,9 +1264,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client config for Harvester")
 
-		conditions.Set(cluster, &clusterv1.Condition{
+		conditions.Set(cluster, v1.Condition{
 			Type:    infrav1.HarvesterConnectionReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.HarvesterConnectionFailedReason,
 			Message: fmt.Sprintf("Failed to create REST config: %v", err),
 		})
@@ -1278,9 +1278,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if err != nil {
 		logger.Error(err, "unable to create kubernetes client from restConfig")
 
-		conditions.Set(cluster, &clusterv1.Condition{
+		conditions.Set(cluster, v1.Condition{
 			Type:    infrav1.HarvesterConnectionReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.HarvesterConnectionFailedReason,
 			Message: fmt.Sprintf("Failed to create Kubernetes client: %v", err),
 		})
@@ -1292,9 +1292,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if err != nil {
 		logger.Error(err, "Harvester deployment not found on target Kubernetes cluster")
 
-		conditions.Set(cluster, &clusterv1.Condition{
+		conditions.Set(cluster, v1.Condition{
 			Type:    infrav1.HarvesterConnectionReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.HarvesterConnectionFailedReason,
 			Message: fmt.Sprintf("Harvester deployment not found: %v", err),
 		})
@@ -1305,9 +1305,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	if !isHarvesterAvailable(harvesterDeployment.Status.Conditions) {
 		logger.Error(err, "harvester cluster is unavailable")
 
-		conditions.Set(cluster, &clusterv1.Condition{
+		conditions.Set(cluster, v1.Condition{
 			Type:    infrav1.HarvesterConnectionReadyCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.HarvesterConnectionFailedReason,
 			Message: "Harvester cluster is unavailable",
 		})
@@ -1316,9 +1316,9 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 	}
 
 	// Set HarvesterConnectionReady condition to true
-	conditions.Set(cluster, &clusterv1.Condition{
+	conditions.Set(cluster, v1.Condition{
 		Type:    infrav1.HarvesterConnectionReadyCondition,
-		Status:  apiv1.ConditionTrue,
+		Status:  v1.ConditionTrue,
 		Reason:  infrav1.HarvesterConnectionReadyReason,
 		Message: "Successfully connected and authenticated to Harvester API",
 	})
@@ -1420,9 +1420,9 @@ func createIPPoolIfNotExists(ctx context.Context, cluster *infrav1.HarvesterClus
 			return lbClient.LoadbalancerV1beta1().IPPools().Get(ctx, ipPoolToCreate.Name, v1.GetOptions{})
 		}
 
-		cluster.Status.Conditions = append(cluster.Status.Conditions, clusterv1.Condition{
+		cluster.Status.Conditions = append(cluster.Status.Conditions, v1.Condition{
 			Type:    infrav1.CustomIPPoolCreatedCondition,
-			Status:  apiv1.ConditionFalse,
+			Status:  v1.ConditionFalse,
 			Reason:  infrav1.CustomPoolCreationInHarvesterFailedReason,
 			Message: "Unable to create Custom Ip Pool in Harvester",
 		})
@@ -1435,9 +1435,9 @@ func createIPPoolIfNotExists(ctx context.Context, cluster *infrav1.HarvesterClus
 		return &lbv1beta1.IPPool{}, errors.Errorf("IP Pool for HarvesterCluster %s could not be correctly created", cluster.Name)
 	}
 
-	cluster.Status.Conditions = append(cluster.Status.Conditions, clusterv1.Condition{
+	cluster.Status.Conditions = append(cluster.Status.Conditions, v1.Condition{
 		Type:    infrav1.CustomIPPoolCreatedCondition,
-		Status:  apiv1.ConditionTrue,
+		Status:  v1.ConditionTrue,
 		Reason:  infrav1.CustomIPPoolCreatedSuccessfullyReason,
 		Message: "Custom Pool was created successfully",
 	})

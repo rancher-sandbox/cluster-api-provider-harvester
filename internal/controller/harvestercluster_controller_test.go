@@ -37,7 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	hvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
@@ -720,7 +720,7 @@ var _ = Describe("ReconcileDelete (ClusterScope)", func() {
 			},
 			Status: infrav1.HarvesterClusterStatus{
 				// VMIPPoolCreatedByController is NOT true, so pool should NOT be deleted
-				Conditions: []clusterv1.Condition{},
+				Conditions: []v1.Condition{},
 			},
 		}
 
@@ -766,7 +766,7 @@ var _ = Describe("reconcileCloudProviderConfig unit", func() {
 				TargetNamespace: "default",
 			},
 			Status: infrav1.HarvesterClusterStatus{
-				Conditions: []clusterv1.Condition{
+				Conditions: []v1.Condition{
 					{
 						Type:   infrav1.CloudProviderConfigReadyCondition,
 						Status: corev1.ConditionTrue,
@@ -1242,7 +1242,7 @@ var _ = Describe("ReconcileDelete comprehensive", func() {
 				},
 			},
 			Status: infrav1.HarvesterClusterStatus{
-				Conditions: []clusterv1.Condition{
+				Conditions: []v1.Condition{
 					{
 						Type:   infrav1.CustomIPPoolCreatedCondition,
 						Status: corev1.ConditionTrue,
@@ -1297,7 +1297,7 @@ var _ = Describe("ReconcileDelete comprehensive", func() {
 				},
 			},
 			Status: infrav1.HarvesterClusterStatus{
-				Conditions: []clusterv1.Condition{
+				Conditions: []v1.Condition{
 					{
 						Type:   infrav1.VMIPPoolCreatedByControllerCondition,
 						Status: corev1.ConditionTrue,
@@ -2379,7 +2379,7 @@ var _ = Describe("ReconcileNormal with CP machines", func() {
 			},
 			Status: infrav1.HarvesterClusterStatus{
 				Ready: true,
-				Conditions: []clusterv1.Condition{
+				Conditions: []v1.Condition{
 					{
 						Type:   infrav1.LoadBalancerReadyCondition,
 						Status: corev1.ConditionTrue,
