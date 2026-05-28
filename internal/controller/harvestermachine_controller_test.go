@@ -34,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -1981,7 +1982,7 @@ var _ = Describe("ReconcileNormal", func() {
 					Namespace: "test-ns",
 				},
 				Status: clusterv1.ClusterStatus{
-					InfrastructureReady: false,
+					Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(false)},
 				},
 			},
 			Machine: &clusterv1.Machine{
@@ -2024,7 +2025,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
 				Status: clusterv1.ClusterStatus{
-					InfrastructureReady: true,
+					Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)},
 				},
 			},
 			Machine: &clusterv1.Machine{
@@ -2082,7 +2083,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2159,7 +2160,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2225,7 +2226,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2299,13 +2300,13 @@ var _ = Describe("ReconcileNormal", func() {
 				Ready: true, // already marked Ready (has IPs)
 			},
 		}
-		conditions.MarkTrue(hvMachine, infrav1.MachineCreatedCondition)
+		conditions.Set(hvMachine, metav1.Condition{Type: infrav1.MachineCreatedCondition, Status: metav1.ConditionTrue, Reason: infrav1.MachineCreatedCondition})
 
 		scope := &Scope{
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2371,13 +2372,13 @@ var _ = Describe("ReconcileNormal", func() {
 				Ready: true, // already ready
 			},
 		}
-		conditions.MarkTrue(hvMachine, infrav1.MachineCreatedCondition)
+		conditions.Set(hvMachine, metav1.Condition{Type: infrav1.MachineCreatedCondition, Status: metav1.ConditionTrue, Reason: infrav1.MachineCreatedCondition})
 
 		scope := &Scope{
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2423,13 +2424,13 @@ var _ = Describe("ReconcileNormal", func() {
 				Finalizers: []string{infrav1.MachineFinalizer},
 			},
 		}
-		conditions.MarkTrue(hvMachine, infrav1.MachineCreatedCondition)
+		conditions.Set(hvMachine, metav1.Condition{Type: infrav1.MachineCreatedCondition, Status: metav1.ConditionTrue, Reason: infrav1.MachineCreatedCondition})
 
 		scope := &Scope{
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2486,7 +2487,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2544,7 +2545,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2609,7 +2610,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2688,7 +2689,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2761,7 +2762,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
@@ -2817,7 +2818,7 @@ var _ = Describe("ReconcileNormal", func() {
 			Ctx: context.TODO(),
 			Cluster: &clusterv1.Cluster{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-cluster", Namespace: "test-ns"},
-				Status:     clusterv1.ClusterStatus{InfrastructureReady: true},
+				Status:     clusterv1.ClusterStatus{Initialization: clusterv1.ClusterInitializationStatus{InfrastructureProvisioned: ptr.To(true)}},
 			},
 			Machine: &clusterv1.Machine{
 				ObjectMeta: metav1.ObjectMeta{Namespace: "test-ns"},
