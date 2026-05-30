@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
-## [v0.3.0] - 2026-05-28 (in development)
+## [v0.3.0] - 2026-05-30
 
 ### ⚠️ Breaking — ecosystem upgrade required
 
@@ -13,24 +13,24 @@ management cluster must run **all** of the following before installing
 v0.3.0:
 
 - Cluster API core v1.12.x (serves `cluster.x-k8s.io/v1beta2`)
-- controller-runtime v0.22.x (CAPHV controller image)
+- cluster-api-provider-rke2 v0.24.x+ (bootstrap and control plane,
+  v1beta2 RKE2 CRDs — validated against v0.25.0)
 - Kubernetes 1.34.x on the management cluster
 - Go 1.24+ when building from source
 
-Compatible dependent providers:
+Compatible dependent providers (validated):
 
-- rancher-sandbox/cluster-api-provider-rke2 v0.24.x (RKE2
-  bootstrap + control-plane)
-- rancher/turtles v0.26.x
-- kubernetes-sigs/cluster-api-addon-provider-fleet v0.13.x
+- rancher/turtles v0.26.2
+- Rancher Manager 2.14.1 (Turtles is shipped by default and must have
+  rke2-bootstrap + rke2-control-plane CAPIProviders explicitly enabled)
 
 Older managers (CAPI v1.10/v1beta1) will reject v0.3.0 because the
 controller looks up Cluster objects via `cluster.x-k8s.io/v1beta2`.
 Plan the upgrade in this order:
 
-1. Bump CAPI core to v1.12.8
-2. Bump RKE2 bootstrap/control-plane to v0.24.4
-3. Bump Turtles to v0.26.2 + CAAPF to v0.13.x
+1. Bump CAPI core to v1.12.x
+2. Bump RKE2 bootstrap/control-plane to v0.24.x+
+3. Bump Turtles to v0.26.x
 4. Upgrade CAPHV to v0.3.0 (this release)
 
 ### Changed
@@ -71,13 +71,32 @@ Plan the upgrade in this order:
   `lastTransitionTime`, `message`, `reason`, `status`, `type`; optional
   `observedGeneration`).
 
-### Validated against
+### Templates and CLI
 
-- Harvester v1.8.0 (KubeVirt 1.7.0, Longhorn 1.7, RKE2 v1.35.2)
-- Existing v0.2.9 clusters survive the upgrade (HarvesterCluster +
-  HarvesterMachine objects reconcile cleanly under the new controller).
-- 195/195 unit tests pass (`internal/controller`, `util`).
-- Validating webhooks: 5/5 e2e tests pass.
+- `templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml`,
+  `templates/cluster-template-rke2*.yaml`, and the `bin/caphv-generate`
+  script now emit `controlplane.cluster.x-k8s.io/v1beta2` and
+  `bootstrap.cluster.x-k8s.io/v1beta2` for RKE2 templates. Core CAPI
+  types (`Cluster`, `ClusterClass`, `ClusterResourceSet`,
+  `MachineHealthCheck`) stay on `cluster.x-k8s.io/v1beta1` in the
+  rendered YAML — CAPI v1.12 conversion webhooks transparently bridge
+  to v1beta2 internals, keeping user-facing manifests stable.
+
+### Validated end-to-end on a clean management cluster
+
+- VM `mgmt-v030` on Harvester 1.8.0 (openSUSE Leap 15.6, RKE2
+  v1.34.7+rke2r1) running:
+  - Rancher Manager 2.14.1
+  - Rancher Turtles 0.26.2
+  - cert-manager v1.18.2
+  - CAPI core v1.12.7, rke2-bootstrap v0.25.0, rke2-control-plane v0.25.0
+  - CAPHV v0.3.0
+- Webhooks: 5/5 e2e tests pass.
+- Unit tests: 195/195 (`internal/controller`, `util`).
+- ClusterClass topology reconciles successfully end-to-end:
+  HarvesterCluster + HarvesterMachine + RKE2ControlPlane created from
+  a `caphv-generate` manifest, VM provisioned on Harvester (KubeVirt
+  1.7.0), IP allocated from `capi-vm-pool`, providerID assigned.
 
 ## [v0.2.9] - 2026-04-15
 
