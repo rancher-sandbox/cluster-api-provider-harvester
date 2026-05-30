@@ -40,26 +40,27 @@ const (
 	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester.
 	LoadBalancerReadyCondition string = "LoadBalancerReady"
 	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready.
-	LoadBalancerNotReadyReason = "The Load Balancer is not ready"
+	// metav1.Condition.Reason must match ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$ (PascalCase, no spaces).
+	LoadBalancerNotReadyReason = "LoadBalancerNotReady"
 	// LoadBalancerNoBackendMachineReason documents that there are no machines matching the load balancer configuration.
-	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
+	LoadBalancerNoBackendMachineReason = "LoadBalancerNoBackendMachine"
 	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready.
-	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
+	LoadBalancerHealthcheckFailedReason = "LoadBalancerHealthcheckFailed"
 	// CustomIPPoolCreatedCondition documents if a custom IP Pool was created in Harvester.
 	CustomIPPoolCreatedCondition string = "CustomIPPoolCreated"
 	// CustomPoolCreationInHarvesterFailedReason documents the reason why a custom pool was unable to be created.
-	CustomPoolCreationInHarvesterFailedReason = "The custom Pool creation in Harvester failed"
+	CustomPoolCreationInHarvesterFailedReason = "CustomPoolCreationInHarvesterFailed"
 	// CustomIPPoolCreatedSuccessfullyReason documents the reason why Custom IP Pool was created.
-	CustomIPPoolCreatedSuccessfullyReason = "Custom IP Pool was successfully created"
+	CustomIPPoolCreatedSuccessfullyReason = "CustomIPPoolCreatedSuccessfully"
 
 	// CloudProviderConfigReadyCondition documents the status of the cloud provider configuration in Harvester.
 	CloudProviderConfigReadyCondition string = "CloudProviderConfigReady"
 	// CloudProviderConfigNotReadyReason documents the reason why the cloud provider configuration is not ready.
-	CloudProviderConfigNotReadyReason = "The Cloud Provider configuration is not ready"
+	CloudProviderConfigNotReadyReason = "CloudProviderConfigNotReady"
 	// CloudProviderConfigGenerationFailedReason documents the reason why the cloud provider configuration generation failed.
-	CloudProviderConfigGenerationFailedReason = "The Cloud Provider configuration generation failed"
+	CloudProviderConfigGenerationFailedReason = "CloudProviderConfigGenerationFailed"
 	// CloudProviderConfigGeneratedSuccessfullyReason documents the reason why the cloud provider configuration was generated.
-	CloudProviderConfigGeneratedSuccessfullyReason = "The Cloud Provider configuration was generated successfully"
+	CloudProviderConfigGeneratedSuccessfullyReason = "CloudProviderConfigGeneratedSuccessfully"
 
 	// InfrastructureReadyCondition documents that all infrastructure components are provisioned.
 	InfrastructureReadyCondition string = "InfrastructureReady"
@@ -114,7 +115,7 @@ const (
 	// InitMachineCreatedCondition documents the status of the init machine in Harvester.
 	InitMachineCreatedCondition string = "InitMachineCreated"
 	// InitMachineNotYetCreatedReason documents the reason why the init machine is not ready.
-	InitMachineNotYetCreatedReason = "Init Machine not yet created"
+	InitMachineNotYetCreatedReason = "InitMachineNotYetCreated"
 )
 
 // HarvesterClusterSpec defines the desired state of HarvesterCluster.
