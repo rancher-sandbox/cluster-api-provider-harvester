@@ -1,4 +1,4 @@
-# ClusterClass for CAPHV v0.2.0 with Harvester + RKE2
+# ClusterClass for CAPHV v0.3.0 with Harvester + RKE2 (v1beta2)
 # Supports: static IP (vmNetworkConfig with IPPool), DHCP LB, multi-disk, sshUser
 # Install once per management cluster, then create clusters with ~30 lines of YAML
 #

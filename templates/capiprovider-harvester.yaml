@@ -15,12 +15,12 @@ metadata:
 spec:
   name: harvester
   type: infrastructure
-  version: v0.2.3
+  version: v0.3.0
   # Set to true for automatic version upgrades when new releases are published
   # enableAutomaticUpdate: true
   fetchConfig:
     # For pinned version (manual upgrades):
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.3/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml
     # For automatic upgrades (latest release):
     # url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
   configSecret:
