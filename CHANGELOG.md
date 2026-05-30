@@ -71,6 +71,18 @@ Plan the upgrade in this order:
   `lastTransitionTime`, `message`, `reason`, `status`, `type`; optional
   `observedGeneration`).
 
+### Fixed
+
+- **Condition `Reason` values now conform to the v1beta2 regex**: nine
+  reason constants on `HarvesterCluster` (Load Balancer, Custom IP Pool,
+  Cloud Provider Config, and `InitMachineNotYetCreatedReason`) previously
+  held free-form sentences. `metav1.Condition.Reason` is validated
+  server-side against `^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$`, so
+  every status patch was rejected after the v1beta2 migration, causing
+  reconcile failures and controller-runtime leader-election loss.
+  Constants are now PascalCase identifiers; the human-readable text was
+  already carried in each `conditions.Set` call's `Message` field.
+
 ### Templates and CLI
 
 - `templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml`,
