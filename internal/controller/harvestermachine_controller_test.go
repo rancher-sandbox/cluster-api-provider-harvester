@@ -2300,7 +2300,11 @@ var _ = Describe("ReconcileNormal", func() {
 				Ready: true, // already marked Ready (has IPs)
 			},
 		}
-		conditions.Set(hvMachine, metav1.Condition{Type: infrav1.MachineCreatedCondition, Status: metav1.ConditionTrue, Reason: infrav1.MachineCreatedCondition})
+		conditions.Set(hvMachine, metav1.Condition{
+			Type:   infrav1.MachineCreatedCondition,
+			Status: metav1.ConditionTrue,
+			Reason: infrav1.MachineCreatedCondition,
+		})
 
 		scope := &Scope{
 			Ctx: context.TODO(),
@@ -2372,7 +2376,11 @@ var _ = Describe("ReconcileNormal", func() {
 				Ready: true, // already ready
 			},
 		}
-		conditions.Set(hvMachine, metav1.Condition{Type: infrav1.MachineCreatedCondition, Status: metav1.ConditionTrue, Reason: infrav1.MachineCreatedCondition})
+		conditions.Set(hvMachine, metav1.Condition{
+			Type:   infrav1.MachineCreatedCondition,
+			Status: metav1.ConditionTrue,
+			Reason: infrav1.MachineCreatedCondition,
+		})
 
 		scope := &Scope{
 			Ctx: context.TODO(),
@@ -2424,7 +2432,11 @@ var _ = Describe("ReconcileNormal", func() {
 				Finalizers: []string{infrav1.MachineFinalizer},
 			},
 		}
-		conditions.Set(hvMachine, metav1.Condition{Type: infrav1.MachineCreatedCondition, Status: metav1.ConditionTrue, Reason: infrav1.MachineCreatedCondition})
+		conditions.Set(hvMachine, metav1.Condition{
+			Type:   infrav1.MachineCreatedCondition,
+			Status: metav1.ConditionTrue,
+			Reason: infrav1.MachineCreatedCondition,
+		})
 
 		scope := &Scope{
 			Ctx: context.TODO(),
