@@ -3,7 +3,7 @@ kind: Namespace
 metadata:
   name: ${NAMESPACE}
 ---
-apiVersion: cluster.x-k8s.io/v1beta2
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   namespace: ${NAMESPACE}
@@ -57,7 +57,7 @@ metadata:
 data:
   kubeconfig: ${HARVESTER_KUBECONFIG_B64}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: RKE2ControlPlane
 metadata:
   namespace: ${NAMESPACE}
@@ -76,7 +76,7 @@ spec:
     name: ${CLUSTER_NAME}-cp-machine
     namespace: ${NAMESPACE}
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: RKE2ConfigTemplate
 metadata:
   namespace: ${NAMESPACE}
@@ -85,7 +85,7 @@ spec:
   template:
     spec: {}
 ---
-apiVersion: cluster.x-k8s.io/v1beta2
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: MachineDeployment
 metadata:
   namespace: ${NAMESPACE}
@@ -150,7 +150,7 @@ spec:
         volumeSize: ${VM_DISK_SIZE:50Gi}
         bootOrder: 0
 ---
-apiVersion: addons.cluster.x-k8s.io/v1beta2
+apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
   name: crs-harvester-ccm
@@ -164,7 +164,7 @@ spec:
     name: cloud-controller-manager-addon
   strategy: Reconcile
 ---
-apiVersion: addons.cluster.x-k8s.io/v1beta2
+apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
   name: crs-harvester-csi
@@ -178,7 +178,7 @@ spec:
     name: harvester-csi-driver-addon
   strategy: Reconcile
 ---
-apiVersion: addons.cluster.x-k8s.io/v1beta2
+apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
   name: crs-calico-chart-config

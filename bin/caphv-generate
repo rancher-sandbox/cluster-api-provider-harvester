@@ -269,7 +269,7 @@ metadata:
 spec:
   controlPlane:
     ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: RKE2ControlPlaneTemplate
       name: ${CLASS}-control-plane
       namespace: ${NAMESPACE}
@@ -291,7 +291,7 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
               kind: RKE2ConfigTemplate
               name: ${CLASS}-worker
               namespace: ${NAMESPACE}
@@ -611,7 +611,7 @@ spec:
     - name: cni
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -674,7 +674,7 @@ spec:
         manifestsConfigMapName: cloud-config-addon
         manifestsConfigMapNamespace: ${NAMESPACE}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: ${CLASS}-control-plane
@@ -720,7 +720,7 @@ spec:
       volumes: []
       networks: []
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: RKE2ConfigTemplate
 metadata:
   name: ${CLASS}-worker

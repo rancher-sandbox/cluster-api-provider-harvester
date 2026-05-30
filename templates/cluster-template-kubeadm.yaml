@@ -22,7 +22,7 @@ spec:
       - ${SERVICE_CIDR:-"10.43.0.0/16"}
     serviceDomain: cluster.local
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: KubeadmControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
@@ -59,7 +59,7 @@ metadata:
 data: 
   kubeconfig: ${HARVESTER_KUBECONFIG_B64}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: KubeadmControlPlane
 metadata:
   namespace: ${NAMESPACE}
@@ -86,7 +86,7 @@ spec:
       namespace: ${NAMESPACE}
   version: ${KUBERNETES_VERSION}
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   namespace: ${NAMESPACE}
@@ -114,7 +114,7 @@ spec:
     spec:
       bootstrap:
         configRef:
-          apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
           kind: KubeadmConfigTemplate
           name: ${CLUSTER_NAME}-worker
           namespace: ${NAMESPACE}
