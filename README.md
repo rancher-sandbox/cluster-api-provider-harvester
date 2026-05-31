@@ -442,6 +442,37 @@ make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.
 make test
 ```
 
+## Verifying release artifacts
+
+Container images and SLSA build provenance are produced by
+`.github/workflows/release.yml` and signed keylessly with
+[cosign](https://docs.sigstore.dev/) using the GitHub Actions OIDC
+identity.
+
+> **Requires cosign v3.0.0 or newer.** Releases v0.2.9+ are signed in
+> the OCI 1.1 bundle format used by cosign v3. Older cosign v2 clients
+> report `no signatures found` against these images — install cosign
+> v3 to verify.
+
+Verify the container image:
+
+```bash
+cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0 \
+  --certificate-identity-regexp "^https://github.com/rancher-sandbox/cluster-api-provider-harvester" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Verify the SLSA build provenance with the GitHub CLI:
+
+```bash
+gh attestation verify \
+  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0 \
+  --owner rancher-sandbox
+```
+
+Both checks confirm the image was built from this repository's
+`release.yml` workflow at the matching tag.
+
 ## Release History
 
 | Version | Date | Key changes |
