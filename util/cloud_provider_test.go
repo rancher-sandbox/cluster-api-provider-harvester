@@ -192,7 +192,6 @@ data:
   cloud-config: bmV3LXZhbHVl
 kind: Secret
 metadata:
-  creationTimestamp: null
   name: cloud-config
   namespace: test-hv
 type: Opaque

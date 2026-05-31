@@ -37,7 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	hvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
@@ -720,7 +720,7 @@ var _ = Describe("ReconcileDelete (ClusterScope)", func() {
 			},
 			Status: infrav1.HarvesterClusterStatus{
 				// VMIPPoolCreatedByController is NOT true, so pool should NOT be deleted
-				Conditions: []clusterv1.Condition{},
+				Conditions: []metav1.Condition{},
 			},
 		}
 
@@ -766,10 +766,10 @@ var _ = Describe("reconcileCloudProviderConfig unit", func() {
 				TargetNamespace: "default",
 			},
 			Status: infrav1.HarvesterClusterStatus{
-				Conditions: []clusterv1.Condition{
+				Conditions: []metav1.Condition{
 					{
 						Type:   infrav1.CloudProviderConfigReadyCondition,
-						Status: corev1.ConditionTrue,
+						Status: metav1.ConditionTrue,
 					},
 				},
 			},
@@ -1195,7 +1195,7 @@ var _ = Describe("ReconcileNormal (cluster) initial phases", func() {
 		Expect(result.RequeueAfter).To(BeNumerically(">", 0))
 
 		// Verify TargetNamespaceReady condition was set to True
-		var nsCondition *clusterv1.Condition
+		var nsCondition *metav1.Condition
 
 		for i := range hvCluster.Status.Conditions {
 			if hvCluster.Status.Conditions[i].Type == infrav1.TargetNamespaceReadyCondition {
@@ -1206,7 +1206,7 @@ var _ = Describe("ReconcileNormal (cluster) initial phases", func() {
 		}
 
 		Expect(nsCondition).ToNot(BeNil())
-		Expect(nsCondition.Status).To(Equal(corev1.ConditionTrue))
+		Expect(nsCondition.Status).To(Equal(metav1.ConditionTrue))
 	})
 })
 
@@ -1242,10 +1242,10 @@ var _ = Describe("ReconcileDelete comprehensive", func() {
 				},
 			},
 			Status: infrav1.HarvesterClusterStatus{
-				Conditions: []clusterv1.Condition{
+				Conditions: []metav1.Condition{
 					{
 						Type:   infrav1.CustomIPPoolCreatedCondition,
-						Status: corev1.ConditionTrue,
+						Status: metav1.ConditionTrue,
 					},
 				},
 			},
@@ -1297,10 +1297,10 @@ var _ = Describe("ReconcileDelete comprehensive", func() {
 				},
 			},
 			Status: infrav1.HarvesterClusterStatus{
-				Conditions: []clusterv1.Condition{
+				Conditions: []metav1.Condition{
 					{
 						Type:   infrav1.VMIPPoolCreatedByControllerCondition,
-						Status: corev1.ConditionTrue,
+						Status: metav1.ConditionTrue,
 					},
 				},
 			},
@@ -1588,7 +1588,7 @@ var _ = Describe("createIPPoolIfNotExists", func() {
 
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.CustomIPPoolCreatedCondition {
-				Expect(c.Status).To(Equal(corev1.ConditionTrue))
+				Expect(c.Status).To(Equal(metav1.ConditionTrue))
 
 				found = true
 			}
@@ -1796,7 +1796,7 @@ var _ = Describe("reconcileVMIPPool additional paths", func() {
 
 		for _, c := range hvCluster.Status.Conditions {
 			if c.Type == infrav1.VMIPPoolReadyCondition {
-				Expect(c.Status).To(Equal(corev1.ConditionTrue))
+				Expect(c.Status).To(Equal(metav1.ConditionTrue))
 
 				found = true
 			}
@@ -2325,7 +2325,7 @@ var _ = Describe("ReconcileNormal with CP machines", func() {
 		var lbReady bool
 
 		for _, c := range hvCluster.Status.Conditions {
-			if c.Type == infrav1.LoadBalancerReadyCondition && c.Status == corev1.ConditionTrue {
+			if c.Type == infrav1.LoadBalancerReadyCondition && c.Status == metav1.ConditionTrue {
 				lbReady = true
 			}
 		}
@@ -2379,14 +2379,14 @@ var _ = Describe("ReconcileNormal with CP machines", func() {
 			},
 			Status: infrav1.HarvesterClusterStatus{
 				Ready: true,
-				Conditions: []clusterv1.Condition{
+				Conditions: []metav1.Condition{
 					{
 						Type:   infrav1.LoadBalancerReadyCondition,
-						Status: corev1.ConditionTrue,
+						Status: metav1.ConditionTrue,
 					},
 					{
 						Type:   infrav1.CloudProviderConfigReadyCondition,
-						Status: corev1.ConditionTrue,
+						Status: metav1.ConditionTrue,
 					},
 				},
 			},
@@ -2407,7 +2407,7 @@ var _ = Describe("ReconcileNormal with CP machines", func() {
 		var infraReady bool
 
 		for _, c := range hvCluster.Status.Conditions {
-			if c.Type == infrav1.InfrastructureReadyCondition && c.Status == corev1.ConditionTrue {
+			if c.Type == infrav1.InfrastructureReadyCondition && c.Status == metav1.ConditionTrue {
 				infraReady = true
 			}
 		}
@@ -2861,7 +2861,7 @@ var _ = Describe("ReconcileNormal with POOL IPAM and VMNetworkConfig", func() {
 		var vmPoolReady bool
 
 		for _, c := range hvCluster.Status.Conditions {
-			if c.Type == infrav1.VMIPPoolReadyCondition && c.Status == corev1.ConditionTrue {
+			if c.Type == infrav1.VMIPPoolReadyCondition && c.Status == metav1.ConditionTrue {
 				vmPoolReady = true
 			}
 		}

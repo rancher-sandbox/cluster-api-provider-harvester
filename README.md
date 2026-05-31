@@ -1,6 +1,6 @@
 # Cluster API Provider Harvester (CAPHV)
 
-> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.7.1 compatibility and production-ready features.
+> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.7+/v1.8+ compatibility and production-ready features.
 
 ## Overview
 
@@ -8,9 +8,9 @@ CAPHV is a [Cluster API](https://cluster-api.sigs.k8s.io/) Infrastructure Provid
 
 This fork adds significant enhancements over upstream v0.1.6:
 
-| Feature | Upstream v0.1.x | This fork (v0.2.x) |
+| Feature | Upstream v0.1.x | This fork (v0.3.x) |
 |---------|----------------|-------------------|
-| Harvester compatibility | v1.2.0 | v1.7.1 |
+| Harvester compatibility | v1.2.0 | v1.7.x + v1.8.x |
 | Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
 | IP allocation | Manual / DHCP | Automatic from Harvester IPPool or DHCP |
 | Cloud-init | Basic | Network-config v1 (SLES), multi-NIC, static IP + DHCP |
@@ -30,12 +30,46 @@ This fork adds significant enhancements over upstream v0.1.6:
 
 ## Prerequisites
 
-- Harvester HCI v1.7.x cluster
+- Harvester HCI v1.7.x or v1.8.x cluster
 - Management cluster (RKE2 recommended) with:
-  - Cluster API Core (v1.10+)
-  - RKE2 Bootstrap + ControlPlane providers (v0.21+)
-  - Rancher Turtles (optional, for automatic Rancher import)
-  - cert-manager (required if webhooks enabled)
+  - Cluster API Core **v1.12.x** (serves `cluster.x-k8s.io/v1beta2`)
+  - RKE2 Bootstrap + ControlPlane providers **v0.24.x+** (validated against v0.25.0)
+  - Rancher Turtles **v0.26.x** (Rancher Manager 2.14.x ships Turtles by default,
+    but the RKE2 CAPIProviders must be enabled explicitly — see below)
+  - cert-manager (required for webhooks, default-on)
+- Harvester identity Secret (kubeconfig for the target Harvester cluster)
+- SSH KeyPair created on Harvester
+- VM image uploaded to Harvester (SLES 15 SP7 or openSUSE Leap 15.6 recommended)
+- IPPool configured on Harvester (for automatic IP allocation)
+
+> **Upgrading from v0.2.x**: see [docs/migration-v0.2-to-v0.3.md](docs/migration-v0.2-to-v0.3.md)
+> — v0.3.0 requires the CAPI v1.12 / v1beta2 ecosystem and is **not backward-compatible**
+> with managers running CAPI v1.10.
+
+### Enabling RKE2 providers under Rancher Turtles
+
+Rancher Turtles only deploys `cluster-api` core by default. To use CAPHV, enable
+the RKE2 providers explicitly:
+
+```yaml
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: rke2-bootstrap
+  namespace: rke2-bootstrap-system
+spec:
+  name: rke2
+  type: bootstrap
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: rke2-control-plane
+  namespace: rke2-control-plane-system
+spec:
+  name: rke2
+  type: controlPlane
+```
 - Harvester identity Secret (kubeconfig for the target Harvester cluster)
 - SSH KeyPair created on Harvester
 - VM image uploaded to Harvester (SLES 15 SP7 recommended)
@@ -54,9 +88,9 @@ metadata:
 spec:
   name: harvester
   type: infrastructure
-  version: v0.2.7
+  version: v0.3.0
   fetchConfig:
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.7/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -74,13 +108,13 @@ See [docs/operations.md](docs/operations.md) for full CAPIProvider deployment, u
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
   --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
-  --set image.tag=v0.2.7
+  --set image.tag=v0.3.0
 
 # With webhooks (requires cert-manager)
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
   --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
-  --set image.tag=v0.2.7 \
+  --set image.tag=v0.3.0 \
   --set webhooks.enabled=true \
   --set webhooks.certManager.enabled=true
 ```
@@ -89,10 +123,10 @@ helm install caphv chart/caphv/ \
 
 ```bash
 # Build and push the image
-make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
+make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
 
 # Deploy
-make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
+make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
 ```
 
 ### Option 4: Manual (standalone manifests)
@@ -402,7 +436,7 @@ Integration tests run against a live Harvester + CAPI cluster:
 make build
 
 # Build container image
-make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.7
+make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
 
 # Run unit tests
 make test
@@ -412,7 +446,10 @@ make test
 
 | Version | Date | Key changes |
 |---------|------|-------------|
-| v0.2.7 | 2026-03-10 | Code quality fixes for SURE-11421 review: kustomize modernization, finalizer naming conventions, context propagation, error handling |
+| v0.3.0 | 2026-05-30 | CAPI v1.12 / v1beta2 ecosystem migration: cluster-api v1.12.x, controller-runtime v0.22.5, k8s.io v0.34, metav1.Condition, RKE2 templates v1beta2. Validated against Harvester v1.8 + Rancher 2.14 + Turtles 0.26 |
+| v0.2.9 | 2026-04-15 | Supply chain hardening: cosign keyless signing, SLSA provenance, SBOM, GitHub Actions SHA-pinning, hadolint, least-privilege workflow permissions |
+| v0.2.8 | 2026-03-16 | CAPI contract compliance fixes, kustomize verify, v1beta2 readiness docs, Helm chart deprecation note |
+| v0.2.7 | 2026-03-10 | Code quality fixes for SURE-11421 review: kustomize modernization, finalizer naming conventions, context propagation |
 | v0.2.6 | 2026-03-09 | CSI decoupling, Fleet label automation, Fleet CSI bundle |
 | v0.2.5 | 2026-03-08 | Fleet/CAAPF addon management, CNI configuration flags |
 | v0.2.4 | 2026-03-08 | CAPIProvider in Turtles, P0 milestone complete |

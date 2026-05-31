@@ -46,7 +46,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -136,7 +136,7 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	defer func() {
 		err := patchHelper.Patch(ctx,
 			hvMachine,
-		// conditions.WithOwnedConditions( []clusterv1.ConditionType{ clusterv1.ReadyCondition}),
+		// conditions.WithOwnedConditions( []string{ clusterv1.ReadyCondition}),
 		)
 		if err != nil {
 			logger.Error(err, "failed to patch HarvesterMachine")
@@ -178,8 +178,10 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	hvCluster := &infrav1.HarvesterCluster{}
 
+	// CAPI v1beta2 ContractVersionedObjectReference dropped the Namespace field —
+	// the infrastructure reference is always in the same namespace as the Cluster.
 	hvClusterKey := types.NamespacedName{
-		Namespace: ownerCluster.Spec.InfrastructureRef.Namespace,
+		Namespace: ownerCluster.Namespace,
 		Name:      ownerCluster.Spec.InfrastructureRef.Name,
 	}
 
@@ -293,16 +295,19 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		return ctrl.Result{}, nil
 	}
 
-	// Return early if the ownerCluster has infrastructureReady = false
-	if !hvScope.Cluster.Status.InfrastructureReady {
+	// Return early if the ownerCluster has not been provisioned by its infrastructure.
+	// CAPI v1beta2 replaced Cluster.Status.InfrastructureReady by
+	// Cluster.Status.Initialization.InfrastructureProvisioned (a *bool).
+	infraProvisioned := hvScope.Cluster.Status.Initialization.InfrastructureProvisioned
+	if infraProvisioned == nil || !*infraProvisioned {
 		logger.Info("Waiting for Infrastructure to be ready ... ")
 
 		hvScope.HarvesterMachine.Status.Ready = false
 		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
 
-		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+		conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 			Type:    infrav1.InfrastructureReadyCondition,
-			Status:  v1.ConditionFalse,
+			Status:  metav1.ConditionFalse,
 			Reason:  infrav1.InfrastructureProvisioningInProgressReason,
 			Message: "Waiting for cluster infrastructure to be ready",
 		})
@@ -311,9 +316,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 	}
 
 	// Set InfrastructureReady condition when cluster infrastructure is ready
-	conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+	conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 		Type:    infrav1.InfrastructureReadyCondition,
-		Status:  v1.ConditionTrue,
+		Status:  metav1.ConditionTrue,
 		Reason:  infrav1.InfrastructureReadyReason,
 		Message: "Cluster infrastructure is ready",
 	})
@@ -335,9 +340,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		if allocErr != nil {
 			logger.Error(allocErr, "failed to allocate VM IP from pool")
 
-			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+			conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 				Type:    infrav1.VMIPAllocatedCondition,
-				Status:  v1.ConditionFalse,
+				Status:  metav1.ConditionFalse,
 				Reason:  infrav1.VMIPAllocationFailedReason,
 				Message: fmt.Sprintf("Failed to allocate VM IP: %v", allocErr),
 			})
@@ -353,9 +358,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			DNSSearch:  vmNetCfg.DNSSearch,
 		}
 
-		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+		conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 			Type:    infrav1.VMIPAllocatedCondition,
-			Status:  v1.ConditionTrue,
+			Status:  metav1.ConditionTrue,
 			Reason:  infrav1.VMIPAllocatedReason,
 			Message: fmt.Sprintf("Allocated IP %s from pool", hvScope.HarvesterMachine.Status.AllocatedIPAddress),
 		})
@@ -382,9 +387,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		vmExists = true
 
 		// Set VMProvisioningReady condition for existing VM
-		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+		conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 			Type:    infrav1.VMProvisioningReadyCondition,
-			Status:  v1.ConditionTrue,
+			Status:  metav1.ConditionTrue,
 			Reason:  infrav1.VMProvisioningReadyReason,
 			Message: "VM already exists and is provisioned",
 		})
@@ -420,7 +425,11 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 				hvScope.HarvesterMachine.Status.Ready = true
 				hvScope.HarvesterMachine.Status.Initialization = machineInitializationProvisioned
-				conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.VMProvisioningReadyCondition)
+				conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
+					Type:   infrav1.VMProvisioningReadyCondition,
+					Status: metav1.ConditionTrue,
+					Reason: infrav1.VMProvisioningReadyReason,
+				})
 
 				return ctrl.Result{Requeue: true}, nil
 			}
@@ -441,7 +450,11 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 					return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 				}
 			} else {
-				conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.MachineCreatedCondition)
+				conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
+					Type:   infrav1.MachineCreatedCondition,
+					Status: metav1.ConditionTrue,
+					Reason: infrav1.MachineCreatedCondition,
+				})
 				hvScope.HarvesterMachine.Status.Ready = true
 			}
 		} else {
@@ -457,9 +470,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		hvScope.HarvesterMachine.Status.Ready = false
 
 		// Set VMProvisioningReady condition to in progress
-		conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+		conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 			Type:    infrav1.VMProvisioningReadyCondition,
-			Status:  v1.ConditionFalse,
+			Status:  metav1.ConditionFalse,
 			Reason:  infrav1.VMProvisioningInProgressReason,
 			Message: "VM provisioning in progress",
 		})
@@ -473,9 +486,9 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			caphvmetrics.MachineCreateErrorsTotal.Inc()
 			logger.Error(err, "unable to create VM from HarvesterMachine information")
 
-			conditions.Set(hvScope.HarvesterMachine, &clusterv1.Condition{
+			conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
 				Type:    infrav1.VMProvisioningReadyCondition,
-				Status:  v1.ConditionFalse,
+				Status:  metav1.ConditionFalse,
 				Reason:  infrav1.VMProvisioningFailedReason,
 				Message: fmt.Sprintf("Failed to create VM: %v", err),
 			})
@@ -485,13 +498,21 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 		caphvmetrics.MachineCreationDuration.Observe(time.Since(createStart).Seconds())
 
-		conditions.MarkTrue(hvScope.HarvesterMachine, infrav1.MachineCreatedCondition)
+		conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
+			Type:   infrav1.MachineCreatedCondition,
+			Status: metav1.ConditionTrue,
+			Reason: infrav1.MachineCreatedCondition,
+		})
 		hvScope.HarvesterMachine.Status.Ready = false
 
 		// Patch the HarvesterCluster resource with the InitMachineCreatedCondition if it is not already set.
 		if !conditions.IsTrue(hvScope.HarvesterCluster, infrav1.InitMachineCreatedCondition) {
 			hvClusterCopy := hvScope.HarvesterCluster.DeepCopy()
-			conditions.MarkTrue(hvClusterCopy, infrav1.InitMachineCreatedCondition)
+			conditions.Set(hvClusterCopy, metav1.Condition{
+				Type:   infrav1.InitMachineCreatedCondition,
+				Status: metav1.ConditionTrue,
+				Reason: infrav1.InitMachineCreatedCondition,
+			})
 			hvClusterCopy.Status.Ready = hvScope.HarvesterCluster.Status.Ready
 
 			err := r.Client.Status().Patch(hvScope.Ctx, hvClusterCopy, client.MergeFrom(hvScope.HarvesterCluster))
@@ -502,8 +523,12 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 	} else {
 		if !vmExists {
 			hvScope.HarvesterMachine.Status.Ready = false
-			conditions.MarkFalse(hvScope.HarvesterMachine,
-				infrav1.MachineCreatedCondition, infrav1.MachineNotFoundReason, clusterv1.ConditionSeverityError, "VM not found in Harvester")
+			conditions.Set(hvScope.HarvesterMachine, metav1.Condition{
+				Type:    infrav1.MachineCreatedCondition,
+				Status:  metav1.ConditionFalse,
+				Reason:  infrav1.MachineNotFoundReason,
+				Message: "VM not found in Harvester",
+			})
 
 			return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 		}

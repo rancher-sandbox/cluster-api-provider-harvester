@@ -20,7 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
 const (
@@ -38,31 +38,32 @@ const (
 
 const (
 	// LoadBalancerReadyCondition documents the status of the load balancer in Harvester.
-	LoadBalancerReadyCondition clusterv1.ConditionType = "LoadBalancerReady"
+	LoadBalancerReadyCondition string = "LoadBalancerReady"
 	// LoadBalancerNotReadyReason documents the reason why the load balancer is not ready.
-	LoadBalancerNotReadyReason = "The Load Balancer is not ready"
+	// metav1.Condition.Reason must match ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$ (PascalCase, no spaces).
+	LoadBalancerNotReadyReason = "LoadBalancerNotReady"
 	// LoadBalancerNoBackendMachineReason documents that there are no machines matching the load balancer configuration.
-	LoadBalancerNoBackendMachineReason = "There are no machines matching the load balancer configuration"
+	LoadBalancerNoBackendMachineReason = "LoadBalancerNoBackendMachine"
 	// LoadBalancerHealthcheckFailedReason documents the reason why the load balancer is not ready.
-	LoadBalancerHealthcheckFailedReason = "The healthcheck for the load balancer failed"
+	LoadBalancerHealthcheckFailedReason = "LoadBalancerHealthcheckFailed"
 	// CustomIPPoolCreatedCondition documents if a custom IP Pool was created in Harvester.
-	CustomIPPoolCreatedCondition clusterv1.ConditionType = "CustomIPPoolCreated"
+	CustomIPPoolCreatedCondition string = "CustomIPPoolCreated"
 	// CustomPoolCreationInHarvesterFailedReason documents the reason why a custom pool was unable to be created.
-	CustomPoolCreationInHarvesterFailedReason = "The custom Pool creation in Harvester failed"
+	CustomPoolCreationInHarvesterFailedReason = "CustomPoolCreationInHarvesterFailed"
 	// CustomIPPoolCreatedSuccessfullyReason documents the reason why Custom IP Pool was created.
-	CustomIPPoolCreatedSuccessfullyReason = "Custom IP Pool was successfully created"
+	CustomIPPoolCreatedSuccessfullyReason = "CustomIPPoolCreatedSuccessfully"
 
 	// CloudProviderConfigReadyCondition documents the status of the cloud provider configuration in Harvester.
-	CloudProviderConfigReadyCondition clusterv1.ConditionType = "CloudProviderConfigReady"
+	CloudProviderConfigReadyCondition string = "CloudProviderConfigReady"
 	// CloudProviderConfigNotReadyReason documents the reason why the cloud provider configuration is not ready.
-	CloudProviderConfigNotReadyReason = "The Cloud Provider configuration is not ready"
+	CloudProviderConfigNotReadyReason = "CloudProviderConfigNotReady"
 	// CloudProviderConfigGenerationFailedReason documents the reason why the cloud provider configuration generation failed.
-	CloudProviderConfigGenerationFailedReason = "The Cloud Provider configuration generation failed"
+	CloudProviderConfigGenerationFailedReason = "CloudProviderConfigGenerationFailed"
 	// CloudProviderConfigGeneratedSuccessfullyReason documents the reason why the cloud provider configuration was generated.
-	CloudProviderConfigGeneratedSuccessfullyReason = "The Cloud Provider configuration was generated successfully"
+	CloudProviderConfigGeneratedSuccessfullyReason = "CloudProviderConfigGeneratedSuccessfully"
 
 	// InfrastructureReadyCondition documents that all infrastructure components are provisioned.
-	InfrastructureReadyCondition clusterv1.ConditionType = "InfrastructureReady"
+	InfrastructureReadyCondition string = "InfrastructureReady"
 	// InfrastructureProvisioningInProgressReason documents that infrastructure provisioning is in progress.
 	InfrastructureProvisioningInProgressReason = "InfrastructureProvisioningInProgress"
 	// InfrastructureProvisioningFailedReason documents that infrastructure provisioning has failed.
@@ -71,14 +72,14 @@ const (
 	InfrastructureReadyReason = "InfrastructureReady"
 
 	// TargetNamespaceReadyCondition indicates the target namespace in Harvester exists and is accessible.
-	TargetNamespaceReadyCondition clusterv1.ConditionType = "TargetNamespaceReady"
+	TargetNamespaceReadyCondition string = "TargetNamespaceReady"
 	// TargetNamespaceNotReadyReason documents that the target namespace does not exist or is not accessible.
 	TargetNamespaceNotReadyReason = "TargetNamespaceNotReady"
 	// TargetNamespaceReadyReason documents that the target namespace exists and is accessible.
 	TargetNamespaceReadyReason = "TargetNamespaceReady"
 
 	// HarvesterConnectionReadyCondition indicates successful connection/authentication to Harvester API.
-	HarvesterConnectionReadyCondition clusterv1.ConditionType = "HarvesterConnectionReady"
+	HarvesterConnectionReadyCondition string = "HarvesterConnectionReady"
 	// HarvesterConnectionFailedReason documents that connection to Harvester API failed.
 	HarvesterConnectionFailedReason = "HarvesterConnectionFailed"
 	// HarvesterAuthenticationFailedReason documents that authentication to Harvester API failed.
@@ -87,19 +88,19 @@ const (
 	HarvesterConnectionReadyReason = "HarvesterConnectionReady"
 
 	// VMIPPoolReadyCondition documents the status of the VM IP pool for static IP allocation.
-	VMIPPoolReadyCondition clusterv1.ConditionType = "VMIPPoolReady"
+	VMIPPoolReadyCondition string = "VMIPPoolReady"
 	// VMIPPoolCreationFailedReason documents that the VM IP pool creation failed.
 	VMIPPoolCreationFailedReason = "VMIPPoolCreationFailed"
 	// VMIPPoolReadyReason documents that the VM IP pool is ready.
 	VMIPPoolReadyReason = "VMIPPoolReady"
 	// VMIPPoolCreatedByControllerCondition documents that the VM IP pool was created by the controller
 	// (not pre-existing). Only pools with this condition are deleted on cluster deletion.
-	VMIPPoolCreatedByControllerCondition clusterv1.ConditionType = "VMIPPoolCreatedByController"
+	VMIPPoolCreatedByControllerCondition string = "VMIPPoolCreatedByController"
 	// VMIPPoolCreatedByControllerReason documents that the VM IP pool was created by the controller.
 	VMIPPoolCreatedByControllerReason = "VMIPPoolCreatedByController"
 
 	// FleetIntegrationReadyCondition documents whether Fleet labels have been propagated after Turtles import.
-	FleetIntegrationReadyCondition clusterv1.ConditionType = "FleetIntegrationReady"
+	FleetIntegrationReadyCondition string = "FleetIntegrationReady"
 	// FleetIntegrationNotApplicableReason documents that Fleet integration is not applicable (no auto-import label).
 	FleetIntegrationNotApplicableReason = "FleetIntegrationNotApplicable"
 	// FleetIntegrationInProgressReason documents that Fleet integration is in progress (waiting for Rancher resources).
@@ -112,9 +113,9 @@ const (
 
 const (
 	// InitMachineCreatedCondition documents the status of the init machine in Harvester.
-	InitMachineCreatedCondition clusterv1.ConditionType = "InitMachineCreated"
+	InitMachineCreatedCondition string = "InitMachineCreated"
 	// InitMachineNotYetCreatedReason documents the reason why the init machine is not ready.
-	InitMachineNotYetCreatedReason = "Init Machine not yet created"
+	InitMachineNotYetCreatedReason = "InitMachineNotYetCreated"
 )
 
 // HarvesterClusterSpec defines the desired state of HarvesterCluster.
@@ -306,7 +307,7 @@ type HarvesterClusterStatus struct {
 
 	// Conditions defines current service state of the Harvester cluster.
 	// +optional
-	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -339,11 +340,14 @@ func init() {
 }
 
 // GetConditions returns the set of conditions for this object.
-func (m *HarvesterCluster) GetConditions() clusterv1.Conditions {
+// CAPI v1.12+ uses k8s-standard []metav1.Condition rather than its own
+// clusterv1.Conditions type. This signature satisfies the conditions.Setter
+// interface from sigs.k8s.io/cluster-api/util/conditions.
+func (m *HarvesterCluster) GetConditions() []metav1.Condition {
 	return m.Status.Conditions
 }
 
 // SetConditions sets the conditions on this object.
-func (m *HarvesterCluster) SetConditions(conditions clusterv1.Conditions) {
+func (m *HarvesterCluster) SetConditions(conditions []metav1.Condition) {
 	m.Status.Conditions = conditions
 }

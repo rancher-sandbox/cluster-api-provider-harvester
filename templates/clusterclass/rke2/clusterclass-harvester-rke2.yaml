@@ -1,4 +1,4 @@
-# ClusterClass for CAPHV v0.2.0 with Harvester + RKE2
+# ClusterClass for CAPHV v0.3.0 with Harvester + RKE2 (v1beta2)
 # Supports: static IP (vmNetworkConfig with IPPool), DHCP LB, multi-disk, sshUser
 # Install once per management cluster, then create clusters with ~30 lines of YAML
 #
@@ -12,7 +12,7 @@ metadata:
 spec:
   controlPlane:
     ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: RKE2ControlPlaneTemplate
       name: harvester-rke2-control-plane
     machineInfrastructure:
@@ -31,7 +31,7 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
               kind: RKE2ConfigTemplate
               name: harvester-rke2-worker
           infrastructure:
@@ -386,7 +386,7 @@ spec:
     - name: cni
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -450,7 +450,7 @@ spec:
         manifestsConfigMapName: cloud-config-addon
         manifestsConfigMapNamespace: default
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: harvester-rke2-control-plane
@@ -493,7 +493,7 @@ spec:
       volumes: []
       networks: []
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: RKE2ConfigTemplate
 metadata:
   name: harvester-rke2-worker
