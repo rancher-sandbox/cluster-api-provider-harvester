@@ -440,6 +440,62 @@ kubectl get machines -n my-ns
 kubectl get vm -n <harvester-target-namespace> --kubeconfig <harvester-kubeconfig>
 ```
 
+### Pausing and resuming a cluster (free up Harvester resources)
+
+A CAPHV cluster can be parked without deleting it: the VM disks stay on
+Harvester and the CAPI objects stay on the management cluster, so a resume
+takes minutes instead of a full re-provision.
+
+**Pause:**
+
+```bash
+# 1. Scale workers to zero FIRST, while the control plane is still up.
+#    The node drain needs a reachable workload API server.
+kubectl -n my-ns patch cluster my-cluster --type=merge \
+  -p '{"spec":{"topology":{"workers":{"machineDeployments":[{"class":"default-worker","name":"workers","replicas":0}]}}}}'
+# wait for the worker Machines/VMs to be deleted
+
+# 2. Pause CAPI reconciliation so CAPHV stops restarting the VMs.
+kubectl -n my-ns patch cluster my-cluster --type=merge -p '{"spec":{"paused":true}}'
+
+# 3. Halt the control-plane VM(s) on Harvester (disks are preserved).
+kubectl --kubeconfig <harvester-kubeconfig> -n <target-ns> patch vm <cp-vm-name> \
+  --type=merge -p '{"spec":{"runStrategy":"Halted"}}'
+```
+
+> **Do not scale the control plane to zero** — the RKE2ControlPlane webhook
+> rejects `replicas <= 0`. Halting the VM with the cluster paused achieves
+> the same effect.
+
+> **Ordering pitfall:** if you halt the control plane *before* the worker
+> scale-down finishes, the Machine deletion blocks on node drain (the
+> workload API server is unreachable). Recover with:
+> `kubectl -n my-ns annotate machine <worker-machine> \
+>    machine.cluster.x-k8s.io/exclude-node-draining=true \
+>    machine.cluster.x-k8s.io/exclude-wait-for-node-volume-detach=true`
+> A Machine stuck in `Deleting` while the cluster is paused will only
+> finalize after unpausing — or remove its finalizers manually once you
+> have confirmed the Harvester VM and PVC are gone.
+
+**Resume:**
+
+```bash
+# 1. Restart the control-plane VM and wait for the workload API server.
+kubectl --kubeconfig <harvester-kubeconfig> -n <target-ns> patch vm <cp-vm-name> \
+  --type=merge -p '{"spec":{"runStrategy":"Always"}}'
+
+# 2. Unpause; CAPHV reconciles from the existing state.
+kubectl -n my-ns patch cluster my-cluster --type=merge -p '{"spec":{"paused":false}}'
+
+# 3. Scale the workers back up (fresh VMs are provisioned, ~10 min each).
+kubectl -n my-ns patch cluster my-cluster --type=merge \
+  -p '{"spec":{"topology":{"workers":{"machineDeployments":[{"class":"default-worker","name":"workers","replicas":1}]}}}}'
+```
+
+Expect the control plane to report `Ready` a few minutes after the VM boots
+(RKE2 restart + etcd recovery), and `MachineHealthCheck` to hold off as long
+as `nodeStartupTimeout` allows.
+
 ---
 
 ## MachineHealthCheck and Auto-Remediation

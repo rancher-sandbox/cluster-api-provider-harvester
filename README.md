@@ -70,10 +70,6 @@ spec:
   name: rke2
   type: controlPlane
 ```
-- Harvester identity Secret (kubeconfig for the target Harvester cluster)
-- SSH KeyPair created on Harvester
-- VM image uploaded to Harvester (SLES 15 SP7 recommended)
-- IPPool configured on Harvester (for automatic IP allocation)
 
 ## Installation
 
