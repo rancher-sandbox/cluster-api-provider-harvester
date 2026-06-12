@@ -110,6 +110,27 @@ Plan the upgrade in this order:
   a `caphv-generate` manifest, VM provisioned on Harvester (KubeVirt
   1.7.0), IP allocated from `capi-vm-pool`, providerID assigned.
 
+### Verifying release artifacts
+
+`.github/workflows/release.yml` signs the multi-arch image keylessly with
+cosign v3.0.6 using the GitHub Actions OIDC identity, attests SLSA build
+provenance via `actions/attest-build-provenance`, and generates SBOM +
+provenance through `docker/build-push-action`.
+
+> **cosign v3.0.0+ is required to verify.** v0.2.9 and v0.3.0 are signed in
+> the OCI 1.1 bundle format used by cosign v3; older cosign v2 clients
+> report `no signatures found` against these images.
+
+```bash
+cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0 \
+  --certificate-identity-regexp "^https://github.com/rancher-sandbox/cluster-api-provider-harvester" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+gh attestation verify \
+  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0 \
+  --owner rancher-sandbox
+```
+
 ## [v0.2.9] - 2026-04-15
 
 ### Security
@@ -136,7 +157,11 @@ Plan the upgrade in this order:
 
 ### Verifying release artifacts
 
-The container image and helm chart are signed with cosign using GitHub OIDC. Verify with:
+The container image and helm chart are signed with cosign using GitHub OIDC.
+
+> **cosign v3.0.0+ is required.** This release was signed with cosign v3,
+> which stores signatures in the OCI 1.1 bundle format; older cosign v2
+> clients report `no signatures found`.
 
 ```bash
 cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.9 \
@@ -144,7 +169,14 @@ cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.9 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-A SLSA provenance attestation is attached to the registry alongside the image.
+A SLSA provenance attestation is attached to the registry alongside the
+image and can be verified with:
+
+```bash
+gh attestation verify \
+  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.9 \
+  --owner rancher-sandbox
+```
 
 ## [v0.2.8] - 2026-03-16
 
