@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [v0.3.1] - 2026-06-15
+
+### Fixed
+
+- **`metadata.yaml` missing the `0.3` release series**: clusterctl maps a
+  provider version to a CAPI contract via `metadata.yaml`. The `0.3` series
+  was never added, so `clusterctl init --infrastructure harvester:v0.3.0`
+  failed with *"version v0.3.0 ... does not match any release series.
+  Available series: [0.2, 0.1]"* — blocking every clusterctl-based (i.e.
+  no-Rancher) install. Added `0.3 → v1beta2`. Verified end-to-end:
+  `clusterctl init` brings up CAPI v1.12.8 + RKE2 v0.25.0 + CAPHV on a
+  fresh cluster (all controllers Running, webhook Ready).
+
+  > v0.3.1 is functionally identical to v0.3.0 (same controller image and
+  > manifests); only the clusterctl metadata mapping is corrected. Existing
+  > v0.3.0 deployments do not need to upgrade unless they install via
+  > clusterctl.
+
+### Documentation
+
+- Added an **"Installation without Rancher"** section to
+  `docs/operations.md` covering two validated paths — clusterctl init and
+  raw manifests (with `${VAR:=default}` rendering) — for running CAPHV on a
+  management cluster without Rancher/Turtles.
+
 ## [v0.3.0] - 2026-05-30
 
 ### ⚠️ Breaking — ecosystem upgrade required
