@@ -171,6 +171,106 @@ kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
 
 ---
 
+## Installation without Rancher (clusterctl / direct manifests)
+
+Rancher Turtles is the recommended delivery vehicle, but it is **not** required.
+CAPHV talks to Harvester directly through the identity Secret — Rancher is never
+on that path. You can run CAPHV on any management cluster (a plain RKE2/k3s/kind
+cluster, or even Harvester's own embedded cluster) by installing the CAPI stack
+yourself.
+
+The full stack for v0.3.0 is: **CAPI core v1.12.x + cluster-api-provider-rke2
+v0.25.0 (bootstrap + control plane) + CAPHV v0.3.0**, plus cert-manager for the
+webhooks.
+
+Both methods below were validated on a clean cluster: all four controllers reach
+`1/1 Running` and the CAPHV webhook becomes Ready.
+
+### Method A — clusterctl (recommended when Rancher is absent)
+
+`clusterctl` resolves provider versions, installs cert-manager, and substitutes
+the `${...}` parameters in each provider's components — so the RKE2 controllers
+come up cleanly.
+
+CAPHV is not a built-in clusterctl provider, so register it in the clusterctl
+config:
+
+```yaml
+# ~/.cluster-api/clusterctl.yaml
+providers:
+  - name: harvester
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/v0.3.0/infrastructure-components.yaml
+    type: InfrastructureProvider
+```
+
+```bash
+clusterctl init \
+  --core cluster-api:v1.12.8 \
+  --bootstrap rke2:v0.25.0 \
+  --control-plane rke2:v0.25.0 \
+  --infrastructure harvester:v0.3.0
+```
+
+> **clusterctl version**: use `clusterctl` **v1.12.x**. Older clusterctl
+> (e.g. v1.10.x) defaults CAPI core to v1.10, which is incompatible with the
+> v1beta2 contract CAPHV v0.3.0 requires.
+
+> **metadata.yaml requirement**: clusterctl maps `v0.3.0` to a CAPI contract via
+> the release's `metadata.yaml`, which must contain a `0.3` series
+> (`contract: v1beta2`). If `clusterctl init` reports
+> *"version v0.3.0 ... does not match any release series. Available series:
+> [0.2, 0.1]"*, the release asset predates the fix — drop a corrected
+> `metadata.yaml` into a clusterctl overrides folder:
+> `~/.cluster-api/overrides/infrastructure-harvester/v0.3.0/metadata.yaml`
+> with the `0.3 → v1beta2` series, alongside a copy of
+> `infrastructure-components.yaml`, and re-run.
+
+Verify:
+
+```bash
+kubectl get pods -n capi-system -n rke2-bootstrap-system \
+  -n rke2-control-plane-system -n caphv-system
+# all controllers 1/1 Running; caphv-controller-manager Ready once cert-manager
+# issues the webhook cert
+```
+
+### Method B — raw manifests (airgap / GitOps, no clusterctl)
+
+The published `*-components.yaml` are designed for clusterctl/operator and carry
+unrendered `${VAR:=default}` placeholders (this is the CAPI convention, true of
+CAPI core too). Applying them raw leaves the controllers crash-looping on
+`invalid argument "${CAPRKE2_...}"`. Render the defaults first:
+
+```bash
+# render ${VAR:=default} -> default, drop bare ${VAR}
+render() { sed -E 's/\$\{[A-Za-z0-9_]+:=([^}]*)\}/\1/g; s/\$\{[A-Za-z0-9_]+\}//g'; }
+
+# 1. cert-manager (webhook prerequisite)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
+kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+
+# 2. CAPI core
+curl -sL https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.8/core-components.yaml | render | kubectl apply -f -
+
+# 3. RKE2 bootstrap + control plane
+for c in bootstrap-components control-plane-components; do
+  curl -sL https://github.com/rancher/cluster-api-provider-rke2/releases/download/v0.25.0/$c.yaml | render | kubectl apply -f -
+done
+
+# 4. CAPHV (no placeholders to render)
+kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml
+```
+
+> Without the `render` step, the RKE2 controllers crash-loop on the literal
+> `${CAPRKE2_INSECURE_DIAGNOSTICS:=false}` argument. The `sed` substitution
+> applies the same defaults clusterctl would.
+
+After either method, create clusters exactly as documented elsewhere in this
+guide (ClusterClass + `caphv-generate`, or the CAPIProvider examples — the
+CRDs and controller are identical, only the install path differs).
+
+---
+
 ## Migration from Manual Deploy to CAPIProvider
 
 If CAPHV was previously deployed manually (via `kubectl apply -f` or Helm), follow this
