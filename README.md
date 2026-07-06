@@ -1,6 +1,6 @@
 # Cluster API Provider Harvester (CAPHV)
 
-> Fork of [rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester) with Harvester v1.7+/v1.8+ compatibility and production-ready features.
+> Kubernetes Cluster API infrastructure provider for [Harvester HCI](https://harvesterhci.io), with Harvester v1.7+/v1.8+ compatibility and production-ready features.
 
 ## Overview
 

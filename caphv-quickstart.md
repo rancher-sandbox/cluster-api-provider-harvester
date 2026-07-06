@@ -125,11 +125,11 @@ Sur notre Rancher Manager, Turtles a deja installe :
 # Build de l'image (depuis node1)
 cd /tmp/caphv
 podman build --build-arg TARGETARCH=amd64 . \
-  -t gitea.home.zypp.fr/jniedergang/cluster-api-provider-harvester:v0.2.0-rc11
+  -t ghcr.io/rancher-sandbox/cluster-api-provider-harvester:dev
 
 # Transferer l'image sur le management cluster (si pas de registry)
-podman save gitea.home.zypp.fr/jniedergang/cluster-api-provider-harvester:v0.2.0-rc11 \
-  | ssh rancher@172.16.3.20 'sudo /var/lib/rancher/rke2/bin/ctr \
+podman save ghcr.io/rancher-sandbox/cluster-api-provider-harvester:dev \
+  | ssh <user>@<management-node> 'sudo /var/lib/rancher/rke2/bin/ctr \
     --address /run/k3s/containerd/containerd.sock \
     --namespace k8s.io images import -'
 
