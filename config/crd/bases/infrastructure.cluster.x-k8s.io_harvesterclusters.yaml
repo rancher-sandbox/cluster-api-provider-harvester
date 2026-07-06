@@ -362,6 +362,17 @@ spec:
                 description: FailureReason is the short name for the reason why a
                   failure might be happening that makes the cluster not ready.
                 type: string
+              initialization:
+                description: |-
+                  Initialization provides observations of the HarvesterCluster initialization process.
+                  Provisioned is the CAPI v1beta2 contract field (status.initialization.provisioned) that
+                  the Cluster controller reads to determine infrastructure readiness. It is kept in sync with
+                  status.ready (the v1beta1 contract field) so a single v1alpha1 object satisfies both contracts.
+                properties:
+                  provisioned:
+                    description: Provisioned shows if the resource has been provisioned.
+                    type: boolean
+                type: object
               ready:
                 description: Ready describes if the Harvester Cluster can be considered
                   ready for machine creation.

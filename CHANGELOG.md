@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [Unreleased]
+
+### Added — v1beta2 contract on the publish side
+
+Until now CAPHV *consumed* the CAPI v1.12 / v1beta2 APIs but still *published*
+the v1beta1 contract: `HarvesterCluster` signalled readiness only through
+`status.ready`, and the CRDs carried only the `cluster.x-k8s.io/v1beta1`
+contract label. CAPI reads the provisioned field from whichever path the CRD's
+contract label selects (`status.ready` for v1beta1,
+`status.initialization.provisioned` for v1beta2). Once CAPI drops the
+deprecated v1beta1 contract, a `HarvesterCluster` that never sets
+`status.initialization.provisioned` would stop being seen as provisioned and
+clusters would hang in provisioning.
+
+- `HarvesterCluster.status.initialization.provisioned` is now published and
+  kept in sync with `status.ready` at the single status-patch point, so one
+  `v1alpha1` object satisfies both the v1beta1 and v1beta2 contracts.
+  (`HarvesterMachine` already published this field.)
+- Added the `cluster.x-k8s.io/v1beta2: v1alpha1` contract label to the CRDs.
+
+  > Validated end-to-end on a v0.3.x management cluster against Harvester
+  > 1.8.0: with the v1beta2 label active, a freshly created cluster's
+  > `Cluster.status.initialization.infrastructureProvisioned` transitions to
+  > `true` via the v1beta2 read path, and existing clusters are unaffected.
+
+### Security
+
+- Bumped `go.opentelemetry.io/otel/sdk` to v1.43.0 (and `otel`/`otel/trace`),
+  clearing the transitive advisory affecting the in-tree version.
+
 ## [v0.3.1] - 2026-06-15
 
 ### Fixed

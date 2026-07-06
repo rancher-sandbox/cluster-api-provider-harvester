@@ -308,6 +308,13 @@ type HarvesterClusterStatus struct {
 	// Conditions defines current service state of the Harvester cluster.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// Initialization provides observations of the HarvesterCluster initialization process.
+	// Provisioned is the CAPI v1beta2 contract field (status.initialization.provisioned) that
+	// the Cluster controller reads to determine infrastructure readiness. It is kept in sync with
+	// status.ready (the v1beta1 contract field) so a single v1alpha1 object satisfies both contracts.
+	// +optional
+	Initialization Initialization `json:"initialization,omitempty"`
 }
 
 //+kubebuilder:object:root=true
