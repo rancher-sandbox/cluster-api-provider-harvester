@@ -23,7 +23,7 @@ spec:
     kind: HarvesterCluster
     name: ${CLUSTER_NAME}-hv
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterCluster
 metadata:
   name: ${CLUSTER_NAME}-hv
@@ -71,7 +71,7 @@ spec:
     cni: calico
     cloudProviderName: external
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterMachineTemplate
     name: ${CLUSTER_NAME}-cp-machine
     namespace: ${NAMESPACE}
@@ -110,7 +110,7 @@ spec:
         name: ${CLUSTER_NAME}-wk-machine
       version: ${KUBERNETES_VERSION}+rke2r1
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   namespace: ${NAMESPACE}
@@ -130,7 +130,7 @@ spec:
         volumeSize: ${VM_DISK_SIZE:50Gi}
         bootOrder: 0
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   namespace: ${NAMESPACE}

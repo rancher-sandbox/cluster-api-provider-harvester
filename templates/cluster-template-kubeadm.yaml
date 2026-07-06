@@ -26,11 +26,11 @@ spec:
     kind: KubeadmControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterCluster
     name: ${CLUSTER_NAME}-hv
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterCluster
 metadata:
   name: ${CLUSTER_NAME}-hv
@@ -80,7 +80,7 @@ spec:
     - curl -s https://raw.githubusercontent.com/projectcalico/calico/v3.26.4/manifests/custom-resources.yaml | sed -e 's|192\.168\.0\.0/16|${POD_CIDR}|g' | sudo kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f - 
   machineTemplate:
     infrastructureRef:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: HarvesterMachineTemplate
       name: ${CLUSTER_NAME}-cp-machine
       namespace: ${NAMESPACE}
@@ -120,13 +120,13 @@ spec:
           namespace: ${NAMESPACE}
       clusterName: ${CLUSTER_NAME}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: HarvesterMachineTemplate
         name: ${CLUSTER_NAME}-wk-machine
         namespace: ${NAMESPACE}
       version: ${KUBERNETES_VERSION}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   namespace: ${NAMESPACE}
@@ -146,7 +146,7 @@ spec:
         volumeSize: ${VM_DISK_SIZE}
         bootOrder: 0
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   namespace: ${NAMESPACE}

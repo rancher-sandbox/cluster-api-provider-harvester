@@ -17,7 +17,7 @@ spec:
     spec:
       agentConfig: {}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   name: my-cluster-worker-machine
@@ -57,6 +57,6 @@ spec:
           kind: RKE2ConfigTemplate
           name: my-cluster-worker-config
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: HarvesterMachineTemplate
         name: my-cluster-worker-machine

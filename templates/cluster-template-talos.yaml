@@ -26,11 +26,11 @@ spec:
     kind: TalosControlPlane
     name: ${CLUSTER_NAME}-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterCluster
     name: ${CLUSTER_NAME}-hv
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterCluster
 metadata:
   name: ${CLUSTER_NAME}-hv
@@ -69,7 +69,7 @@ spec:
   version: ${KUBERNETES_VERSION}
   replicas: ${CONTROL_PLANE_MACHINE_COUNT:-3}
   infrastructureTemplate:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterMachineTemplate
     name: ${CLUSTER_NAME}-cp-machine
     namespace: ${NAMESPACE}
@@ -112,12 +112,12 @@ spec:
           name: ${CLUSTER_NAME}-worker
       clusterName: ${CLUSTER_NAME}
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: HarvesterMachineTemplate
         name: ${CLUSTER_NAME}-wk-machine
       version: ${KUBERNETES_VERSION}
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   namespace: ${NAMESPACE}
@@ -144,7 +144,7 @@ spec:
             - key: node-role.kubernetes.io/control-plane
               operator: DoesNotExist
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   namespace: ${NAMESPACE}
