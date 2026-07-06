@@ -1,42 +1,54 @@
 managementClusterName: caphv-certification
 
+# The CAPHV controller image of the release under certification. kind preloads it into the
+# bootstrap cluster when present locally; with tryLoad a missing local image is not an error
+# (the cluster pulls it from the public registry instead).
 images:
-  - name: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.2.4
+  - name: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:{CAPHV_VERSION}
+    loadBehavior: tryLoad
 
 providers: []
 
 intervals:
-  default/wait-controllers: ["5m", "10s"]
-  default/wait-rancher: ["10m", "30s"]
-  default/wait-cluster: ["30m", "30s"]
-  default/wait-harvester-create-cluster: ["35m", "30s"]
-  default/wait-delete-cluster: ["20m", "30s"]
+  default/wait-controllers: ["10m", "10s"]
+  default/wait-rancher: ["15m", "30s"]
 
 variables:
-  # Required by turtles framework
-  KUBERNETES_MANAGEMENT_VERSION: "v1.33.7+rke2r1"
-  KUBERNETES_VERSION: "v1.31.14"
-  RKE2_VERSION: "v1.31.14+rke2r1"
-  RANCHER_HOSTNAME: "rancher.home.zypp.fr"
-  USE_EXISTING_CLUSTER: "true"
+  # Management cluster: self-provisioned kind, no pre-existing cluster (version-pairing
+  # certification). HELM_BINARY_PATH intentionally has no default here: it must be an
+  # absolute path to an existing binary, so the wrappers (run.sh / Makefile / CI) resolve
+  # and export it.
+  MANAGEMENT_CLUSTER_ENVIRONMENT: "isolated-kind"
+  USE_EXISTING_CLUSTER: "false"
+  ARTIFACTS_FOLDER: "_artifacts"
   SKIP_RESOURCE_CLEANUP: "false"
   SKIP_DELETION_TEST: "false"
-  ARTIFACTS_FOLDER: "_artifacts"
-  HELM_BINARY_PATH: "/usr/local/bin/helm"
 
-  # Harvester-specific
-  HARVESTER_KUBECONFIG_B64: ""
-  IDENTITY_SECRET_NAME: "hv-identity-secret"
-  TARGET_NAMESPACE: "default"
-  SSH_KEYPAIR: "default/capi-ssh-key"
-  SSH_USER: "sles"
-  VM_NETWORK: "default/production"
-  VOLUME_IMAGE: "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2"
-  VOLUME_SIZE: "40Gi"
-  CPU_COUNT: "2"
-  MEMORY_SIZE: "4Gi"
-  GATEWAY: "172.16.0.1"
-  SUBNET_MASK: "255.255.0.0"
-  IP_POOL_REF: "capi-vm-pool"
-  DNS_SERVERS: "172.16.0.1"
-  CNI: "calico"
+  # Version pairing under certification: the CAPHV release below is certified against the
+  # targeted CAPI core. Override via environment (CI does) to certify other pairings.
+  CAPHV_VERSION: "v0.3.1"
+  CAPHV_COMPONENTS_URL: "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.1/infrastructure-components.yaml"
+  CAPI_VERSION: "v1.12.7"
+
+  # cluster-api-operator chart (Rancher-independent provider lifecycle manager).
+  CAPI_OPERATOR_REPO_NAME: "capi-operator"
+  CAPI_OPERATOR_URL: "https://kubernetes-sigs.github.io/cluster-api-operator"
+  CAPI_OPERATOR_PATH: "capi-operator/cluster-api-operator"
+  CAPI_OPERATOR_VERSION: "0.27.0"
+
+  # cert-manager (chart version is pinned by the turtles DeployCertManager helper).
+  CERT_MANAGER_REPO_NAME: "jetstack"
+  CERT_MANAGER_URL: "https://charts.jetstack.io"
+  CERT_MANAGER_PATH: "jetstack/cert-manager"
+
+  # Tier A only (full Rancher + Turtles): the released Rancher below is installed from
+  # its official chart repo; its system chart controller then installs the released
+  # Turtles/CAPI core/RKE2 providers. In isolated-kind the hostname is derived from the
+  # kind node IP (RANCHER_HOSTNAME is a required-non-empty placeholder), and the
+  # bootstrap password is test-only (ephemeral kind cluster).
+  RANCHER_VERSION: "2.14.1"
+  RANCHER_REPO_NAME: "rancher-latest"
+  RANCHER_URL: "https://releases.rancher.com/server-charts/latest"
+  RANCHER_PATH: "rancher-latest/rancher"
+  RANCHER_HOSTNAME: "localhost"
+  RANCHER_PASSWORD: "rancherpassword"

@@ -1,0 +1,52 @@
+# RKE2 bootstrap and control-plane providers, deployed via cluster-api-operator.
+# No spec.version: the operator installs its latest known RKE2 provider release,
+# matching the validated recipe (see hack/tier-c-smoke.sh).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rke2-bootstrap-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: variables
+  namespace: rke2-bootstrap-system
+type: Opaque
+stringData:
+  CLUSTER_TOPOLOGY: "true"
+  EXP_CLUSTER_RESOURCE_SET: "true"
+  EXP_MACHINE_POOL: "true"
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: BootstrapProvider
+metadata:
+  name: rke2
+  namespace: rke2-bootstrap-system
+spec:
+  configSecret:
+    name: variables
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rke2-control-plane-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: variables
+  namespace: rke2-control-plane-system
+type: Opaque
+stringData:
+  CLUSTER_TOPOLOGY: "true"
+  EXP_CLUSTER_RESOURCE_SET: "true"
+  EXP_MACHINE_POOL: "true"
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: ControlPlaneProvider
+metadata:
+  name: rke2
+  namespace: rke2-control-plane-system
+spec:
+  configSecret:
+    name: variables

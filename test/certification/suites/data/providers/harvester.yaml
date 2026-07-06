@@ -1,16 +1,30 @@
+# CAPHV infrastructure provider (release under certification), deployed via cluster-api-operator.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: caphv-system
 ---
-apiVersion: turtles-capi.cattle.io/v1alpha1
-kind: CAPIProvider
+apiVersion: v1
+kind: Secret
+metadata:
+  name: variables
+  namespace: caphv-system
+type: Opaque
+stringData:
+  CLUSTER_TOPOLOGY: "true"
+  EXP_CLUSTER_RESOURCE_SET: "true"
+  EXP_MACHINE_POOL: "true"
+---
+apiVersion: operator.cluster.x-k8s.io/v1alpha2
+kind: InfrastructureProvider
 metadata:
   name: harvester
   namespace: caphv-system
 spec:
-  name: harvester
-  type: infrastructure
-  version: v0.2.4
+  # version MUST be explicit: without it the operator parses the version from the
+  # fetchConfig URL and picks "download" -> IncorrectVersionFormat.
+  version: ${CAPHV_VERSION}
+  configSecret:
+    name: variables
   fetchConfig:
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.2.4/infrastructure-components.yaml
+    url: ${CAPHV_COMPONENTS_URL}
