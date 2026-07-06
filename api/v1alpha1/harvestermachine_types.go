@@ -157,11 +157,12 @@ type Volume struct {
 // +kubebuilder:Validation:Enum:=storageClass,image
 type VolumeType string
 
-// Initialization tracks internal VM provisioning state.
-// NOTE: This is forward-looking for the CAPI v1beta2 contract (status.initialization.provisioned).
-// For v1beta1, the authoritative readiness field is status.ready.
+// Initialization tracks provisioning state for the CAPI v1beta2 contract
+// (status.initialization.provisioned). It is published alongside status.ready (the v1beta1
+// contract field) and kept in sync, so a single v1alpha1 object satisfies whichever contract
+// CAPI selects from the CRD's cluster.x-k8s.io/<version> label.
 type Initialization struct {
-	// Provisioned shows if the VM has been provisioned.
+	// Provisioned shows if the resource has been provisioned.
 	Provisioned bool `json:"provisioned,omitempty"`
 }
 
@@ -175,8 +176,8 @@ type HarvesterMachineStatus struct {
 	FailureReason  string                     `json:"failureReason,omitempty"`
 	FailureMessage string                     `json:"failureMessage,omitempty"`
 	Addresses      []clusterv1.MachineAddress `json:"addresses,omitempty"`
-	// Initialization tracks internal provisioning state (forward-looking for v1beta2 contract).
-	// The authoritative readiness field for v1beta1 is status.ready.
+	// Initialization provides the CAPI v1beta2 contract readiness field
+	// (status.initialization.provisioned), kept in sync with status.ready (v1beta1 contract).
 	Initialization Initialization `json:"initialization,omitempty"`
 
 	// AllocatedIPAddress is the IP address allocated from the VM IP pool for this machine.
