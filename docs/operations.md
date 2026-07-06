@@ -557,6 +557,10 @@ kubectl -n my-ns patch cluster my-cluster --type=merge \
 
 # 2. Pause CAPI reconciliation so CAPHV stops restarting the VMs.
 kubectl -n my-ns patch cluster my-cluster --type=merge -p '{"spec":{"paused":true}}'
+#    CAPHV acknowledges by setting condition Paused=True on the HarvesterCluster
+#    and HarvesterMachines (v1beta2 contract); their status is frozen until resume:
+kubectl -n my-ns get harvestercluster my-cluster \
+  -o jsonpath='{.status.conditions[?(@.type=="Paused")].status}'
 
 # 3. Halt the control-plane VM(s) on Harvester (disks are preserved).
 kubectl --kubeconfig <harvester-kubeconfig> -n <target-ns> patch vm <cp-vm-name> \

@@ -299,9 +299,17 @@ type HarvesterClusterStatus struct {
 	Ready bool `json:"ready,omitempty"`
 
 	// FailureReason is the short name for the reason why a failure might be happening that makes the cluster not ready.
+	//
+	// Deprecated: the CAPI v1beta2 contract removed terminal failures; failures now
+	// surface through the conditions. The controller no longer sets this field, which
+	// will be dropped at the next API version.
 	// +optional
 	FailureReason string `json:"failureReason,omitempty"`
 	// FailureMessage is a full error message dump of the above failureReason.
+	//
+	// Deprecated: the CAPI v1beta2 contract removed terminal failures; failures now
+	// surface through the conditions. The controller no longer sets this field, which
+	// will be dropped at the next API version.
 	// +optional
 	FailureMessage string `json:"failureMessage,omitempty"`
 
