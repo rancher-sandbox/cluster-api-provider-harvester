@@ -48,9 +48,9 @@ import (
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/paused"
 	"sigs.k8s.io/cluster-api/util/predicates"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
@@ -176,6 +176,14 @@ func (r *HarvesterMachineReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	logger = logger.WithValues("machine", ownerMachine.Namespace+"/"+ownerMachine.Name, "cluster", ownerCluster.Namespace+"/"+ownerCluster.Name)
 	ctx = ctrl.LoggerInto(ctx, logger)
 
+	// Publish the Paused condition (v1beta2 contract) and freeze reconciliation while
+	// the Cluster or the HarvesterMachine is paused. Placed before any Harvester access
+	// so a paused object never triggers infrastructure calls.
+	isPaused, requeuePaused, err := paused.EnsurePausedCondition(ctx, r.Client, ownerCluster, hvMachine)
+	if err != nil || isPaused || requeuePaused {
+		return ctrl.Result{}, err
+	}
+
 	hvCluster := &infrav1.HarvesterCluster{}
 
 	// CAPI v1beta2 ContractVersionedObjectReference dropped the Namespace field —
@@ -231,15 +239,16 @@ func (r *HarvesterMachineReconciler) SetupWithManager(ctx context.Context, mgr c
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrav1.HarvesterMachine{}).
+		// No pause-filtering predicates: pause/unpause transitions must reach the
+		// reconciler so the Paused condition (v1beta2 contract) is published.
 		Watches(
 			&clusterv1.Machine{},
 			handler.EnqueueRequestsFromMapFunc(util.MachineToInfrastructureMapFunc(infrav1.GroupVersion.WithKind("HarvesterMachine"))),
-			builder.WithPredicates(predicates.ResourceNotPaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
 		).
 		Watches(
 			&clusterv1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(clusterToHarvesterMachine),
-			builder.WithPredicates(predicates.ClusterUnpaused(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
+			builder.WithPredicates(predicates.ClusterPausedTransitions(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
 		).
 		Complete(r)
 }
@@ -264,16 +273,6 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 	}()
 
 	logger := log.FromContext(hvScope.Ctx)
-
-	// Return early if the object or Cluster is paused.
-	if annotations.IsPaused(hvScope.Cluster, hvScope.HarvesterMachine) {
-		logger.Info("Reconciliation is paused for this object")
-
-		hvScope.HarvesterMachine.Status.Ready = false
-		hvScope.HarvesterMachine.Status.Initialization = machineInitializationNotProvisioned
-
-		return ctrl.Result{}, nil
-	}
 
 	// Migrate legacy finalizer: if the object has the old finalizer but not the new one, swap them.
 	if controllerutil.ContainsFinalizer(hvScope.HarvesterMachine, infrav1.MachineFinalizerLegacy) &&

@@ -173,9 +173,22 @@ type HarvesterMachineStatus struct {
 
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
-	FailureReason  string                     `json:"failureReason,omitempty"`
-	FailureMessage string                     `json:"failureMessage,omitempty"`
-	Addresses      []clusterv1.MachineAddress `json:"addresses,omitempty"`
+	// FailureReason is the short name for the reason of a terminal failure.
+	//
+	// Deprecated: the CAPI v1beta2 contract removed terminal failures; failures now
+	// surface through the conditions. The controller never sets this field, which
+	// will be dropped at the next API version.
+	// +optional
+	FailureReason string `json:"failureReason,omitempty"`
+	// FailureMessage is a full error message dump of the above failureReason.
+	//
+	// Deprecated: the CAPI v1beta2 contract removed terminal failures; failures now
+	// surface through the conditions. The controller never sets this field, which
+	// will be dropped at the next API version.
+	// +optional
+	FailureMessage string `json:"failureMessage,omitempty"`
+
+	Addresses []clusterv1.MachineAddress `json:"addresses,omitempty"`
 	// Initialization provides the CAPI v1beta2 contract readiness field
 	// (status.initialization.provisioned), kept in sync with status.ready (v1beta1 contract).
 	Initialization Initialization `json:"initialization,omitempty"`

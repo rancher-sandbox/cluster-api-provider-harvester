@@ -57,6 +57,8 @@ import (
 	capiutil "sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/paused"
+	"sigs.k8s.io/cluster-api/util/predicates"
 
 	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
 	caphvmetrics "github.com/rancher-sandbox/cluster-api-provider-harvester/internal/metrics"
@@ -162,6 +164,13 @@ func (r *HarvesterClusterReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, nil
 	}
 
+	// Publish the Paused condition (v1beta2 contract) and freeze reconciliation while
+	// the Cluster or the HarvesterCluster is paused.
+	isPaused, requeuePaused, err := paused.EnsurePausedCondition(ctx, r.Client, clusterOwner, &cluster)
+	if err != nil || isPaused || requeuePaused {
+		return ctrl.Result{}, err
+	}
+
 	var hvRESTConfig *rest.Config
 
 	hvRESTConfig, err = r.reconcileHarvesterConfig(ctx, &cluster)
@@ -225,7 +234,29 @@ func (r *HarvesterClusterReconciler) SetupWithManager(ctx context.Context, mgr c
 			handler.EnqueueRequestsFromMapFunc(r.findObjectsForSecret),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}),
 		).
+		// Pause/unpause transitions on the owner Cluster must trigger a reconciliation
+		// so the Paused condition (v1beta2 contract) is published on the HarvesterCluster.
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(clusterToHarvesterCluster),
+			builder.WithPredicates(predicates.ClusterPausedTransitions(mgr.GetScheme(), ctrl.LoggerFrom(ctx))),
+		).
 		Complete(r)
+}
+
+// clusterToHarvesterCluster maps a CAPI Cluster to its referenced HarvesterCluster.
+// The v1beta2 infrastructure reference carries no namespace: it is always in the
+// Cluster's own namespace.
+func clusterToHarvesterCluster(_ context.Context, o client.Object) []ctrl.Request {
+	cluster, ok := o.(*clusterv1.Cluster)
+	if !ok || cluster.Spec.InfrastructureRef.Kind != "HarvesterCluster" || cluster.Spec.InfrastructureRef.Name == "" {
+		return nil
+	}
+
+	return []ctrl.Request{{NamespacedName: types.NamespacedName{
+		Namespace: cluster.Namespace,
+		Name:      cluster.Spec.InfrastructureRef.Name,
+	}}}
 }
 
 // ReconcileNormal is the reconciliation function when not deleting the HarvesterCluster instance.
@@ -1228,8 +1259,6 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 
 	secret, err := locutil.GetSecretForHarvesterConfig(ctx, cluster, r.Client)
 	if (err != nil || secret == &apiv1.Secret{}) {
-		cluster.Status.FailureReason = "IdentitySecretUnavailable"
-		cluster.Status.FailureMessage = "unable to find the IdentitySecret for Harvester"
 		cluster.Status.Ready = false
 
 		conditions.Set(cluster, v1.Condition{
@@ -1246,8 +1275,6 @@ func (r *HarvesterClusterReconciler) reconcileHarvesterConfig(ctx context.Contex
 
 	harvesterServer, err := getHarvesterServerFromKubeconfig(kubeconfig)
 	if err != nil {
-		cluster.Status.FailureReason = "MalformedIdentitySecret"
-		cluster.Status.FailureMessage = err.Error()
 		cluster.Status.Ready = false
 
 		conditions.Set(cluster, v1.Condition{

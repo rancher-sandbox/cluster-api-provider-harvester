@@ -29,6 +29,21 @@ clusters would hang in provisioning.
   > `Cluster.status.initialization.infrastructureProvisioned` transitions to
   > `true` via the v1beta2 read path, and existing clusters are unaffected.
 
+- `HarvesterCluster` and `HarvesterMachine` now publish the `Paused` condition
+  (v1beta2 contract) whenever the owner `Cluster` or the object itself is
+  paused, and pausing freezes the object state instead of flipping
+  `HarvesterMachine.status.ready` to `false`. Pause/unpause transitions on the
+  `Cluster` trigger an immediate reconciliation (new watch); the
+  pause-filtering event predicates were removed accordingly.
+
+### Deprecated
+
+- `HarvesterCluster.status.failureReason`/`.failureMessage` and
+  `HarvesterMachine.status.failureReason`/`.failureMessage`: the CAPI v1beta2
+  contract removed terminal failures — failures surface through the
+  conditions instead. The controller no longer sets these fields; they will
+  be dropped at the next API version.
+
 ### Security
 
 - Bumped `go.opentelemetry.io/otel/sdk` to v1.43.0 (and `otel`/`otel/trace`),

@@ -789,8 +789,20 @@ spec:
                   type: object
                 type: array
               failureMessage:
+                description: |-
+                  FailureMessage is a full error message dump of the above failureReason.
+
+                  Deprecated: the CAPI v1beta2 contract removed terminal failures; failures now
+                  surface through the conditions. The controller never sets this field, which
+                  will be dropped at the next API version.
                 type: string
               failureReason:
+                description: |-
+                  FailureReason is the short name for the reason of a terminal failure.
+
+                  Deprecated: the CAPI v1beta2 contract removed terminal failures; failures now
+                  surface through the conditions. The controller never sets this field, which
+                  will be dropped at the next API version.
                 type: string
               initialization:
                 description: |-
