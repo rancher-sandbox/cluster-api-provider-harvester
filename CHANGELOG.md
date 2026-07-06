@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
-## [Unreleased]
+## [v0.4.0] - 2026-07-06
 
 ### Added — v1beta2 contract on the publish side
 
