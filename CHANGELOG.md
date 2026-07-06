@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [Unreleased]
+
+### Added — API graduation to v1beta1
+
+The CAPHV API graduates from `v1alpha1` to `v1beta1` (see
+`docs/migration-v0.4-to-v0.5.md`):
+
+- New `api/v1beta1` package; all four CRDs serve `v1alpha1` + `v1beta1` with
+  `v1beta1` as the stored version and hub. Conversion is served by the existing
+  webhook server and proven lossless by fuzz round-trip tests.
+- `v1alpha1` is deprecated but stays served for at least two more minor releases.
+- The deprecated `status.failureReason`/`status.failureMessage` fields do not exist
+  in `v1beta1` and are not carried across conversion (unset since v0.4.0; failures
+  surface through the conditions).
+- Validation webhooks run on both versions; the `HarvesterClusterTemplate` CRD gains
+  the conversion/cainjection patches the other CRDs already had.
+- In-repo templates, the Helm-shipped ClusterClass and the samples now reference
+  `v1beta1`.
+
 ## [v0.4.0] - 2026-07-06
 
 ### Added — v1beta2 contract on the publish side
