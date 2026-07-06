@@ -17,12 +17,12 @@ spec:
       name: harvester-rke2-control-plane
     machineInfrastructure:
       ref:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
         kind: HarvesterMachineTemplate
         name: harvester-rke2-control-plane
   infrastructure:
     ref:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
       kind: HarvesterClusterTemplate
       name: harvester-rke2-cluster
   workers:
@@ -36,7 +36,7 @@ spec:
               name: harvester-rke2-worker
           infrastructure:
             ref:
-              apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
               kind: HarvesterMachineTemplate
               name: harvester-rke2-worker
   # --- Variables ---
@@ -176,7 +176,7 @@ spec:
     - name: vmNetworks
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               controlPlane: true
@@ -186,7 +186,7 @@ spec:
               valueFrom:
                 variable: vmNetworks
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               machineDeploymentClass:
@@ -201,7 +201,7 @@ spec:
     - name: volumes
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               controlPlane: true
@@ -211,7 +211,7 @@ spec:
               valueFrom:
                 variable: volumes
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               machineDeploymentClass:
@@ -226,7 +226,7 @@ spec:
     - name: cpuCount
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               controlPlane: true
@@ -236,7 +236,7 @@ spec:
               valueFrom:
                 variable: cpuCount
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               machineDeploymentClass:
@@ -251,7 +251,7 @@ spec:
     - name: memorySize
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               controlPlane: true
@@ -261,7 +261,7 @@ spec:
               valueFrom:
                 variable: memorySize
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               machineDeploymentClass:
@@ -276,7 +276,7 @@ spec:
     - name: sshUser
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               controlPlane: true
@@ -286,7 +286,7 @@ spec:
               valueFrom:
                 variable: sshUser
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               machineDeploymentClass:
@@ -301,7 +301,7 @@ spec:
     - name: sshKeyPair
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               controlPlane: true
@@ -311,7 +311,7 @@ spec:
               valueFrom:
                 variable: sshKeyPair
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterMachineTemplate
             matchResources:
               machineDeploymentClass:
@@ -326,7 +326,7 @@ spec:
     - name: identitySecretName
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -339,7 +339,7 @@ spec:
     - name: identitySecretNamespace
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -352,7 +352,7 @@ spec:
     - name: targetNamespace
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -365,7 +365,7 @@ spec:
     - name: vmNetworkConfig
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -399,7 +399,7 @@ spec:
     - name: csiAddonConfigMap
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -412,7 +412,7 @@ spec:
     - name: csiAddonConfigMapNamespace
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
             kind: HarvesterClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -422,7 +422,7 @@ spec:
               valueFrom:
                 template: "{{ .builtin.cluster.namespace }}"
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterClusterTemplate
 metadata:
   name: harvester-rke2-cluster
@@ -465,7 +465,7 @@ spec:
         rollingUpdate:
           maxSurge: 1
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   name: harvester-rke2-control-plane
@@ -479,7 +479,7 @@ spec:
       volumes: []
       networks: []
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   name: harvester-rke2-worker

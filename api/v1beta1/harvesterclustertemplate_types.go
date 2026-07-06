@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +29,7 @@ type HarvesterClusterTemplateSpec struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:path=harvesterclustertemplates,scope=Namespaced,categories=cluster-api,shortName=hvct
+// +kubebuilder:storageversion
 
 // HarvesterClusterTemplate is the Schema for the infraclustertemplates API.
 type HarvesterClusterTemplate struct {

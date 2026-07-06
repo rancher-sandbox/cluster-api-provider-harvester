@@ -38,6 +38,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
 	infrastructurev1alpha1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	infrastructurev1beta1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1beta1"
 	"github.com/rancher-sandbox/cluster-api-provider-harvester/internal/controller"
 )
 
@@ -55,6 +56,7 @@ func init() {
 	//+kubebuilder:scaffold:scheme
 
 	utilruntime.Must(infrastructurev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
 }
 
@@ -130,9 +132,21 @@ func main() {
 	//+kubebuilder:scaffold:builder
 
 	if enableWebhooks {
+		err = infrastructurev1beta1.SetupHarvesterMachineWebhookWithManager(mgr)
+		if err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterMachine v1beta1")
+			os.Exit(1)
+		}
+
 		err = infrastructurev1alpha1.SetupHarvesterMachineWebhookWithManager(mgr)
 		if err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterMachine")
+			os.Exit(1)
+		}
+
+		err = infrastructurev1beta1.SetupHarvesterClusterWebhookWithManager(mgr)
+		if err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "HarvesterCluster v1beta1")
 			os.Exit(1)
 		}
 

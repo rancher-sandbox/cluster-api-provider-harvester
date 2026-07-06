@@ -39,7 +39,7 @@ import (
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
-	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1beta1"
 	hvclient "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned"
 	hvfake "github.com/rancher-sandbox/cluster-api-provider-harvester/pkg/clientset/versioned/fake"
 	locutil "github.com/rancher-sandbox/cluster-api-provider-harvester/util"

@@ -17,7 +17,7 @@ import (
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 
-	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1alpha1"
+	infrav1 "github.com/rancher-sandbox/cluster-api-provider-harvester/api/v1beta1"
 )
 
 func pausedTestScheme() *runtime.Scheme {
@@ -185,10 +185,8 @@ var _ = Describe("Deprecated terminal failure fields (v1beta2 contract)", func()
 		_, err := reconciler.reconcileHarvesterConfig(ctx, hvCluster)
 		Expect(err).To(HaveOccurred(), "the identity secret is missing")
 
-		// v1beta2 removed terminal failures: the error must surface through the
-		// HarvesterConnectionReady condition only, not the deprecated fields.
-		Expect(hvCluster.Status.FailureReason).To(BeEmpty())  //nolint:staticcheck // asserting the deprecated field stays empty
-		Expect(hvCluster.Status.FailureMessage).To(BeEmpty()) //nolint:staticcheck // asserting the deprecated field stays empty
+		// v1beta2 removed terminal failures — v1beta1 has no failure fields at all,
+		// so the error can only surface through the connection condition.
 		Expect(meta.IsStatusConditionFalse(hvCluster.Status.Conditions, infrav1.HarvesterConnectionReadyCondition)).
 			To(BeTrue(), "the failure must surface via the connection condition")
 	})
