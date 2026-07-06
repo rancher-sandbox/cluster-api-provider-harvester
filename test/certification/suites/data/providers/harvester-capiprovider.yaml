@@ -1,0 +1,25 @@
+# CAPHV infrastructure provider in Rancher Turtles CAPIProvider format (tier A).
+# Under Rancher 2.13+ the CAPI core and the RKE2 providers are installed automatically by
+# the Turtles system chart; only the CAPHV provider needs to be declared.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: caphv-system
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: harvester
+  namespace: caphv-system
+spec:
+  name: harvester
+  type: infrastructure
+  # version MUST be explicit: without it the underlying operator parses the version from
+  # the fetchConfig URL and picks "download" -> IncorrectVersionFormat.
+  version: ${CAPHV_VERSION}
+  fetchConfig:
+    url: ${CAPHV_COMPONENTS_URL}
+  features:
+    clusterTopology: true
+    clusterResourceSet: true
+    machinePool: true

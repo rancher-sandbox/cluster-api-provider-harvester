@@ -18,7 +18,6 @@ import (
 	operatorv1 "sigs.k8s.io/cluster-api-operator/api/v1alpha2"
 	opframework "sigs.k8s.io/cluster-api-operator/test/framework"
 	capiframework "sigs.k8s.io/cluster-api/test/framework"
-	"sigs.k8s.io/cluster-api/test/framework/bootstrap"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -64,7 +63,7 @@ var _ = SynchronizedBeforeSuite(
 		setupClusterResult = testenv.SetupTestCluster(ctx, testenv.SetupTestClusterInput{
 			E2EConfig:             e2eConfig,
 			Scheme:                e2e.InitScheme(),
-			CustomClusterProvider: kindBootstrapCluster,
+			CustomClusterProvider: suites.KindBootstrapCluster,
 		})
 		proxy := setupClusterResult.BootstrapClusterProxy
 
@@ -140,19 +139,6 @@ const (
 	capiOperatorURLVar      = "CAPI_OPERATOR_URL"
 	capiOperatorPathVar     = "CAPI_OPERATOR_PATH"
 )
-
-// kindBootstrapCluster creates the kind management cluster WITHOUT mounting the host
-// docker socket: only the CAPD provider needs that socket and this tier does not use it.
-// It also keeps the suite runnable on podman hosts, where bind-mounting a missing
-// /var/run/docker.sock is a hard error instead of an implicit directory creation.
-func kindBootstrapCluster(ctx context.Context, config *clusterctl.E2EConfig, clusterName, kubernetesVersion string) bootstrap.ClusterProvider {
-	return bootstrap.CreateKindBootstrapClusterAndLoadImages(ctx, bootstrap.CreateKindBootstrapClusterAndLoadImagesInput{
-		Name:               clusterName,
-		KubernetesVersion:  kubernetesVersion,
-		RequiresDockerSock: false,
-		Images:             config.Images,
-	})
-}
 
 // deployCAPIOperator installs the cluster-api-operator helm chart. The chart is
 // schema-validated and takes NO value overrides (it requires cert-manager to be

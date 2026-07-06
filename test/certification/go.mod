@@ -5,6 +5,7 @@ go 1.25.10
 require (
 	github.com/onsi/ginkgo/v2 v2.28.3
 	github.com/onsi/gomega v1.40.0
+	github.com/rancher/turtles v0.0.0-00010101000000-000000000000
 	github.com/rancher/turtles/test v0.26.2
 	k8s.io/api v0.34.7
 	k8s.io/apiextensions-apiserver v0.34.7
@@ -100,7 +101,6 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.65.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	github.com/rancher/turtles v0.0.0-00010101000000-000000000000 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect

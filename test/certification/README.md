@@ -1,26 +1,33 @@
-# CAPHV Version-Pairing Certification
+# CAPHV Certification Suites
 
-This directory contains the version-pairing certification suite for CAPHV (Cluster API
-Provider Harvester). It validates that a CAPHV release installs cleanly and stays
-compatible with the targeted Cluster API ecosystem: the suite self-deploys a kind
-management cluster with cert-manager and [cluster-api-operator], then installs the CAPI
-core, the RKE2 bootstrap/control-plane providers and the CAPHV release under test, and
-asserts the pairing is healthy.
+This directory contains the certification suites for CAPHV (Cluster API Provider
+Harvester). They validate that a CAPHV release installs cleanly and stays compatible
+with its targeted ecosystem, in two tiers — neither needs a Harvester endpoint, so both
+run on standard CI runners:
 
-**No Rancher, no Turtles and no Harvester endpoint are required**, so the suite runs
-nightly on a standard GitHub-hosted runner (see `.github/workflows/certification.yml`).
+| Tier | Suite | Stack | Trigger |
+|------|-------|-------|---------|
+| **Version-pairing** (nightly) | `suites/version-pairing/` | CAPI core + RKE2 via [cluster-api-operator] — no Rancher | `certification.yml` (nightly + dispatch) |
+| **Rancher + Turtles** (on-demand) | `suites/rancher-turtles/` | Full released Rancher; Turtles/CAPI/RKE2 via its system chart controller | `certification-tier-a.yml` (dispatch) |
 
-> Why not Rancher Turtles? Turtles 0.26+ cannot run standalone: its controller watches
-> Rancher's `management.cattle.io` CRDs and crashloops without a full Rancher install.
-> This tier therefore certifies the deeper CAPHV↔CAPI contract through the
-> Rancher-independent cluster-api-operator. The full Rancher + Turtles integration
-> (real Harvester provisioning + auto-import) is a separate on-demand e2e tier; the
+> Why is the nightly tier Rancher-free? Turtles 0.26+ cannot run standalone: its
+> controller watches Rancher's `management.cattle.io` CRDs and crashloops without a full
+> Rancher install. The nightly tier therefore certifies the deeper CAPHV↔CAPI contract
+> through the Rancher-independent cluster-api-operator, and the full-stack tier covers
+> the Rancher integration on demand. The deeper e2e (real Harvester provisioning +
+> auto-import) remains separate; the
 > `suites/data/cluster-templates/harvester-rke2-topology.yaml` template is retained
 > for it.
 
 [cluster-api-operator]: https://github.com/kubernetes-sigs/cluster-api-operator
 
-## What the suite validates
+## Tier: version-pairing (nightly)
+
+The suite self-deploys a kind management cluster with cert-manager and
+cluster-api-operator, then installs the CAPI core, the RKE2 bootstrap/control-plane
+providers and the CAPHV release under test, and asserts the pairing is healthy.
+
+### What the suite validates
 
 1. The four providers (CAPI core, RKE2 bootstrap, RKE2 control-plane, CAPHV
    infrastructure) all reach `Ready=True`, with the targeted versions installed.
@@ -32,6 +39,28 @@ nightly on a standard GitHub-hosted runner (see `.github/workflows/certification
 The bootstrap replicates `hack/tier-c-smoke.sh` — the manually validated recipe — step by
 step. If you change one, keep the other in sync.
 
+## Tier: Rancher + Turtles (on-demand)
+
+`suites/rancher-turtles/` certifies CAPHV under the FULL targeted Rancher: kind +
+cert-manager + nginx ingress (isolated mode), then the **released Rancher** from its
+official chart repository. Rancher's system chart controller automatically installs the
+released Turtles, the CAPI core and the RKE2 providers — the exact out-of-the-box stack
+a Rancher user gets (verified against a real Rancher 2.14.1 install). Only the CAPHV
+`CAPIProvider` (`turtles-capi.cattle.io/v1alpha1`) is applied on top.
+
+It validates: the CAPHV CAPIProvider reaches `Ready` with the targeted version, the
+controller runs healthy under the Rancher-managed core, the CRDs carry a CAPI contract
+label, and the certified ecosystem versions (Turtles system chart, CAPI core) are
+recorded in the logs.
+
+> The upstream Turtles e2e flow additionally builds a local rancher/charts tree and
+> serves it from an in-cluster Gitea — that is only needed to test **unreleased**
+> Turtles charts. Certifying released pairings uses Rancher's default chart repository,
+> which is the representative source, so no Gitea is involved.
+
+Run with `make test-tier-a` (or `make certification-test-tier-a` from the project root),
+overriding `RANCHER_VERSION` / `CAPHV_VERSION` as needed. Budget ~30-45 minutes.
+
 ## Version matrix
 
 All pins live in `config/config.yaml` (`variables:`) and are overridable from the
@@ -41,8 +70,9 @@ environment:
 |----------|---------|---------|
 | `CAPHV_VERSION` | `v0.3.1` | CAPHV release under certification |
 | `CAPHV_COMPONENTS_URL` | release asset URL | `infrastructure-components.yaml` of that release |
-| `CAPI_VERSION` | `v1.12.7` | Targeted Cluster API core |
-| `CAPI_OPERATOR_VERSION` | `0.27.0` | cluster-api-operator helm chart |
+| `CAPI_VERSION` | `v1.12.7` | Targeted Cluster API core (version-pairing tier) |
+| `CAPI_OPERATOR_VERSION` | `0.27.0` | cluster-api-operator helm chart (version-pairing tier) |
+| `RANCHER_VERSION` | `2.14.1` | Targeted Rancher chart (Rancher+Turtles tier) |
 
 The RKE2 providers deliberately carry no pin: the operator installs its latest known
 release, matching the validated recipe. cert-manager's version is pinned by the turtles
@@ -98,14 +128,18 @@ test/certification/
 ├── suites/
 │   ├── const.go                  # Embedded manifests (build tag: e2e)
 │   ├── data/
-│   │   ├── providers/            # cluster-api-operator provider CRs (envsubst templates)
+│   │   ├── providers/            # provider CRs (envsubst templates)
 │   │   │   ├── core.yaml         #   CoreProvider (CAPI ${CAPI_VERSION})
 │   │   │   ├── rke2.yaml         #   RKE2 Bootstrap/ControlPlane providers
-│   │   │   └── harvester.yaml    #   CAPHV InfrastructureProvider (${CAPHV_VERSION})
+│   │   │   ├── harvester.yaml    #   CAPHV InfrastructureProvider (${CAPHV_VERSION})
+│   │   │   └── harvester-capiprovider.yaml  # CAPHV as Turtles CAPIProvider (tier A)
 │   │   └── cluster-templates/    # ClusterClass template (on-demand e2e tier)
-│   └── version-pairing/
-│       ├── suite_test.go         # Bootstrap: kind -> cert-manager -> operator -> providers
-│       └── version_pairing_test.go  # Certification assertions
+│   ├── version-pairing/
+│   │   ├── suite_test.go         # Bootstrap: kind -> cert-manager -> operator -> providers
+│   │   └── version_pairing_test.go  # Certification assertions
+│   └── rancher-turtles/
+│       ├── suite_test.go         # Bootstrap: kind -> ingress -> Rancher (system charts)
+│       └── rancher_turtles_test.go  # Certification assertions (tier A)
 ├── Makefile
 ├── run.sh
 ├── go.mod                        # Standalone module (decoupled from the main CAPHV module)

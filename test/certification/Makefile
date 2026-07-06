@@ -15,9 +15,22 @@ test: ## Run the version-pairing certification (self-deploys kind + cluster-api-
 		-ginkgo.v \
 		-ginkgo.label-filter="$(GINKGO_LABEL_FILTER)"
 
+.PHONY: test-tier-a
+test-tier-a: ## Run the full Rancher+Turtles certification (tier A, on-demand; self-deploys kind + Rancher)
+	mkdir -p $(ARTIFACTS_FOLDER)
+	E2E_CONFIG=$(E2E_CONFIG) \
+	ARTIFACTS_FOLDER=$(ARTIFACTS_FOLDER) \
+	HELM_BINARY_PATH=$(HELM_BINARY_PATH) \
+	HELM_EXTRA_VALUES_FOLDER=$(ARTIFACTS_FOLDER) \
+	go test -v -tags e2e -timeout 90m -count 1 \
+		./suites/rancher-turtles/ \
+		-ginkgo.v \
+		-ginkgo.label-filter="full"
+
 .PHONY: build
-build: ## Compile the test binary
+build: ## Compile the test binaries
 	go test -c -tags e2e -o bin/certification.test ./suites/version-pairing/
+	go test -c -tags e2e -o bin/certification-tier-a.test ./suites/rancher-turtles/
 
 .PHONY: deps
 deps: ## Download dependencies

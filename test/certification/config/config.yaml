@@ -11,6 +11,7 @@ providers: []
 
 intervals:
   default/wait-controllers: ["10m", "10s"]
+  default/wait-rancher: ["15m", "30s"]
 
 variables:
   # Management cluster: self-provisioned kind, no pre-existing cluster (version-pairing
@@ -39,3 +40,15 @@ variables:
   CERT_MANAGER_REPO_NAME: "jetstack"
   CERT_MANAGER_URL: "https://charts.jetstack.io"
   CERT_MANAGER_PATH: "jetstack/cert-manager"
+
+  # Tier A only (full Rancher + Turtles): the released Rancher below is installed from
+  # its official chart repo; its system chart controller then installs the released
+  # Turtles/CAPI core/RKE2 providers. In isolated-kind the hostname is derived from the
+  # kind node IP (RANCHER_HOSTNAME is a required-non-empty placeholder), and the
+  # bootstrap password is test-only (ephemeral kind cluster).
+  RANCHER_VERSION: "2.14.1"
+  RANCHER_REPO_NAME: "rancher-latest"
+  RANCHER_URL: "https://releases.rancher.com/server-charts/latest"
+  RANCHER_PATH: "rancher-latest/rancher"
+  RANCHER_HOSTNAME: "localhost"
+  RANCHER_PASSWORD: "rancherpassword"
