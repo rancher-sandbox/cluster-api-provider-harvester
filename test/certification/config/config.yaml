@@ -11,7 +11,12 @@ providers: []
 
 intervals:
   default/wait-controllers: ["10m", "10s"]
-  default/wait-rancher: ["15m", "30s"]
+  default/wait-rancher: ["30m", "30s"]
+  default/wait-cluster: ["30m", "30s"]
+  default/wait-delete-cluster: ["30m", "30s"]
+  default/wait-kubeconfig: ["10m", "30s"]
+  default/wait-gitpush: ["3m", "10s"]
+  default/wait-consistently: ["30s", "5s"]
 
 variables:
   # Management cluster: self-provisioned kind, no pre-existing cluster (version-pairing
@@ -52,3 +57,27 @@ variables:
   RANCHER_PATH: "rancher-latest/rancher"
   RANCHER_HOSTNAME: "localhost"
   RANCHER_PASSWORD: "rancherpassword"
+
+  # Import-gitops tier only (full lifecycle on a real Harvester): the suite runs with
+  # MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind and needs RANCHER_HOSTNAME resolving to
+  # a host IP reachable from the workload VMs (e.g. <host-lan-ip>.sslip.io), plus
+  # HARVESTER_KUBECONFIG_B64 — both are environment-specific and supplied by the wrapper
+  # or CI, never committed here.
+  NAMESPACE: "default"
+  KUBERNETES_VERSION: "v1.31.14"
+  RKE2_VERSION: "v1.31.14+rke2r1"
+  HARVESTER_KUBECONFIG_B64: ""
+  IDENTITY_SECRET_NAME: "hv-identity-secret"
+  TARGET_NAMESPACE: "default"
+  SSH_KEYPAIR: "default/capi-ssh-key"
+  SSH_USER: "sles"
+  VM_NETWORK: "default/production"
+  VOLUME_IMAGE: "default/sles15-sp7-minimal-vm.x86_64-cloud-qu2.qcow2"
+  VOLUME_SIZE: "40Gi"
+  CPU_COUNT: "2"
+  MEMORY_SIZE: "4Gi"
+  GATEWAY: "172.16.0.1"
+  SUBNET_MASK: "255.255.0.0"
+  IP_POOL_REF: "capi-vm-pool"
+  DNS_SERVERS: "172.16.0.1"
+  CNI: "calico"
