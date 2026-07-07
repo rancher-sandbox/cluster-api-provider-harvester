@@ -133,5 +133,5 @@ labels:
     cluster.x-k8s.io/v1beta1: v1alpha1
     cluster.x-k8s.io/v1alpha2: v1alpha1
     cluster.x-k8s.io/v1alpha3: v1alpha1
-  includeSelectors: true
+  includeSelectors: false
   includeTemplates: true
