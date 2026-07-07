@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
 
+## [Unreleased]
+
+### Fixed
+
+- The CAPI contract labels are no longer part of the controller Deployment and
+  Service selectors (`includeSelectors: false`): selectors are immutable, so every
+  contract-label change used to break `kubectl apply` upgrades (and could leave the
+  webhook Service without endpoints). Selectors are now the minimal
+  `control-plane: controller-manager` and will stay stable across releases.
+  **One-time upgrade note**: applying these manifests over an existing install with
+  `kubectl apply` requires deleting the controller Deployment once
+  (`kubectl -n caphv-system delete deploy caphv-controller-manager`) before applying;
+  `clusterctl`/CAPI-operator-managed installs are unaffected.
+
 ## [v0.5.0] - 2026-07-06
 
 ### Added — API graduation to v1beta1
