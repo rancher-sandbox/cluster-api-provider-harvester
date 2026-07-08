@@ -5,17 +5,24 @@ package importgitops
 
 import (
 	"context"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/json"
+	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	capiframework "sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/rancher/turtles/test/e2e"
@@ -71,9 +78,46 @@ var _ = SynchronizedBeforeSuite(
 		// ports are exposed on the host through the kind extraPortMappings).
 		By("Deploying the nginx ingress (hostPort)")
 		Expect(turtlesframework.Apply(ctx, proxy, e2e.NginxIngress)).To(Succeed())
-		Expect(turtlesframework.Apply(ctx, proxy, e2e.IngressClassPatch)).To(Succeed())
 		waitForDeploymentAvailableOn(proxy, "ingress-nginx-controller", "ingress-nginx",
 			e2eConfig.GetIntervals("default", "wait-controllers")...)
+
+		// The controller Deployment turning Available does not mean the admission
+		// webhook is servable yet; installing Rancher too early fails on
+		// "failed calling webhook validate.nginx.ingress.kubernetes.io".
+		By("Waiting for the nginx admission webhook endpoints")
+		Eventually(func(g Gomega) {
+			endpoints := &corev1.Endpoints{}
+			g.Expect(proxy.GetClient().Get(ctx, types.NamespacedName{
+				Namespace: "ingress-nginx", Name: "ingress-nginx-controller-admission",
+			}, endpoints)).To(Succeed())
+			g.Expect(endpoints.Subsets).ToNot(BeEmpty())
+			g.Expect(endpoints.Subsets[0].Addresses).ToNot(BeEmpty())
+		}, e2eConfig.GetIntervals("default", "wait-controllers")...).Should(Succeed())
+
+		// Pods inside kind cannot reach the host IP that RANCHER_HOSTNAME resolves to
+		// (hairpin through the podman port-forward times out), yet Turtles must download
+		// the Rancher import manifest from the server-url. Point the hostname to the
+		// kind node's internal IP in the cluster DNS: the node exposes nginx through
+		// hostPorts, so in-cluster traffic reaches Rancher while external workload VMs
+		// keep using the host-mapped ports.
+		By("Resolving the Rancher hostname to the kind node inside the cluster DNS")
+		nodeList := &corev1.NodeList{}
+		Expect(proxy.GetClient().List(ctx, nodeList)).To(Succeed())
+		Expect(nodeList.Items).ToNot(BeEmpty())
+		var nodeIP string
+		for _, addr := range nodeList.Items[0].Status.Addresses {
+			if addr.Type == corev1.NodeInternalIP {
+				nodeIP = addr.Address
+			}
+		}
+		Expect(nodeIP).ToNot(BeEmpty(), "kind node must expose an internal IP")
+		coreDNS := &corev1.ConfigMap{}
+		Expect(proxy.GetClient().Get(ctx, types.NamespacedName{Namespace: "kube-system", Name: "coredns"}, coreDNS)).To(Succeed())
+		hostsBlock := fmt.Sprintf("    hosts {\n       %s %s\n       fallthrough\n    }\n    forward", nodeIP, e2eConfig.GetVariableOrEmpty("RANCHER_HOSTNAME"))
+		coreDNS.Data["Corefile"] = strings.Replace(coreDNS.Data["Corefile"], "    forward", hostsBlock, 1)
+		Expect(proxy.GetClient().Update(ctx, coreDNS)).To(Succeed())
+		Expect(proxy.GetClient().DeleteAllOf(ctx, &corev1.Pod{},
+			client.InNamespace("kube-system"), client.MatchingLabels{"k8s-app": "kube-dns"})).To(Succeed())
 
 		By("Deploying Rancher " + e2eConfig.GetVariableOrEmpty("RANCHER_VERSION"))
 		rancherHookResult := testenv.DeployRancher(ctx, testenv.DeployRancherInput{
@@ -113,6 +157,36 @@ var _ = SynchronizedBeforeSuite(
 			waitForDeploymentAvailableOn(proxy, nn.name, nn.namespace,
 				e2eConfig.GetIntervals("default", "wait-controllers")...)
 		}
+
+		// Workaround for a Turtles 0.26 import race: if the freshly created v3 cluster
+		// gets replaced, the CAPI Cluster is annotated imported=true before the agent
+		// was ever applied and the import is never retried (the controller skips
+		// clusters carrying the annotation). Strip it while premature; a genuinely
+		// deleting cluster keeps it (the deletion flow relies on it).
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(30 * time.Second):
+				}
+
+				clusters := &clusterv1.ClusterList{}
+				if err := proxy.GetClient().List(ctx, clusters); err != nil {
+					continue
+				}
+
+				for i := range clusters.Items {
+					cl := &clusters.Items[i]
+					if cl.Annotations["imported"] != "true" || !cl.DeletionTimestamp.IsZero() {
+						continue
+					}
+
+					delete(cl.Annotations, "imported")
+					_ = proxy.GetClient().Update(ctx, cl)
+				}
+			}
+		}()
 
 		data, err := json.Marshal(e2e.Setup{
 			ClusterName:     setupClusterResult.ClusterName,

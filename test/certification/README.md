@@ -7,8 +7,16 @@ run on standard CI runners:
 
 | Tier | Suite | Stack | Trigger |
 |------|-------|-------|---------|
+| **Turtles integration** (the suite the Turtles team expects) | `suites/import-gitops/` | Full Rancher + Turtles + real Harvester: `CreateUsingGitOpsSpec` provisions a cluster, verifies Available, the Rancher auto-import (cattle-cluster-agent) and a clean deletion | self-hosted runner (needs a Harvester) |
 | **Version-pairing** (nightly) | `suites/version-pairing/` | CAPI core + RKE2 via [cluster-api-operator] — no Rancher | `certification.yml` (nightly + dispatch) |
-| **Rancher + Turtles** (on-demand) | `suites/rancher-turtles/` | Full released Rancher; Turtles/CAPI/RKE2 via its system chart controller | `certification-tier-a.yml` (dispatch) |
+| **Rancher + Turtles stack** (on-demand) | `suites/rancher-turtles/` | Full released Rancher; Turtles/CAPI/RKE2 via its system chart controller — no workload cluster | `certification-tier-a.yml` (dispatch) |
+
+> Terminology: Turtles has no provider *certification* process — "certified" means
+> "actively tested". The integration tier is the flow the Turtles team maintains in
+> [rancher/turtles-integration-suite-example]; the other two tiers are lighter
+> complements. Version pairings are recorded in [docs/compatibility.md](../../docs/compatibility.md).
+
+[rancher/turtles-integration-suite-example]: https://github.com/rancher/turtles-integration-suite-example
 
 > Why is the nightly tier Rancher-free? Turtles 0.26+ cannot run standalone: its
 > controller watches Rancher's `management.cattle.io` CRDs and crashloops without a full
@@ -151,3 +159,24 @@ test/certification/
 After the suite passes for a new pairing, a certification issue can be submitted on
 [rancher/turtles](https://github.com/rancher/turtles/issues) with the test logs, the
 CAPHV version and a link to this suite.
+
+## Tier: Turtles integration (import-gitops)
+
+Runs `CreateUsingGitOpsSpec` against a **real Harvester**: kind management cluster with
+host port mappings (`MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind`), full Rancher from
+its official chart, Turtles + CAPI core via Rancher's system chart controller, RKE2 and
+CAPHV as `CAPIProvider`s, then the full lifecycle: provision from the ClusterClass
+template → cluster Available → Rancher auto-import verified downstream → deletion
+without stalling.
+
+Environment-specific inputs (never committed): `RANCHER_HOSTNAME` must resolve to a
+host IP reachable **from the workload VMs** (e.g. `<host-lan-ip>.sslip.io`, ports 80/443
+open), and `HARVESTER_KUBECONFIG_B64`. Install crust-gather first
+(`scripts/ensure-crust-gather.sh`) so the framework collects management and downstream
+state into `_artifacts/` automatically.
+
+```bash
+export RANCHER_HOSTNAME=<host-lan-ip>.sslip.io
+export HARVESTER_KUBECONFIG_B64=$(base64 -w0 < harvester.kubeconfig)
+make test-import-gitops
+```

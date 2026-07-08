@@ -104,6 +104,8 @@ type ClusterScope struct {
 	ReconcileClient  client.Client
 }
 
+//+kubebuilder:rbac:groups=provisioning.cattle.io,resources=clusters,verbs=get;list;watch
+//+kubebuilder:rbac:groups=provisioning.cattle.io,resources=clusters,verbs=get;list;watch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters/finalizers,verbs=update

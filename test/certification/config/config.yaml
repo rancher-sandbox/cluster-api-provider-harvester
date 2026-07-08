@@ -25,6 +25,7 @@ variables:
   # and export it.
   MANAGEMENT_CLUSTER_ENVIRONMENT: "isolated-kind"
   USE_EXISTING_CLUSTER: "false"
+  KUBERNETES_MANAGEMENT_VERSION: "v1.35.0"
   ARTIFACTS_FOLDER: "_artifacts"
   SKIP_RESOURCE_CLEANUP: "false"
   SKIP_DELETION_TEST: "false"

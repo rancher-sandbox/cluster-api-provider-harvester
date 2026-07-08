@@ -10,7 +10,7 @@ metadata:
 spec:
   controlPlane:
     ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: RKE2ControlPlaneTemplate
       name: ${CLUSTER_CLASS_NAME}-control-plane
     machineInfrastructure:
@@ -29,7 +29,7 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
               kind: RKE2ConfigTemplate
               name: ${CLUSTER_CLASS_NAME}-worker
           infrastructure:
@@ -335,7 +335,7 @@ spec:
     - name: cni
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -355,7 +355,7 @@ spec:
             - op: replace
               path: /spec/template/spec/updateCloudProviderConfig/manifestsConfigMapName
               valueFrom:
-                template: "cloud-config-addon-{{ .builtin.cluster.name }}"
+                template: "cloud-controller-manager-addon-{{ .builtin.cluster.name }}"
     - name: csiAddonConfigMapNamespace
       definitions:
         - selector:
@@ -381,24 +381,22 @@ spec:
         namespace: ${NAMESPACE}
         name: ${IDENTITY_SECRET_NAME}
       loadBalancerConfig:
-        ipamType: dhcp
+        ipamType: pool
+        ipPoolRef: ${IP_POOL_REF}
         listeners:
           - name: rke2-server
             port: 9345
             protocol: TCP
             backendPort: 9345
       targetNamespace: ${TARGET_NAMESPACE}
-      controlPlaneEndpoint:
-        host: "0.0.0.0"
-        port: 6443
       updateCloudProviderConfig:
         cloudConfigCredentialsSecretKey: cloud-config
         cloudConfigCredentialsSecretName: cloud-config
-        manifestsConfigMapKey: cloud-config.yaml
-        manifestsConfigMapName: cloud-config-addon
+        manifestsConfigMapKey: harvester-csi-deployment.yaml
+        manifestsConfigMapName: cloud-controller-manager-addon
         manifestsConfigMapNamespace: ${NAMESPACE}
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: ${CLUSTER_CLASS_NAME}-control-plane
@@ -444,7 +442,7 @@ spec:
       volumes: []
       networks: []
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: RKE2ConfigTemplate
 metadata:
   name: ${CLUSTER_CLASS_NAME}-worker
