@@ -61,8 +61,6 @@ replacements:
       index: 0
   - select:
       kind: CustomResourceDefinition
-    reject:
-    - name: harvesterclustertemplates.infrastructure.cluster.x-k8s.io
     fieldPaths:
     - metadata.annotations.[cert-manager.io/inject-ca-from]
     options:
@@ -84,8 +82,6 @@ replacements:
       index: 1
   - select:
       kind: CustomResourceDefinition
-    reject:
-    - name: harvesterclustertemplates.infrastructure.cluster.x-k8s.io
     fieldPaths:
     - metadata.annotations.[cert-manager.io/inject-ca-from]
     options:

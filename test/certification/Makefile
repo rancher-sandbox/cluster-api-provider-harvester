@@ -43,3 +43,15 @@ clean: ## Clean artifacts
 .PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+.PHONY: test-import-gitops
+test-import-gitops: ## Run the Turtles integration suite (full lifecycle on a real Harvester; needs RANCHER_HOSTNAME + HARVESTER_KUBECONFIG_B64)
+	mkdir -p $(ARTIFACTS_FOLDER)
+	E2E_CONFIG=$(E2E_CONFIG) \
+	ARTIFACTS_FOLDER=$(ARTIFACTS_FOLDER) \
+	HELM_BINARY_PATH=$(HELM_BINARY_PATH) \
+	HELM_EXTRA_VALUES_FOLDER=$(ARTIFACTS_FOLDER) \
+	MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind \
+	go test -v -tags e2e -timeout 120m -count 1 \
+		./suites/import-gitops/ \
+		-ginkgo.v
