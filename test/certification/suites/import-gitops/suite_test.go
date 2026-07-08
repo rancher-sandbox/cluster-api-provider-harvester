@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +40,12 @@ var (
 	setupClusterResult    *testenv.SetupTestClusterResult
 	bootstrapClusterProxy capiframework.ClusterProxy
 	hostName              string
+
+	// Stops the import watcher before teardown: its client calls would register
+	// a ginkgo failure once the bootstrap kubeconfig is gone (recover alone
+	// cannot undo a Fail already recorded).
+	importWatcherStop     = make(chan struct{})
+	importWatcherStopOnce sync.Once
 )
 
 func TestCAPHVImportGitops(t *testing.T) {
@@ -168,6 +175,8 @@ var _ = SynchronizedBeforeSuite(
 				select {
 				case <-ctx.Done():
 					return
+				case <-importWatcherStop:
+					return
 				case <-time.After(30 * time.Second):
 				}
 
@@ -224,6 +233,8 @@ var _ = SynchronizedBeforeSuite(
 var _ = SynchronizedAfterSuite(
 	func() {},
 	func() {
+		importWatcherStopOnce.Do(func() { close(importWatcherStop) })
+
 		if bootstrapClusterProxy != nil {
 			// Collects the management cluster state through crust-gather when the
 			// kubectl plugin is installed (scripts/ensure-crust-gather.sh).
