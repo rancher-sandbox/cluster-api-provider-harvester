@@ -30,6 +30,7 @@ var _ = Describe("[Harvester] [RKE2] Create and delete CAPI cluster functionalit
 			BootstrapClusterProxy:     bootstrapClusterProxy,
 			ClusterTemplate:           suites.HarvesterRKE2Topology,
 			ClusterName:               "caphv-gitops",
+			ClusterctlBinaryPath:      "clusterctl",
 			ControlPlaneMachineCount:  ptr.To(1),
 			WorkerMachineCount:        ptr.To(1),
 			LabelNamespace:            true,
