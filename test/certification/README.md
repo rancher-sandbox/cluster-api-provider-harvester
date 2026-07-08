@@ -69,6 +69,43 @@ recorded in the logs.
 Run with `make test-tier-a` (or `make certification-test-tier-a` from the project root),
 overriding `RANCHER_VERSION` / `CAPHV_VERSION` as needed. Budget ~30-45 minutes.
 
+## Tier: Turtles integration suite (primary, scheduled)
+
+`suites/import-gitops/` runs the Turtles `CreateUsingGitOpsSpec` — the suite the
+Turtles team runs for every certified provider (modeled on
+`rancher/turtles-integration-suite-example`) — against a **real Harvester**:
+
+1. kind + cert-manager + nginx (hostPort) + released Rancher + Turtles + CAPI core,
+   plus the RKE2 providers and the CAPHV `CAPIProvider`;
+2. a ClusterClass-based RKE2 cluster (1 CP + 1 worker) is provisioned on Harvester
+   through GitOps (Fleet), with a pool-backed control-plane LoadBalancer;
+3. the cluster becomes `Available`, Rancher auto-imports it (cattle-cluster-agent
+   deployed downstream and connected), the v3 cluster record turns ready;
+4. the CAPI cluster is deleted and the suite verifies the deletion completes and the
+   Rancher record disappears (no stalling finalizers, VMs/LB/IPs released).
+
+**Environment requirements** (see also the workflow
+`.github/workflows/certification-import-gitops.yml`): a Linux host with **docker**
+(kind's mainstream provider), `kind`, `helm`, `kubectl`, `go` and the `crust-gather`
+kubectl plugin (`scripts/ensure-crust-gather.sh`), plus two network properties:
+
+- `RANCHER_HOSTNAME` (e.g. `<host-LAN-IP>.sslip.io`) must be reachable on 443 both
+  from inside the kind cluster and **from the workload VMs** Harvester provisions;
+- the host must reach the Harvester API and the workload cluster's control-plane
+  endpoint (an IP from the Harvester LB pool).
+
+A plain VM on the LAN satisfies both. Rootless/NAT'd container engines on multi-bridge
+hosts often do not — nested kind networking is the first thing to check when the
+downstream agent cannot reach the server-url.
+
+In CI the suite runs on a **self-hosted runner** living inside the test environment
+(same pattern as the Turtles vSphere runner), on a schedule and manual dispatch only —
+never on pull requests. `HARVESTER_KUBECONFIG_B64` is provided as an Actions secret.
+
+Run manually with `MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind`,
+`RANCHER_HOSTNAME=<host-ip>.sslip.io` and `HARVESTER_KUBECONFIG_B64=$(base64 -w0 <
+kubeconfig)`; budget ~40 minutes (see the workflow for the full invocation).
+
 ## Version matrix
 
 All pins live in `config/config.yaml` (`variables:`) and are overridable from the
