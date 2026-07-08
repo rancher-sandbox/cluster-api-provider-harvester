@@ -171,20 +171,26 @@ var _ = SynchronizedBeforeSuite(
 				case <-time.After(30 * time.Second):
 				}
 
-				clusters := &clusterv1.ClusterList{}
-				if err := proxy.GetClient().List(ctx, clusters); err != nil {
-					continue
-				}
+				// Best-effort: once the suite tears the cluster down, the proxy's
+				// accessors Fail (panic); swallow it instead of crashing the binary.
+				func() {
+					defer func() { _ = recover() }()
 
-				for i := range clusters.Items {
-					cl := &clusters.Items[i]
-					if cl.Annotations["imported"] != "true" || !cl.DeletionTimestamp.IsZero() {
-						continue
+					clusters := &clusterv1.ClusterList{}
+					if err := proxy.GetClient().List(ctx, clusters); err != nil {
+						return
 					}
 
-					delete(cl.Annotations, "imported")
-					_ = proxy.GetClient().Update(ctx, cl)
-				}
+					for i := range clusters.Items {
+						cl := &clusters.Items[i]
+						if cl.Annotations["imported"] != "true" || !cl.DeletionTimestamp.IsZero() {
+							continue
+						}
+
+						delete(cl.Annotations, "imported")
+						_ = proxy.GetClient().Update(ctx, cl)
+					}
+				}()
 			}
 		}()
 
