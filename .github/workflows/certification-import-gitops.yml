@@ -1,0 +1,58 @@
+# Turtles integration suite (CreateUsingGitOpsSpec) against a real Harvester.
+#
+# Runs on a self-hosted runner living inside the test environment (a VM with
+# docker, kind, helm, go and network reach to the Harvester cluster and to the
+# workload VMs it provisions) — same pattern as rancher/rancher-turtles-e2e's
+# vSphere runner. The job is therefore guarded to the repository that owns the
+# runner; it never runs on pull requests.
+name: certification-import-gitops
+
+on:
+  schedule:
+    - cron: "0 3 * * 1,4"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  turtles-integration:
+    if: github.repository_owner == 'jniedergang'
+    runs-on: [self-hosted, harvester]
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4.2.2
+
+      - name: Build the suite
+        working-directory: test/certification
+        run: |
+          mkdir -p _artifacts
+          GOTOOLCHAIN=auto go test -c -tags e2e -o bin/import-gitops.test ./suites/import-gitops/
+
+      - name: Run the Turtles integration suite
+        working-directory: test/certification
+        env:
+          HARVESTER_KUBECONFIG_B64: ${{ secrets.HARVESTER_KUBECONFIG_B64 }}
+        run: |
+          # The Rancher server-url must be reachable both from inside the kind
+          # cluster and from the workload VMs: the runner VM's LAN IP is.
+          RANCHER_HOSTNAME="$(hostname -I | awk '{print $1}').sslip.io"
+          sudo env "PATH=/root/.krew/bin:/usr/local/bin:$PATH" HOME=/root GOTOOLCHAIN=auto \
+            E2E_CONFIG="$PWD/config/config.yaml" ARTIFACTS_FOLDER="$PWD/_artifacts" \
+            HELM_BINARY_PATH=/usr/local/bin/helm HELM_EXTRA_VALUES_FOLDER="$PWD/_artifacts" \
+            MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind \
+            RANCHER_HOSTNAME="$RANCHER_HOSTNAME" \
+            HARVESTER_KUBECONFIG_B64="$HARVESTER_KUBECONFIG_B64" \
+            ./bin/import-gitops.test -test.timeout 140m -test.v -ginkgo.v
+
+      - name: Collect artifacts
+        if: always()
+        working-directory: test/certification
+        run: sudo chown -R "$(id -u):$(id -g)" _artifacts || true
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v4
+        if: always()
+        with:
+          name: import-gitops-artifacts
+          path: test/certification/_artifacts
+          retention-days: 14
