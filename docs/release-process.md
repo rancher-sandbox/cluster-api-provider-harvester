@@ -21,6 +21,19 @@ GHCR, the Helm OCI chart, `infrastructure-components.yaml` + `metadata.yaml` +
 cluster templates as release assets, cosign signatures (verify with **cosign v3+**:
 v2 wrongly reports "no signatures" on OCI 1.1 bundles) and build provenance.
 
+The GitHub release is created as a **draft** carrying all assets, and publishing it
+is the **last step**, after the image and the chart jobs succeeded. Releases are
+**immutable** once published (rancher-security release hardening): assets can no
+longer be added, replaced or deleted, and the tag can no longer be moved or removed.
+Consequences:
+
+- If the tag push does not start the workflow, dispatch it **on the tag ref**
+  (`gh workflow run release.yml --ref vX.Y.Z`) — do **not** delete and re-push the
+  tag.
+- If a run fails midway, re-run it: the draft is reused, nothing was published yet.
+- A defect discovered in a *published* release cannot be fixed in place: cut a new
+  patch release. Only the release notes remain editable.
+
 ## After the release is published
 
 1. **Certification defaults** — bump `CAPHV_VERSION` and `CAPHV_COMPONENTS_URL` in

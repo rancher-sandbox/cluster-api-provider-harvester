@@ -4,6 +4,9 @@ on:
   push:
     tags:
     - "v*.*.*"
+  # Clean re-trigger path when a tag push fails to start the workflow: with
+  # immutable releases, deleting and re-pushing a tag is no longer an option.
+  workflow_dispatch: {}
 
 env:
   REGISTRY: ghcr.io
@@ -110,7 +113,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    needs: [build]
+    # Publishing must be the very last step of the workflow: once published the
+    # release becomes immutable (assets and tag frozen), so everything that
+    # belongs to it must exist beforehand.
+    needs: [build, helm]
     steps:
     - name: Checkout
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -124,15 +130,33 @@ jobs:
     - name: Update manifests
       run: |
         make release RELEASE_TAG=${{ env.TAG }} ORG=${{ env.ORG }}
-    - name: Create GitHub Release
+    - name: Create draft GitHub Release and publish it (final, immutable from here)
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        if gh release view ${{ github.ref_name }} > /dev/null; then
-          echo ${{ github.ref_name }} release exists
-        else
-          gh release create ${{ github.ref_name }} --generate-notes
+        # gh release view also resolves drafts: only a published release counts.
+        if [ "$(gh release view ${{ github.ref_name }} --json isDraft --jq .isDraft 2>/dev/null)" = "false" ]; then
+          echo "${{ github.ref_name }} is already published (immutable), nothing to do"
+          exit 0
         fi
-        gh release upload ${{ github.ref_name }} out/metadata.yaml --clobber
-        gh release upload ${{ github.ref_name }} out/infrastructure-components.yaml --clobber
+        # Drafts are not resolvable by tag; a stale one left by a failed run may
+        # miss assets, so drop it and recreate the draft in a known-good state.
+        lookup_draft() {
+          gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '.[] | select(.draft and .tag_name == "${{ github.ref_name }}") | .id' | head -1
+        }
+        STALE_ID=$(lookup_draft)
+        if [ -n "$STALE_ID" ]; then
+          gh api -X DELETE repos/${{ github.repository }}/releases/$STALE_ID
+        fi
+        gh release create ${{ github.ref_name }} --draft --generate-notes out/metadata.yaml out/infrastructure-components.yaml
+        # The list API lags slightly behind the creation: retry the id lookup.
+        DRAFT_ID=""
+        for _ in $(seq 1 10); do
+          DRAFT_ID=$(lookup_draft)
+          [ -n "$DRAFT_ID" ] && break
+          sleep 3
+        done
+        [ -n "$DRAFT_ID" ] || { echo "draft not found after creation"; exit 1; }
+        gh api -X PATCH repos/${{ github.repository }}/releases/$DRAFT_ID -F draft=false > /dev/null
+        echo "Release ${{ github.ref_name }} published"
