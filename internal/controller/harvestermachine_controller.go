@@ -757,8 +757,22 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 	return hvCreatedMachine, nil
 }
 
+// storageClassForImage returns the StorageClass backing a Harvester VM image.
+// Harvester publishes it in the image status; up to Harvester 1.8.0 it happened to
+// be "longhorn-<image>", but 1.8.1 names it "lh-<uuid>", so the status is the only
+// reliable source. The old convention is kept as a fallback for images whose status
+// is not populated yet.
+func storageClassForImage(vmImage *harvesterv1beta1.VirtualMachineImage) string {
+	if vmImage.Status.StorageClassName != "" {
+		return vmImage.Status.StorageClassName
+	}
+
+	return "longhorn-" + vmImage.Name
+}
+
 // buildPVCForVolume creates a PersistentVolumeClaim for a single volume.
-// For "image" volumes, the PVC references a Harvester VM image (StorageClass = longhorn-<imageName>).
+// For "image" volumes, the PVC references a Harvester VM image (StorageClass resolved
+// from the image status).
 // For "storageClass" volumes, the PVC uses the specified StorageClass directly (blank data disk).
 func buildPVCForVolume(
 	vol *infrav1.Volume,
@@ -794,7 +808,7 @@ func buildPVCForVolume(
 			return nil, errors.Wrapf(err, "unable to find VM image %s", vol.ImageName)
 		}
 
-		scName := "longhorn-" + vmImage.Name
+		scName := storageClassForImage(vmImage)
 		pvc.Spec.StorageClassName = &scName
 		pvc.Annotations[hvAnnotationImageID] = vmImage.Namespace + "/" + vmImage.Name
 
