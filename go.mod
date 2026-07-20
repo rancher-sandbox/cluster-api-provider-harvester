@@ -10,7 +10,7 @@ require (
 	github.com/harvester/harvester-load-balancer v1.8.1
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
-	github.com/longhorn/longhorn-manager v1.12.0-dev-20260503
+	github.com/longhorn/longhorn-manager v1.13.0-dev-20260712
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
@@ -26,7 +26,7 @@ require (
 	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
 	kubevirt.io/api v1.8.4
 	sigs.k8s.io/cluster-api v1.13.4
-	sigs.k8s.io/controller-runtime v0.23.3
+	sigs.k8s.io/controller-runtime v0.24.1
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730
 	sigs.k8s.io/randfill v1.0.0
 	sigs.k8s.io/yaml v1.6.0
@@ -93,11 +93,11 @@ require (
 	github.com/rancher/eks-operator v1.12.0 // indirect
 	github.com/rancher/fleet/pkg/apis v0.13.0 // indirect
 	github.com/rancher/gke-operator v1.12.0 // indirect
-	github.com/rancher/lasso v0.2.7 // indirect
+	github.com/rancher/lasso v0.2.9 // indirect
 	github.com/rancher/norman v0.7.0 // indirect
 	github.com/rancher/rke v1.8.0-rc.4 // indirect
 	github.com/rancher/wrangler v1.1.2 // indirect
-	github.com/rancher/wrangler/v3 v3.6.0 // indirect
+	github.com/rancher/wrangler/v3 v3.7.0 // indirect
 	github.com/safchain/ethtool v0.6.2 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
@@ -109,7 +109,7 @@ require (
 	go.uber.org/zap v1.27.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/mod v0.36.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
@@ -124,11 +124,11 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	k8s.io/apiextensions-apiserver v0.36.2 // indirect
-	k8s.io/apiserver v0.36.1 // indirect
-	k8s.io/component-base v0.36.1 // indirect
+	k8s.io/apiserver v0.36.2 // indirect
+	k8s.io/component-base v0.36.2 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260603220949-865597e52e25 // indirect
-	k8s.io/kubernetes v1.36.1 // indirect
+	k8s.io/kubernetes v1.36.2 // indirect
 	kubevirt.io/containerized-data-importer-api v1.64.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
 	sigs.k8s.io/knftables v0.0.21 // indirect
