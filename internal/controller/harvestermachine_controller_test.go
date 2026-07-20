@@ -848,6 +848,27 @@ var _ = Describe("dhclientScriptContent", func() {
 // Tests for buildPVCForVolume
 // =============================================================================
 
+var _ = Describe("storageClassForImage", func() {
+	It("should use the storage class the image resolved to", func() {
+		// Harvester 1.8.1 names image storage classes lh-<uuid>, so the name can
+		// no longer be derived from the image name.
+		img := &harvesterv1beta1.VirtualMachineImage{
+			ObjectMeta: metav1.ObjectMeta{Name: "image-rs64h", Namespace: "default"},
+			Status: harvesterv1beta1.VirtualMachineImageStatus{
+				StorageClassName: "lh-c141a832-fc3d-41db-b613-722c87c545e1",
+			},
+		}
+		Expect(storageClassForImage(img)).To(Equal("lh-c141a832-fc3d-41db-b613-722c87c545e1"))
+	})
+
+	It("should fall back to the longhorn-<image> convention when the status is empty", func() {
+		img := &harvesterv1beta1.VirtualMachineImage{
+			ObjectMeta: metav1.ObjectMeta{Name: "image-rs64h", Namespace: "default"},
+		}
+		Expect(storageClassForImage(img)).To(Equal("longhorn-image-rs64h"))
+	})
+})
+
 var _ = Describe("buildPVCForVolume", func() {
 	It("should build a PVC for storageClass volume type", func() {
 		size := resource.MustParse("10Gi")
