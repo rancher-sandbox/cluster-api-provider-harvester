@@ -1,13 +1,13 @@
 module github.com/rancher-sandbox/cluster-api-provider-harvester
 
-go 1.25.0
+go 1.26.4
 
 require (
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.9.0
 	github.com/go-logr/logr v1.4.3
 	github.com/harvester/harvester v1.3.2
-	github.com/harvester/harvester-load-balancer v1.5.1
+	github.com/harvester/harvester-load-balancer v1.8.1
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.2.0
 	github.com/longhorn/longhorn-manager v1.9.0
@@ -54,9 +54,9 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-logr/zapr v1.3.0 // indirect
-	github.com/go-openapi/jsonpointer v0.21.0 // indirect
+	github.com/go-openapi/jsonpointer v0.21.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
-	github.com/go-openapi/swag v0.23.0 // indirect
+	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/gobuffalo/flect v1.0.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
@@ -80,17 +80,17 @@ require (
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
-	github.com/rancher/aks-operator v1.12.0-rc.2 // indirect
-	github.com/rancher/eks-operator v1.12.0-rc.2 // indirect
-	github.com/rancher/fleet/pkg/apis v0.13.0-beta.2 // indirect
-	github.com/rancher/gke-operator v1.12.0-rc.2 // indirect
-	github.com/rancher/lasso v0.2.3-rc3 // indirect
-	github.com/rancher/norman v0.6.1 // indirect
+	github.com/rancher/aks-operator v1.12.0 // indirect
+	github.com/rancher/eks-operator v1.12.0 // indirect
+	github.com/rancher/fleet/pkg/apis v0.13.0 // indirect
+	github.com/rancher/gke-operator v1.12.0 // indirect
+	github.com/rancher/lasso v0.2.3 // indirect
+	github.com/rancher/norman v0.7.0 // indirect
 	github.com/rancher/rke v1.8.0-rc.4 // indirect
 	github.com/rancher/wrangler v1.1.2 // indirect
-	github.com/rancher/wrangler/v3 v3.2.2-rc.3 // indirect
+	github.com/rancher/wrangler/v3 v3.2.2 // indirect
 	github.com/safchain/ethtool v0.6.2 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/vishvananda/netlink v1.3.1 // indirect
@@ -108,7 +108,7 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/term v0.44.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
-	golang.org/x/time v0.11.0 // indirect
+	golang.org/x/time v0.12.0 // indirect
 	golang.org/x/tools v0.45.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.5.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
