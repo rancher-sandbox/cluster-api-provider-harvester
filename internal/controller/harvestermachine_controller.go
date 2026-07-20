@@ -626,10 +626,6 @@ func getWorkloadClusterConfig(hvScope *Scope) (*rest.Config, error) {
 	return workloadConfig, nil
 }
 
-func runStrategyPtr(s kubevirtv1.VirtualMachineRunStrategy) *kubevirtv1.VirtualMachineRunStrategy {
-	return &s
-}
-
 // isVMRunning checks whether a VM is intended to be running.
 // KubeVirt VMs can use either spec.running (bool pointer) or spec.runStrategy.
 // Harvester uses runStrategy instead of running, which makes spec.running nil.
@@ -741,7 +737,7 @@ func createVMFromHarvesterMachine(hvScope *Scope) (*kubevirtv1.VirtualMachine, e
 			Labels: vmLabels,
 		},
 		Spec: kubevirtv1.VirtualMachineSpec{
-			RunStrategy: runStrategyPtr(kubevirtv1.RunStrategyAlways),
+			RunStrategy: new(kubevirtv1.RunStrategyAlways),
 			Template:    vmTemplate,
 		},
 	}
@@ -1068,7 +1064,7 @@ runcmd:
 					Disks:      kvDisks,
 				},
 				Memory: &kubevirtv1.Memory{
-					Guest: quantityPtr(resource.MustParse(hvScope.HarvesterMachine.Spec.Memory)),
+					Guest: new(resource.MustParse(hvScope.HarvesterMachine.Spec.Memory)),
 				},
 				Resources: kubevirtv1.ResourceRequirements{
 					Requests: v1.ResourceList{
@@ -1586,9 +1582,4 @@ func (r *HarvesterMachineReconciler) deletePVCsByPrefix(ctx context.Context, hvS
 
 		logger.Info("Deleted orphaned PVC", "pvc", pvc.Name)
 	}
-}
-
-// quantityPtr returns a pointer to a resource.Quantity.
-func quantityPtr(q resource.Quantity) *resource.Quantity {
-	return &q
 }
