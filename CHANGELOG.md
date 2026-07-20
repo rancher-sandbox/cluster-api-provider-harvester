@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-07-20
+
+### Changed
+
+- **Build ecosystem moved to CAPI v1.13.4 / controller-runtime v0.23.3 / k8s.io
+  v0.35.4**, aligning with what the next Turtles/Rancher will ship (Turtles main is
+  already on CAPI v1.13). The published CRDs and CAPI contracts are unchanged: the
+  provider keeps running against the CAPI v1.12 core deployed by Rancher 2.14.x,
+  validated end to end by the Turtles integration suite on a real Harvester.
+- The webhook setup adopts controller-runtime v0.23's generic builder.
+- `metadata.yaml` declares the 0.6 release series (clusterctl refuses versions
+  missing from the series list).
+
 ## [v0.5.2] - 2026-07-20
 
 ### Fixed

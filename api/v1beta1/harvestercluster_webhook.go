@@ -24,17 +24,14 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// HarvesterClusterValidator implements admission.CustomValidator for HarvesterCluster.
+// HarvesterClusterValidator implements admission.Validator for HarvesterCluster.
 type HarvesterClusterValidator struct{}
 
 // SetupHarvesterClusterWebhookWithManager sets up the validating webhook for HarvesterCluster.
 func SetupHarvesterClusterWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&HarvesterCluster{}).
+	return ctrl.NewWebhookManagedBy(mgr, &HarvesterCluster{}).
 		WithValidator(&HarvesterClusterValidator{}).
 		Complete()
 }
@@ -42,30 +39,20 @@ func SetupHarvesterClusterWebhookWithManager(mgr ctrl.Manager) error {
 //nolint:lll
 // +kubebuilder:webhook:path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-harvestercluster,mutating=false,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=harvesterclusters,verbs=create;update,versions=v1beta1,name=vharvestercluster.v1beta1.kb.io,admissionReviewVersions=v1
 
-var _ admission.CustomValidator = &HarvesterClusterValidator{}
+var _ admission.Validator[*HarvesterCluster] = &HarvesterClusterValidator{}
 
-// ValidateCreate implements admission.CustomValidator.
-func (v *HarvesterClusterValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	c, ok := obj.(*HarvesterCluster)
-	if !ok {
-		return nil, fmt.Errorf("expected HarvesterCluster, got %T", obj)
-	}
-
-	return validateHarvesterCluster(c)
+// ValidateCreate implements admission.Validator.
+func (v *HarvesterClusterValidator) ValidateCreate(_ context.Context, obj *HarvesterCluster) (admission.Warnings, error) {
+	return validateHarvesterCluster(obj)
 }
 
-// ValidateUpdate implements admission.CustomValidator.
-func (v *HarvesterClusterValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	c, ok := newObj.(*HarvesterCluster)
-	if !ok {
-		return nil, fmt.Errorf("expected HarvesterCluster, got %T", newObj)
-	}
-
-	return validateHarvesterCluster(c)
+// ValidateUpdate implements admission.Validator.
+func (v *HarvesterClusterValidator) ValidateUpdate(_ context.Context, _, newObj *HarvesterCluster) (admission.Warnings, error) {
+	return validateHarvesterCluster(newObj)
 }
 
-// ValidateDelete implements admission.CustomValidator.
-func (v *HarvesterClusterValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator.
+func (v *HarvesterClusterValidator) ValidateDelete(_ context.Context, _ *HarvesterCluster) (admission.Warnings, error) {
 	return nil, nil
 }
 

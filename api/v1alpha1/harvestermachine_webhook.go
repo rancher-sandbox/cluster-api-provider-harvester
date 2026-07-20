@@ -26,16 +26,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// HarvesterMachineValidator implements admission.CustomValidator for HarvesterMachine.
+// HarvesterMachineValidator implements admission.Validator for HarvesterMachine.
 type HarvesterMachineValidator struct{}
 
 // SetupHarvesterMachineWebhookWithManager sets up the validating webhook for HarvesterMachine.
 func SetupHarvesterMachineWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&HarvesterMachine{}).
+	return ctrl.NewWebhookManagedBy(mgr, &HarvesterMachine{}).
 		WithValidator(&HarvesterMachineValidator{}).
 		Complete()
 }
@@ -43,30 +41,20 @@ func SetupHarvesterMachineWebhookWithManager(mgr ctrl.Manager) error {
 //nolint:lll
 // +kubebuilder:webhook:path=/validate-infrastructure-cluster-x-k8s-io-v1alpha1-harvestermachine,mutating=false,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=harvestermachines,verbs=create;update,versions=v1alpha1,name=vharvestermachine.kb.io,admissionReviewVersions=v1
 
-var _ admission.CustomValidator = &HarvesterMachineValidator{}
+var _ admission.Validator[*HarvesterMachine] = &HarvesterMachineValidator{}
 
-// ValidateCreate implements admission.CustomValidator.
-func (v *HarvesterMachineValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
-	m, ok := obj.(*HarvesterMachine)
-	if !ok {
-		return nil, fmt.Errorf("expected HarvesterMachine, got %T", obj)
-	}
-
-	return validateHarvesterMachine(m)
+// ValidateCreate implements admission.Validator.
+func (v *HarvesterMachineValidator) ValidateCreate(_ context.Context, obj *HarvesterMachine) (admission.Warnings, error) {
+	return validateHarvesterMachine(obj)
 }
 
-// ValidateUpdate implements admission.CustomValidator.
-func (v *HarvesterMachineValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	m, ok := newObj.(*HarvesterMachine)
-	if !ok {
-		return nil, fmt.Errorf("expected HarvesterMachine, got %T", newObj)
-	}
-
-	return validateHarvesterMachine(m)
+// ValidateUpdate implements admission.Validator.
+func (v *HarvesterMachineValidator) ValidateUpdate(_ context.Context, _, newObj *HarvesterMachine) (admission.Warnings, error) {
+	return validateHarvesterMachine(newObj)
 }
 
-// ValidateDelete implements admission.CustomValidator.
-func (v *HarvesterMachineValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
+// ValidateDelete implements admission.Validator.
+func (v *HarvesterMachineValidator) ValidateDelete(_ context.Context, _ *HarvesterMachine) (admission.Warnings, error) {
 	return nil, nil
 }
 
