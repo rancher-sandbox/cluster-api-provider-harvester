@@ -31,6 +31,11 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    modernize:
+      # Go 1.26's new(expr) would replace ptr.To(...), the idiom used across the
+      # Kubernetes ecosystem and everywhere else in this codebase.
+      disable:
+        - newexpr
     wsl_v5:
       allow-first-in-block: true
       allow-whole-block: false
