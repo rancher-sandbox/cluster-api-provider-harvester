@@ -34,9 +34,8 @@ type HarvesterMachineValidator struct{}
 
 // SetupHarvesterMachineWebhookWithManager sets up the validating webhook for HarvesterMachine.
 func SetupHarvesterMachineWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&HarvesterMachine{}).
-		WithValidator(&HarvesterMachineValidator{}).
+	return ctrl.NewWebhookManagedBy(mgr, &HarvesterMachine{}).
+		WithCustomValidator(&HarvesterMachineValidator{}).
 		Complete()
 }
 

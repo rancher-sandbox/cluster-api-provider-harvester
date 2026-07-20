@@ -33,9 +33,8 @@ type HarvesterClusterValidator struct{}
 
 // SetupHarvesterClusterWebhookWithManager sets up the validating webhook for HarvesterCluster.
 func SetupHarvesterClusterWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&HarvesterCluster{}).
-		WithValidator(&HarvesterClusterValidator{}).
+	return ctrl.NewWebhookManagedBy(mgr, &HarvesterCluster{}).
+		WithCustomValidator(&HarvesterClusterValidator{}).
 		Complete()
 }
 
