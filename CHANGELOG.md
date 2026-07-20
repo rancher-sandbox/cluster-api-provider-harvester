@@ -2,12 +2,44 @@
 
 All notable changes to this project are documented in this file.
 
-This fork diverges from [upstream](https://github.com/rancher-sandbox/cluster-api-provider-harvester) v0.1.6 with Harvester v1.7.1 compatibility and production-ready features.
-
 ## [Unreleased]
+
+## [v0.5.2] - 2026-07-20
 
 ### Fixed
 
+- **Image StorageClass resolution** ([#211](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/211)):
+  the StorageClass of an "image" volume is now read from
+  `VirtualMachineImage.status.storageClassName` instead of being composed as
+  `longhorn-<image>`. Harvester names image StorageClasses `lh-<uuid>` since a recent
+  release, so the composed name did not exist and the PVC stayed `Pending`
+  (`failed to get storage class longhorn-image-xxxxx`). This affects any freshly
+  created image, independently of the Harvester version; images created before the
+  naming change keep working. The old convention remains as a fallback for images
+  whose status is not populated yet.
+
+### Changed
+
+- The release workflow now publishes the GitHub release as the last step, from a
+  draft carrying all assets, so releases and tags can be made immutable
+  ([#218](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/218)).
+  Re-trigger a missed release with `gh workflow run release.yml --ref vX.Y.Z`:
+  deleting and re-pushing a tag is no longer supported.
+- Dependency bumps: `kubevirt.io/api` 1.8.4, ginkgo 2.32.0 / gomega 1.42.1,
+  `golang.org/x/crypto` and `golang.org/x/net` (security advisories), bci/golang 1.26
+  and several GitHub Actions.
+
+## [v0.5.1] - 2026-07-17
+
+### Fixed
+
+- **cert-manager CA injection on the `harvesterclustertemplates` CRD**: the release
+  manifests shipped an unsubstituted `CERTIFICATE_NAMESPACE/CERTIFICATE_NAME`
+  annotation. Harmless with plain `kubectl apply`, but Turtles parses the components
+  and fails on the placeholder, so installing v0.5.0 through a `CAPIProvider` could
+  not complete.
+- **RBAC for `clusters.provisioning.cattle.io`**: the fleet-integration path lists
+  Rancher provisioning clusters and was denied under a real Rancher.
 - The CAPI contract labels are no longer part of the controller Deployment and
   Service selectors (`includeSelectors: false`): selectors are immutable, so every
   contract-label change used to break `kubectl apply` upgrades (and could leave the
