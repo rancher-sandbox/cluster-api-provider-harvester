@@ -6,10 +6,11 @@
 
 CAPHV is a [Cluster API](https://cluster-api.sigs.k8s.io/) Infrastructure Provider for provisioning Kubernetes clusters on [Harvester HCI](https://harvesterhci.io/).
 
-This fork adds significant enhancements over upstream v0.1.6:
+Since the original v0.1.x implementation, the project has grown significant
+production capabilities:
 
-| Feature | Upstream v0.1.x | This fork (v0.3.x) |
-|---------|----------------|-------------------|
+| Feature | v0.1.x (original) | Current |
+|---------|-------------------|---------|
 | Harvester compatibility | v1.2.0 | v1.7.x + v1.8.x |
 | Multi-disk VMs | Single disk only | Multiple disks (image + storageClass) |
 | IP allocation | Manual / DHCP | Automatic from Harvester IPPool or DHCP |
@@ -42,8 +43,12 @@ This fork adds significant enhancements over upstream v0.1.6:
 - VM image uploaded to Harvester (SLES 15 SP7 or openSUSE Leap 15.6 recommended)
 - IPPool configured on Harvester (for automatic IP allocation)
 
+> **Upgrading to v0.5.x**: the API graduated from `v1alpha1` to `v1beta1` — see
+> [docs/migration-v0.4-to-v0.5.md](docs/migration-v0.4-to-v0.5.md). Existing `v1alpha1`
+> objects keep working (served + converted), new manifests should use `v1beta1`.
+>
 > **Upgrading from v0.2.x**: see [docs/migration-v0.2-to-v0.3.md](docs/migration-v0.2-to-v0.3.md)
-> — v0.3.0 requires the CAPI v1.12 / v1beta2 ecosystem and is **not backward-compatible**
+> — v0.3.0+ requires the CAPI v1.12 / v1beta2 ecosystem and is **not backward-compatible**
 > with managers running CAPI v1.10.
 
 ### Enabling RKE2 providers under Rancher Turtles
@@ -84,9 +89,9 @@ metadata:
 spec:
   name: harvester
   type: infrastructure
-  version: v0.3.0
+  version: v0.5.2
   fetchConfig:
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.5.2/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -104,13 +109,13 @@ See [docs/operations.md](docs/operations.md) for full CAPIProvider deployment, u
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
   --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
-  --set image.tag=v0.3.0
+  --set image.tag=v0.5.2
 
 # With webhooks (requires cert-manager)
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
   --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
-  --set image.tag=v0.3.0 \
+  --set image.tag=v0.5.2 \
   --set webhooks.enabled=true \
   --set webhooks.certManager.enabled=true
 ```
@@ -119,10 +124,10 @@ helm install caphv chart/caphv/ \
 
 ```bash
 # Build and push the image
-make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
+make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
 
 # Deploy
-make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
+make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
 ```
 
 ### Option 4: Manual (standalone manifests)
@@ -287,11 +292,11 @@ spec:
     kind: RKE2ControlPlane
     name: my-cluster-cp
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterCluster
     name: my-cluster-hv
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterCluster
 metadata:
   name: my-cluster-hv
@@ -312,7 +317,7 @@ spec:
 ### 3. Define Machine Templates
 
 ```yaml
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   name: my-cluster-machine
@@ -432,7 +437,7 @@ Integration tests run against a live Harvester + CAPI cluster:
 make build
 
 # Build container image
-make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
+make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
 
 # Run unit tests
 make test
@@ -453,7 +458,7 @@ identity.
 Verify the container image:
 
 ```bash
-cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0 \
+cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2 \
   --certificate-identity-regexp "^https://github.com/rancher-sandbox/cluster-api-provider-harvester" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -462,17 +467,30 @@ Verify the SLSA build provenance with the GitHub CLI:
 
 ```bash
 gh attestation verify \
-  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0 \
+  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2 \
   --owner rancher-sandbox
 ```
 
 Both checks confirm the image was built from this repository's
 `release.yml` workflow at the matching tag.
 
+## Testing & compatibility
+
+The provider is continuously validated by the suites in
+[`test/certification/`](test/certification/): a nightly version-pairing tier, a full
+Rancher-stack tier, and the Turtles integration suite (`CreateUsingGitOpsSpec`)
+running twice a week against a real Harvester on a self-hosted runner. The
+CAPHV ↔ Rancher/Turtles/CAPI pairing matrix lives in
+[docs/compatibility.md](docs/compatibility.md).
+
 ## Release History
 
 | Version | Date | Key changes |
 |---------|------|-------------|
+| v0.5.2 | 2026-07-20 | Image StorageClass resolved from the image status (fixes PVC Pending on freshly created images, #211); immutable-releases-compatible release flow (#218); kubevirt.io/api 1.8.4, harvester-load-balancer 1.8.1, Go 1.26, security bumps |
+| v0.5.1 | 2026-07-17 | cert-manager CA injection restored on the clustertemplates CRD (required for installs through a Turtles CAPIProvider); RBAC for provisioning.cattle.io; Turtles integration suite (CreateUsingGitOpsSpec) on a self-hosted runner |
+| v0.5.0 | 2026-07-06 | API graduation v1alpha1 → v1beta1 (hub with conversion webhooks, fuzz-tested round-trip); deprecated failure fields dropped |
+| v0.4.0 | 2026-07-06 | Complete v1beta2 CAPI contract: initialization.provisioned, Paused condition, FailureReason/Message deprecation |
 | v0.3.0 | 2026-05-30 | CAPI v1.12 / v1beta2 ecosystem migration: cluster-api v1.12.x, controller-runtime v0.22.5, k8s.io v0.34, metav1.Condition, RKE2 templates v1beta2. Validated against Harvester v1.8 + Rancher 2.14 + Turtles 0.26 |
 | v0.2.9 | 2026-04-15 | Supply chain hardening: cosign keyless signing, SLSA provenance, SBOM, GitHub Actions SHA-pinning, hadolint, least-privilege workflow permissions |
 | v0.2.8 | 2026-03-16 | CAPI contract compliance fixes, kustomize verify, v1beta2 readiness docs, Helm chart deprecation note |
