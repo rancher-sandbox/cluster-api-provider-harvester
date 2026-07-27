@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.6.1] - 2026-07-27
+
 ### Added
 
 - **Network-aware IP pool selection**: when `ipPoolRefs` lists several pools, a pool
@@ -12,6 +14,11 @@ All notable changes to this project are documented in this file.
   any machine). Separate address ranges for control-plane and worker networks now
   work with a single pool list, and a machine whose networks match no listed pool
   gets an explicit error instead of an address from another network.
+
+### Fixed
+
+- The HarvesterCluster webhook validation accepts `ipPoolRefs` as a pool source
+  (it still required `ipPoolRef` or `ipPool` and rejected list-only specs).
 
 ## [v0.6.0] - 2026-07-20
 
