@@ -938,6 +938,28 @@ Pools are tried in order. When `capi-pool-subnet-a` is exhausted, allocation fal
 `capi-pool-subnet-b`, then `capi-pool-subnet-c`. Each machine tracks which pool it allocated
 from in `status.allocatedPoolRef` for accurate IP release on deletion.
 
+**Network-aware selection**: a pool whose Harvester `spec.selector.network` designates a VM
+network is only considered for machines attached to that network; a pool without a selector
+network is considered for any machine. This makes separate address ranges per machine role
+possible with a single list, for example a dedicated control-plane network and a worker
+network:
+
+```yaml
+# Harvester side: one pool per network
+# ippool "pool-cp":      spec.selector.network: default/net-cp
+# ippool "pool-workers": spec.selector.network: default/net-workers
+spec:
+  vmNetworkConfig:
+    ipPoolRefs:
+      - "pool-cp"
+      - "pool-workers"
+```
+
+With the control-plane HarvesterMachineTemplate attached to `default/net-cp` and the worker
+template attached to `default/net-workers`, each machine allocates from the pool matching its
+own network. If no listed pool matches a machine's networks, allocation fails with an explicit
+error rather than handing out an address from another network.
+
 ### CLI usage
 
 ```bash

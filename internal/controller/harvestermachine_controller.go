@@ -1314,8 +1314,13 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 
 	machineID := machine.Namespace + "/" + machine.Name
 
-	// Try each pool in order until allocation succeeds
+	// Try each pool in order until allocation succeeds. Pools assigned to a
+	// network the machine is not attached to are skipped, so that clusters can
+	// dedicate distinct pools to control-plane and worker networks by listing
+	// them all in ipPoolRefs.
 	var lastErr error
+
+	skippedNetwork := 0
 
 	for _, poolRef := range poolRefs {
 		pool, err := hvScope.HarvesterClient.LoadbalancerV1beta1().IPPools().Get(
@@ -1338,6 +1343,15 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 					return nil
 				}
 			}
+		}
+
+		if !locutil.PoolMatchesNetworks(pool, machine.Spec.Networks) {
+			logger.V(1).Info("Pool assigned to another network, trying next",
+				"pool", poolRef, "poolNetwork", pool.Spec.Selector.Network, "machineNetworks", machine.Spec.Networks)
+
+			skippedNetwork++
+
+			continue
 		}
 
 		// Try to allocate from this pool
@@ -1369,6 +1383,12 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 
 	// All pools exhausted
 	caphvmetrics.IPPoolAllocationErrorsTotal.Inc()
+
+	if lastErr == nil && skippedNetwork > 0 {
+		return errors.Errorf(
+			"no IP pool among %v matches the machine networks %v (pools are assigned to other networks)",
+			poolRefs, machine.Spec.Networks)
+	}
 
 	return errors.Wrap(lastErr, "all configured IP pools exhausted")
 }

@@ -156,9 +156,12 @@ type VMNetworkConfig struct {
 	IPPoolRef string `json:"ipPoolRef,omitempty"`
 
 	// IPPoolRefs is a list of references to existing IPPools in Harvester.
-	// Pools are tried in order: if the first pool is exhausted, allocation
-	// falls back to the next pool. This enables larger deployments and
-	// multi-subnet configurations.
+	// Pools are tried in order: if a pool is exhausted, allocation falls back
+	// to the next one. A pool whose selector designates a network (the IPPool
+	// spec.selector.network field in Harvester) is only used for machines
+	// attached to that network, so distinct pools can serve, for example, the
+	// control-plane and worker networks of one cluster; a pool with no
+	// selector network is used for any machine.
 	// +optional
 	IPPoolRefs []string `json:"ipPoolRefs,omitempty"`
 
