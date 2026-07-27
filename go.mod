@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/containernetworking/cni v1.3.0
 	github.com/containernetworking/plugins v1.9.0
-	github.com/go-logr/logr v1.4.3
+	github.com/go-logr/logr v1.4.4
 	github.com/harvester/harvester v1.3.2
 	github.com/harvester/harvester-load-balancer v1.8.1
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
