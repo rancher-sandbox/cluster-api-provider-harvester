@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-07-27
+
 ### Added
 
 - **Per machine type network configuration** ([#234](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/234)):
