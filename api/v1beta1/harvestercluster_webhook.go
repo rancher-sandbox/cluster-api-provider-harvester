@@ -77,8 +77,8 @@ func validateHarvesterCluster(r *HarvesterCluster) (admission.Warnings, error) {
 
 	if r.Spec.VMNetworkConfig != nil {
 		vmCfg := r.Spec.VMNetworkConfig
-		if vmCfg.IPPoolRef == "" && vmCfg.IPPool == nil {
-			errs = append(errs, "spec.vmNetworkConfig requires either ipPoolRef or ipPool")
+		if len(vmCfg.GetIPPoolRefs()) == 0 && vmCfg.IPPool == nil {
+			errs = append(errs, "spec.vmNetworkConfig requires one of ipPoolRef, ipPoolRefs or ipPool")
 		}
 
 		if vmCfg.Gateway == "" {
