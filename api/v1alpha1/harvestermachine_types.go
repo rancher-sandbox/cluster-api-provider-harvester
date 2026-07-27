@@ -109,6 +109,19 @@ type HarvesterMachineSpec struct {
 	// If set, this takes precedence over the cluster-level VMNetworkConfig IP pool allocation.
 	// +optional
 	NetworkConfig *NetworkConfig `json:"networkConfig,omitempty"`
+
+	// VMNetworkConfig is the pool-based network configuration for this machine.
+	// When set, it fully replaces the cluster-level spec.vmNetworkConfig of the
+	// HarvesterCluster for this machine: the IP is allocated from the pools
+	// referenced here, and the gateway, subnet mask and DNS settings defined here
+	// are written to the machine cloud-init. Set it in a HarvesterMachineTemplate
+	// to give one machine type (for example the workers) a network configuration
+	// different from the rest of the cluster, such as a dedicated network with its
+	// own gateway. When unset, the cluster-level configuration applies. The inline
+	// ipPool variant is not supported at the machine level; use ipPoolRef or
+	// ipPoolRefs. Mutually exclusive with networkConfig.
+	// +optional
+	VMNetworkConfig *VMNetworkConfig `json:"vmNetworkConfig,omitempty"`
 }
 
 // NetworkConfig defines static network configuration for a VM.

@@ -13,6 +13,50 @@ import (
 // exist in v1alpha1 and are NOT carried across conversion: the controller stopped
 // writing them in v0.4.0 and failures surface through the conditions instead.
 
+func convertVMNetworkConfigTo(src *VMNetworkConfig) *infrav1.VMNetworkConfig {
+	if src == nil {
+		return nil
+	}
+
+	dst := infrav1.VMNetworkConfig{
+		IPPoolRef:  src.IPPoolRef,
+		IPPoolRefs: src.IPPoolRefs,
+		Gateway:    src.Gateway,
+		SubnetMask: src.SubnetMask,
+		DNSServers: src.DNSServers,
+		DNSSearch:  src.DNSSearch,
+	}
+
+	if src.IPPool != nil {
+		pool := infrav1.IpPool(*src.IPPool)
+		dst.IPPool = &pool
+	}
+
+	return &dst
+}
+
+func convertVMNetworkConfigFrom(src *infrav1.VMNetworkConfig) *VMNetworkConfig {
+	if src == nil {
+		return nil
+	}
+
+	dst := VMNetworkConfig{
+		IPPoolRef:  src.IPPoolRef,
+		IPPoolRefs: src.IPPoolRefs,
+		Gateway:    src.Gateway,
+		SubnetMask: src.SubnetMask,
+		DNSServers: src.DNSServers,
+		DNSSearch:  src.DNSSearch,
+	}
+
+	if src.IPPool != nil {
+		pool := IpPool(*src.IPPool)
+		dst.IPPool = &pool
+	}
+
+	return &dst
+}
+
 func convertClusterSpecTo(src *HarvesterClusterSpec) infrav1.HarvesterClusterSpec {
 	dst := infrav1.HarvesterClusterSpec{
 		Server:               src.Server,
@@ -36,22 +80,7 @@ func convertClusterSpecTo(src *HarvesterClusterSpec) infrav1.HarvesterClusterSpe
 		}
 	}
 
-	if src.VMNetworkConfig != nil {
-		network := infrav1.VMNetworkConfig{
-			IPPoolRef:  src.VMNetworkConfig.IPPoolRef,
-			IPPoolRefs: src.VMNetworkConfig.IPPoolRefs,
-			Gateway:    src.VMNetworkConfig.Gateway,
-			SubnetMask: src.VMNetworkConfig.SubnetMask,
-			DNSServers: src.VMNetworkConfig.DNSServers,
-			DNSSearch:  src.VMNetworkConfig.DNSSearch,
-		}
-		if src.VMNetworkConfig.IPPool != nil {
-			pool := infrav1.IpPool(*src.VMNetworkConfig.IPPool)
-			network.IPPool = &pool
-		}
-
-		dst.VMNetworkConfig = &network
-	}
+	dst.VMNetworkConfig = convertVMNetworkConfigTo(src.VMNetworkConfig)
 
 	return dst
 }
@@ -78,22 +107,7 @@ func convertClusterSpecFrom(src *infrav1.HarvesterClusterSpec) HarvesterClusterS
 		}
 	}
 
-	if src.VMNetworkConfig != nil {
-		network := VMNetworkConfig{
-			IPPoolRef:  src.VMNetworkConfig.IPPoolRef,
-			IPPoolRefs: src.VMNetworkConfig.IPPoolRefs,
-			Gateway:    src.VMNetworkConfig.Gateway,
-			SubnetMask: src.VMNetworkConfig.SubnetMask,
-			DNSServers: src.VMNetworkConfig.DNSServers,
-			DNSSearch:  src.VMNetworkConfig.DNSSearch,
-		}
-		if src.VMNetworkConfig.IPPool != nil {
-			pool := IpPool(*src.VMNetworkConfig.IPPool)
-			network.IPPool = &pool
-		}
-
-		dst.VMNetworkConfig = &network
-	}
+	dst.VMNetworkConfig = convertVMNetworkConfigFrom(src.VMNetworkConfig)
 
 	return dst
 }
@@ -130,6 +144,8 @@ func convertMachineSpecTo(src *HarvesterMachineSpec) infrav1.HarvesterMachineSpe
 		dst.NetworkConfig = &network
 	}
 
+	dst.VMNetworkConfig = convertVMNetworkConfigTo(src.VMNetworkConfig)
+
 	return dst
 }
 
@@ -164,6 +180,8 @@ func convertMachineSpecFrom(src *infrav1.HarvesterMachineSpec) HarvesterMachineS
 		network := NetworkConfig(*src.NetworkConfig)
 		dst.NetworkConfig = &network
 	}
+
+	dst.VMNetworkConfig = convertVMNetworkConfigFrom(src.VMNetworkConfig)
 
 	return dst
 }

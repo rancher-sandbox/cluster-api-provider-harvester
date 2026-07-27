@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Per machine type network configuration** ([#234](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/234)):
+  `spec.vmNetworkConfig` can now be set on a HarvesterMachine (typically through a
+  HarvesterMachineTemplate) to fully replace the cluster-level configuration for that machine
+  type: IP allocation uses the pools referenced there and the cloud-init static network
+  configuration uses its gateway, subnet mask and DNS settings. Combined with network-aware
+  pool selection, this lets control-plane and worker nodes live in separate networks with
+  different subnets. Machine types without the override keep the cluster-level behavior.
+  The machine-level variant accepts pool references only (no inline `ipPool`) and is mutually
+  exclusive with the static per-machine `networkConfig`.
+
 ## [v0.6.1] - 2026-07-27
 
 ### Added
