@@ -44,13 +44,17 @@ func TestValidateVMNetworkConfigPoolSources(t *testing.T) {
 	for _, tc := range cases {
 		c := validCluster()
 		c.Spec.VMNetworkConfig = tc.cfg
+
 		_, err := validateHarvesterCluster(c)
+
 		if tc.wantErr && err == nil {
 			t.Errorf("%s: expected an error", tc.name)
 		}
+
 		if !tc.wantErr && err != nil {
 			t.Errorf("%s: unexpected error: %v", tc.name, err)
 		}
+
 		if tc.wantErr && err != nil && !strings.Contains(err.Error(), "ipPoolRefs") {
 			t.Errorf("%s: error should mention ipPoolRefs: %v", tc.name, err)
 		}
