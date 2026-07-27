@@ -297,6 +297,91 @@ spec:
                 description: SSHUser is the user that should be used to connect to
                   the VMs using SSH.
                 type: string
+              vmNetworkConfig:
+                description: |-
+                  VMNetworkConfig is the pool-based network configuration for this machine.
+                  When set, it fully replaces the cluster-level spec.vmNetworkConfig of the
+                  HarvesterCluster for this machine: the IP is allocated from the pools
+                  referenced here, and the gateway, subnet mask and DNS settings defined here
+                  are written to the machine cloud-init. Set it in a HarvesterMachineTemplate
+                  to give one machine type (for example the workers) a network configuration
+                  different from the rest of the cluster, such as a dedicated network with its
+                  own gateway. When unset, the cluster-level configuration applies. The inline
+                  ipPool variant is not supported at the machine level; use ipPoolRef or
+                  ipPoolRefs. Mutually exclusive with networkConfig.
+                properties:
+                  dnsSearch:
+                    description: DNSSearch is a list of DNS search domains.
+                    items:
+                      type: string
+                    type: array
+                  dnsServers:
+                    description: DNSServers is a list of DNS server IP addresses.
+                    items:
+                      type: string
+                    type: array
+                  gateway:
+                    description: Gateway is the gateway IP address for the VM network.
+                    type: string
+                  ipPool:
+                    description: |-
+                      IPPool defines a new IPPool to create in Harvester for VM IP allocation.
+                      Mutually exclusive with IPPoolRef/IPPoolRefs.
+                    properties:
+                      gateway:
+                        description: |-
+                          Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet.
+                          e.g. 172.17.1.1.
+                        type: string
+                      rangeEnd:
+                        description: RangeEnd is the last IP Address that should be
+                          used by the IP Pool.
+                        type: string
+                      rangeStart:
+                        description: RangeStart is the first IP Address that should
+                          be used by the IP Pool.
+                        type: string
+                      subnet:
+                        description: |-
+                          Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address.
+                          e.g. 172.17.1.0/24.
+                        type: string
+                      vmNetwork:
+                        description: |-
+                          VMNetwork is the name of an existing VM Network in Harvester where the IPPool should exist.
+                          The reference can have the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterCluster.
+                        type: string
+                    required:
+                    - gateway
+                    - subnet
+                    - vmNetwork
+                    type: object
+                  ipPoolRef:
+                    description: |-
+                      IPPoolRef is a reference to an existing IPPool in Harvester for VM IP allocation.
+                      When multiple pools are needed, use IPPoolRefs instead.
+                      Mutually exclusive with IPPool.
+                    type: string
+                  ipPoolRefs:
+                    description: |-
+                      IPPoolRefs is a list of references to existing IPPools in Harvester.
+                      Pools are tried in order: if a pool is exhausted, allocation falls back
+                      to the next one. A pool whose selector designates a network (the IPPool
+                      spec.selector.network field in Harvester) is only used for machines
+                      attached to that network, so distinct pools can serve, for example, the
+                      control-plane and worker networks of one cluster; a pool with no
+                      selector network is used for any machine.
+                    items:
+                      type: string
+                    type: array
+                  subnetMask:
+                    description: SubnetMask is the subnet mask for the VM network
+                      (e.g. "255.255.0.0").
+                    type: string
+                required:
+                - gateway
+                - subnetMask
+                type: object
               volumes:
                 description: Volumes is a list of Volumes to attach to the VM
                 items:
@@ -1105,6 +1190,91 @@ spec:
                 description: SSHUser is the user that should be used to connect to
                   the VMs using SSH.
                 type: string
+              vmNetworkConfig:
+                description: |-
+                  VMNetworkConfig is the pool-based network configuration for this machine.
+                  When set, it fully replaces the cluster-level spec.vmNetworkConfig of the
+                  HarvesterCluster for this machine: the IP is allocated from the pools
+                  referenced here, and the gateway, subnet mask and DNS settings defined here
+                  are written to the machine cloud-init. Set it in a HarvesterMachineTemplate
+                  to give one machine type (for example the workers) a network configuration
+                  different from the rest of the cluster, such as a dedicated network with its
+                  own gateway. When unset, the cluster-level configuration applies. The inline
+                  ipPool variant is not supported at the machine level; use ipPoolRef or
+                  ipPoolRefs. Mutually exclusive with networkConfig.
+                properties:
+                  dnsSearch:
+                    description: DNSSearch is a list of DNS search domains.
+                    items:
+                      type: string
+                    type: array
+                  dnsServers:
+                    description: DNSServers is a list of DNS server IP addresses.
+                    items:
+                      type: string
+                    type: array
+                  gateway:
+                    description: Gateway is the gateway IP address for the VM network.
+                    type: string
+                  ipPool:
+                    description: |-
+                      IPPool defines a new IPPool to create in Harvester for VM IP allocation.
+                      Mutually exclusive with IPPoolRef/IPPoolRefs.
+                    properties:
+                      gateway:
+                        description: |-
+                          Gateway is the IP Address that should be used by the Gateway on the Subnet. It should be a valid address inside the subnet.
+                          e.g. 172.17.1.1.
+                        type: string
+                      rangeEnd:
+                        description: RangeEnd is the last IP Address that should be
+                          used by the IP Pool.
+                        type: string
+                      rangeStart:
+                        description: RangeStart is the first IP Address that should
+                          be used by the IP Pool.
+                        type: string
+                      subnet:
+                        description: |-
+                          Subnet is a string describing the subnet that should be used by the IP Pool, it should have the CIDR Format of an IPv4 Address.
+                          e.g. 172.17.1.0/24.
+                        type: string
+                      vmNetwork:
+                        description: |-
+                          VMNetwork is the name of an existing VM Network in Harvester where the IPPool should exist.
+                          The reference can have the format "namespace/name" or just "name" if the object is in the same namespace as the HarvesterCluster.
+                        type: string
+                    required:
+                    - gateway
+                    - subnet
+                    - vmNetwork
+                    type: object
+                  ipPoolRef:
+                    description: |-
+                      IPPoolRef is a reference to an existing IPPool in Harvester for VM IP allocation.
+                      When multiple pools are needed, use IPPoolRefs instead.
+                      Mutually exclusive with IPPool.
+                    type: string
+                  ipPoolRefs:
+                    description: |-
+                      IPPoolRefs is a list of references to existing IPPools in Harvester.
+                      Pools are tried in order: if a pool is exhausted, allocation falls back
+                      to the next one. A pool whose selector designates a network (the IPPool
+                      spec.selector.network field in Harvester) is only used for machines
+                      attached to that network, so distinct pools can serve, for example, the
+                      control-plane and worker networks of one cluster; a pool with no
+                      selector network is used for any machine.
+                    items:
+                      type: string
+                    type: array
+                  subnetMask:
+                    description: SubnetMask is the subnet mask for the VM network
+                      (e.g. "255.255.0.0").
+                    type: string
+                required:
+                - gateway
+                - subnetMask
+                type: object
               volumes:
                 description: Volumes is a list of Volumes to attach to the VM
                 items:

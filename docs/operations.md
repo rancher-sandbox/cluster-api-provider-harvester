@@ -960,6 +960,46 @@ template attached to `default/net-workers`, each machine allocates from the pool
 own network. If no listed pool matches a machine's networks, allocation fails with an explicit
 error rather than handing out an address from another network.
 
+### Per machine type network configuration
+
+Network-aware selection picks the right pool, but the cluster-level `vmNetworkConfig` still
+carries a single `gateway`, `subnetMask` and DNS set for every machine. When the control-plane
+and worker networks are different subnets (for example to comply with the German BSI
+APP.4.4.A7 requirement of separate control-plane and worker networks), set `vmNetworkConfig`
+directly in the HarvesterMachineTemplate of the machine type that lives in the other subnet:
+
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HarvesterMachineTemplate
+metadata:
+  name: workers
+spec:
+  template:
+    spec:
+      networks:
+        - "default/net-workers"
+      vmNetworkConfig:
+        ipPoolRefs:
+          - "pool-workers"
+        gateway: "10.20.0.1"
+        subnetMask: "255.255.255.0"
+        dnsServers:
+          - "10.20.0.53"
+      # cpu, memory, volumes, ...
+```
+
+A machine-level `vmNetworkConfig` fully replaces the cluster-level one for the machines
+created from that template: IP allocation uses the pools referenced here and the cloud-init
+static network configuration uses this gateway, subnet mask and DNS. Machine types without it
+(for example the control-plane template) keep using the cluster-level configuration, so the
+override is fully backward compatible. Notes:
+
+- The machine-level variant only accepts pool references (`ipPoolRef` or `ipPoolRefs`);
+  the inline `ipPool` definition stays cluster-level.
+- `vmNetworkConfig` and the static per-machine `networkConfig` are mutually exclusive on
+  the same machine.
+- Network-aware selection applies to the machine-level pool list as well.
+
 ### CLI usage
 
 ```bash

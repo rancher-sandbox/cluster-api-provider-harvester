@@ -116,10 +116,49 @@ func validateHarvesterMachine(r *HarvesterMachine) (admission.Warnings, error) {
 		}
 	}
 
+	errs = append(errs, validateMachineVMNetworkConfig(r)...)
+
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("validation failed for HarvesterMachine %s/%s: %s",
 			r.Namespace, r.Name, strings.Join(errs, "; "))
 	}
 
 	return nil, nil
+}
+
+// validateMachineVMNetworkConfig checks the machine-level pool-based network
+// configuration override.
+func validateMachineVMNetworkConfig(r *HarvesterMachine) []string {
+	vmCfg := r.Spec.VMNetworkConfig
+	if vmCfg == nil {
+		return nil
+	}
+
+	var errs []string
+
+	if r.Spec.NetworkConfig != nil {
+		errs = append(errs, "spec.vmNetworkConfig and spec.networkConfig are mutually exclusive")
+	}
+
+	if vmCfg.IPPool != nil {
+		errs = append(errs, "spec.vmNetworkConfig.ipPool is not supported at the machine level; use ipPoolRef or ipPoolRefs")
+	}
+
+	if len(vmCfg.GetIPPoolRefs()) == 0 {
+		errs = append(errs, "spec.vmNetworkConfig requires one of ipPoolRef or ipPoolRefs")
+	}
+
+	if vmCfg.Gateway == "" {
+		errs = append(errs, "spec.vmNetworkConfig.gateway is required")
+	} else if net.ParseIP(vmCfg.Gateway) == nil {
+		errs = append(errs, fmt.Sprintf("spec.vmNetworkConfig.gateway %q is not a valid IP address", vmCfg.Gateway))
+	}
+
+	if vmCfg.SubnetMask == "" {
+		errs = append(errs, "spec.vmNetworkConfig.subnetMask is required")
+	} else if net.ParseIP(vmCfg.SubnetMask) == nil {
+		errs = append(errs, fmt.Sprintf("spec.vmNetworkConfig.subnetMask %q is not a valid IP address", vmCfg.SubnetMask))
+	}
+
+	return errs
 }

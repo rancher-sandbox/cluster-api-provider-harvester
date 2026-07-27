@@ -332,8 +332,10 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
-	// Resolve effective network config: cluster-level pool allocation or machine-level static config
-	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil && hvScope.HarvesterMachine.Spec.NetworkConfig == nil {
+	// Resolve effective network config: pool allocation (machine-level
+	// vmNetworkConfig taking precedence over the cluster-level one) or
+	// machine-level static config
+	if effectiveVMNetworkConfig(hvScope) != nil && hvScope.HarvesterMachine.Spec.NetworkConfig == nil {
 		// Allocate IP from cluster-level VM IP pool
 		allocErr := r.allocateVMIP(hvScope)
 		if allocErr != nil {
@@ -349,7 +351,7 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 			return ctrl.Result{RequeueAfter: requeueTimeShort}, allocErr
 		}
 
-		vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
+		vmNetCfg := effectiveVMNetworkConfig(hvScope)
 		hvScope.EffectiveNetworkConfig = &infrav1.NetworkConfig{
 			Address:    hvScope.HarvesterMachine.Status.AllocatedIPAddress,
 			Gateway:    vmNetCfg.Gateway,
@@ -1106,8 +1108,8 @@ func buildNetworkDataStatic(hvScope *Scope) string {
 	netCfg := hvScope.EffectiveNetworkConfig
 	subnetMask := "255.255.0.0" // default
 
-	if hvScope.HarvesterCluster.Spec.VMNetworkConfig != nil {
-		subnetMask = hvScope.HarvesterCluster.Spec.VMNetworkConfig.SubnetMask
+	if vmNetCfg := effectiveVMNetworkConfig(hvScope); vmNetCfg != nil {
+		subnetMask = vmNetCfg.SubnetMask
 	}
 
 	b.WriteString("version: 1\nconfig:\n")
@@ -1287,7 +1289,21 @@ func getCloudInitData(hvScope *Scope) (string, error) {
 	return string(userData), nil
 }
 
-// allocateVMIP allocates an IP from the cluster-level VM IP pool for this machine.
+// effectiveVMNetworkConfig returns the pool-based network configuration that
+// applies to the machine: the machine-level spec.vmNetworkConfig when set,
+// otherwise the cluster-level one from the HarvesterCluster.
+//
+//nolint:funcorder
+func effectiveVMNetworkConfig(hvScope *Scope) *infrav1.VMNetworkConfig {
+	if hvScope.HarvesterMachine.Spec.VMNetworkConfig != nil {
+		return hvScope.HarvesterMachine.Spec.VMNetworkConfig
+	}
+
+	return hvScope.HarvesterCluster.Spec.VMNetworkConfig
+}
+
+// allocateVMIP allocates an IP from the effective VM IP pool configuration
+// (machine-level or cluster-level) for this machine.
 // It is idempotent: if an IP is already allocated, it returns early.
 //
 //nolint:funcorder
@@ -1302,9 +1318,9 @@ func (r *HarvesterMachineReconciler) allocateVMIP(hvScope *Scope) error {
 		return nil
 	}
 
-	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
+	vmNetCfg := effectiveVMNetworkConfig(hvScope)
 	if vmNetCfg == nil {
-		return errors.New("VMNetworkConfig is nil on HarvesterCluster")
+		return errors.New("VMNetworkConfig is nil on both the HarvesterMachine and the HarvesterCluster")
 	}
 
 	poolRefs := vmNetCfg.GetIPPoolRefs()
@@ -1407,7 +1423,7 @@ func (r *HarvesterMachineReconciler) releaseVMIP(hvScope *Scope) {
 
 	// Determine which pool to release from: use AllocatedPoolRef if available,
 	// fall back to first configured pool for backward compatibility.
-	vmNetCfg := hvScope.HarvesterCluster.Spec.VMNetworkConfig
+	vmNetCfg := effectiveVMNetworkConfig(hvScope)
 
 	poolRef := machine.Status.AllocatedPoolRef
 	if poolRef == "" && vmNetCfg != nil {

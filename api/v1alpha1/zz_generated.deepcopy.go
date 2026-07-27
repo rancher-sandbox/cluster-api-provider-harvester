@@ -23,7 +23,7 @@ package v1alpha1
 import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/cluster-api/api/core/v1beta2"
 )
 
@@ -326,6 +326,11 @@ func (in *HarvesterMachineSpec) DeepCopyInto(out *HarvesterMachineSpec) {
 	if in.NetworkConfig != nil {
 		in, out := &in.NetworkConfig, &out.NetworkConfig
 		*out = new(NetworkConfig)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.VMNetworkConfig != nil {
+		in, out := &in.VMNetworkConfig, &out.VMNetworkConfig
+		*out = new(VMNetworkConfig)
 		(*in).DeepCopyInto(*out)
 	}
 }
