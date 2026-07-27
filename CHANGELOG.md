@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Network-aware IP pool selection**: when `ipPoolRefs` lists several pools, a pool
+  whose Harvester `spec.selector.network` designates a VM network is only used for
+  machines attached to that network (a pool with no selector network keeps matching
+  any machine). Separate address ranges for control-plane and worker networks now
+  work with a single pool list, and a machine whose networks match no listed pool
+  gets an explicit error instead of an address from another network.
+
 ## [v0.6.0] - 2026-07-20
 
 ### Changed

@@ -20,6 +20,7 @@ import (
 	"math/big"
 	"net"
 	"net/netip"
+	"strings"
 
 	"github.com/containernetworking/cni/pkg/types"
 	current "github.com/containernetworking/cni/pkg/types/100"
@@ -292,6 +293,52 @@ func ipToInt(ip net.IP) *big.Int {
 	}
 
 	return big.NewInt(0).SetBytes(ip.To16())
+}
+
+// PoolMatchesNetworks reports whether the pool is eligible for a machine attached
+// to the given networks. A pool whose selector carries no network is
+// network-agnostic and matches any machine; otherwise the selector network must
+// designate one of the machine's networks. Both sides accept the "name" and
+// "namespace/name" forms: when either side is unqualified only the name parts
+// are compared, and two qualified references must match exactly.
+func PoolMatchesNetworks(pool *lbv1beta1.IPPool, machineNetworks []string) bool {
+	selector := pool.Spec.Selector.Network
+	if selector == "" {
+		return true
+	}
+
+	for _, network := range machineNetworks {
+		if networkRefsEqual(selector, network) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func networkRefsEqual(a, b string) bool {
+	if a == b {
+		return true
+	}
+
+	aNS, aName := splitNetworkRef(a)
+	bNS, bName := splitNetworkRef(b)
+
+	// An unqualified reference matches on the name alone; two qualified
+	// references must agree on the namespace too.
+	if aNS == "" || bNS == "" {
+		return aName == bName
+	}
+
+	return false
+}
+
+func splitNetworkRef(ref string) (namespace, name string) {
+	if idx := strings.LastIndex(ref, "/"); idx >= 0 {
+		return ref[:idx], ref[idx+1:]
+	}
+
+	return "", ref
 }
 
 // AllocateVMIPFromPool allocates an IP address from the given IPPool for the given machineID.
