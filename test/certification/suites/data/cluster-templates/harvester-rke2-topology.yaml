@@ -140,6 +140,12 @@ spec:
           type: string
           default: ""
           enum: ["", "cis", "cis-1.23", "cis-1.5", "cis-1.6"]
+    - name: fipsRequired
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: false
   patches:
     - name: vmNetworks
       definitions:
@@ -406,12 +412,6 @@ spec:
                               - fleet-default
                               - longhorn-system
                               - ingress-nginx
-            - op: add
-              path: /spec/template/spec/preRKE2Commands
-              value:
-                - useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
-                - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
-                - sysctl -p /etc/sysctl.d/90-kubelet.conf
         - selector:
             apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
             kind: RKE2ConfigTemplate
@@ -425,12 +425,41 @@ spec:
               valueFrom:
                 template: |
                   cisProfile: {{ .cisProfile }}
+    - name: nodePreparation
+      enabledIf: '{{ if or .cisProfile .fipsRequired }}true{{ end }}'
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
             - op: add
               path: /spec/template/spec/preRKE2Commands
-              value:
-                - useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
-                - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
-                - sysctl -p /etc/sysctl.d/90-kubelet.conf
+              valueFrom:
+                template: |
+                  {{ if .fipsRequired }}- test "$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)" = "1" || { echo "FIPS mode required but not enabled on this node image" >&2; exit 1; }
+                  {{ end }}{{ if .cisProfile }}- useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+                  - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
+                  - sysctl -p /etc/sysctl.d/90-kubelet.conf
+                  {{ end }}
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/preRKE2Commands
+              valueFrom:
+                template: |
+                  {{ if .fipsRequired }}- test "$(cat /proc/sys/crypto/fips_enabled 2>/dev/null)" = "1" || { echo "FIPS mode required but not enabled on this node image" >&2; exit 1; }
+                  {{ end }}{{ if .cisProfile }}- useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+                  - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
+                  - sysctl -p /etc/sysctl.d/90-kubelet.conf
+                  {{ end }}
     - name: csiAddonConfigMap
       definitions:
         - selector:
@@ -621,6 +650,8 @@ spec:
         value: "${CNI}"
       - name: cisProfile
         value: "${CIS_PROFILE}"
+      - name: fipsRequired
+        value: ${FIPS_REQUIRED}
 ---
 # ClusterResourceSet — CSI plugin DaemonSet + RBAC
 apiVersion: addons.cluster.x-k8s.io/v1beta1

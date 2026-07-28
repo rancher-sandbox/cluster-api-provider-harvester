@@ -105,13 +105,23 @@ image (`VM_IMAGE_NAME`) to cover the OS layer.
 
 ## FIPS 140
 
-- SLES nodes can run in FIPS mode (kernel `fips=1` plus the `fips` pattern);
-  this is an image or cloud-init concern on the node layer.
+FIPS mode is a boot-time property of the node image (kernel parameter plus the
+FIPS pattern); it cannot be turned on by cloud-init without a reboot, so CAPHV
+does not pretend to enable it. The split is:
+
+- **Build a FIPS node image** once: boot the standard SLES or openSUSE cloud
+  image, run `zypper -n in -t pattern fips`, add `fips=1` to
+  `GRUB_CMDLINE_LINUX_DEFAULT` (`grub2-mkconfig -o /boot/grub2/grub.cfg`),
+  regenerate the initrd (`dracut -f`), run `cloud-init clean --logs`, stop the
+  VM and export its volume as a Harvester image
+  (`VirtualMachineImage` with `sourceType: export-from-volume`). Reference the
+  image in `volumes[].imageName`.
+- **Enforce it from the cluster definition**: the `fipsRequired` topology
+  variable of the shipped ClusterClass (default `false`) injects a guard into
+  the node bootstrap that fails unless `/proc/sys/crypto/fips_enabled` is `1`,
+  so a cluster that must be FIPS can never silently run on a non-FIPS image.
 - RKE2 is available in FIPS-validated builds for government use; select the
   matching RKE2 version in the cluster definition.
-- CAPHV itself performs no workload cryptography: node-level FIPS enablement
-  is what matters, and a convenience knob to turn it on from the machine
-  template is planned.
 
 ## ANSSI (France)
 
