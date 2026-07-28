@@ -170,6 +170,15 @@ spec:
           type: string
           default: "calico"
           description: "CNI plugin (calico, canal, cilium, none)"
+    # RKE2 CIS hardening profile
+    - name: cisProfile
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+          enum: ["", "cis", "cis-1.23", "cis-1.5", "cis-1.6"]
+          description: "RKE2 CIS profile. When set, the profile is enabled on every node and the node prerequisites (etcd user, protect-kernel-defaults sysctls) are injected automatically. Empty disables hardening."
   # --- Patches ---
   patches:
     # Patch VM networks on both CP and worker HarvesterMachineTemplates
@@ -395,6 +404,90 @@ spec:
               path: /spec/template/spec/serverConfig/cni
               valueFrom:
                 variable: cni
+    # Enable the RKE2 CIS profile and inject its node prerequisites: the etcd
+    # system user and the protect-kernel-defaults sysctls the hardened kubelet
+    # requires. The sysctls are written directly (the rke2-cis-sysctl.conf
+    # shipped with RKE2 does not exist yet when preRKE2Commands run).
+    - name: cisProfile
+      enabledIf: '{{ if .cisProfile }}true{{ end }}'
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/agentConfig
+              valueFrom:
+                template: |
+                  cisProfile: {{ .cisProfile }}
+                  podSecurityAdmissionConfigFile: /etc/rancher/rke2/rancher-pss.yaml
+            - op: add
+              path: /spec/template/spec/files
+              value:
+                - path: /etc/rancher/rke2/rancher-pss.yaml
+                  owner: root:root
+                  permissions: "0600"
+                  content: |
+                    apiVersion: apiserver.config.k8s.io/v1
+                    kind: AdmissionConfiguration
+                    plugins:
+                      - name: PodSecurity
+                        configuration:
+                          apiVersion: pod-security.admission.config.k8s.io/v1
+                          kind: PodSecurityConfiguration
+                          defaults:
+                            enforce: "restricted"
+                            enforce-version: "latest"
+                            audit: "restricted"
+                            audit-version: "latest"
+                            warn: "restricted"
+                            warn-version: "latest"
+                          exemptions:
+                            usernames: []
+                            runtimeClasses: []
+                            namespaces:
+                              - kube-system
+                              - cis-operator-system
+                              - tigera-operator
+                              - calico-system
+                              - cattle-system
+                              - cattle-fleet-system
+                              - cattle-fleet-local-system
+                              - cattle-impersonation-system
+                              - cattle-monitoring-system
+                              - cattle-provisioning-capi-system
+                              - cattle-resources-system
+                              - cattle-ui-plugin-system
+                              - fleet-default
+                              - longhorn-system
+                              - ingress-nginx
+            - op: add
+              path: /spec/template/spec/preRKE2Commands
+              value:
+                - useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+                - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
+                - sysctl -p /etc/sysctl.d/90-kubelet.conf
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/agentConfig
+              valueFrom:
+                template: |
+                  cisProfile: {{ .cisProfile }}
+            - op: add
+              path: /spec/template/spec/preRKE2Commands
+              value:
+                - useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+                - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
+                - sysctl -p /etc/sysctl.d/90-kubelet.conf
     # Patch CSI addon ConfigMap name (per-cluster)
     - name: csiAddonConfigMap
       definitions:

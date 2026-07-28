@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **CIS hardening switch in the ClusterClass**: the new `cisProfile` topology
+  variable enables the RKE2 CIS profile on every node of the cluster and
+  injects the node prerequisites the hardened kubelet requires (the `etcd`
+  system user and the protect-kernel-defaults sysctls) through
+  `preRKE2Commands`. Empty by default: existing clusters are unaffected.
+  The certification suite gains the matching `CIS_PROFILE` knob.
+
 ## [v0.9.0] - 2026-07-28
 
 ### Added

@@ -62,19 +62,24 @@ dedicated hardening mode: setting `profile: cis` in the RKE2 server
 configuration enforces the benchmark's kernel parameters, applies restrictive
 Pod Security Standards and refuses to start on non-compliant nodes.
 
-With CAPHV today:
+With the shipped ClusterClass this is a single switch: set the `cisProfile`
+topology variable (`cis`, or a versioned profile such as `cis-1.23`):
 
-- enable the profile in the `RKE2ControlPlaneTemplate`
-  (`spec.template.spec.serverConfig.cis`) and in the worker
-  `RKE2ConfigTemplate`;
-- the profile requires node prerequisites (the `etcd` system user and the
-  `vm.panic_on_oom`, `vm.overcommit_memory` and `kernel.panic*` sysctls);
-  provide them through the bootstrap provider's additional cloud-init until
-  the ClusterClass exposes a dedicated variable.
+```yaml
+spec:
+  topology:
+    variables:
+      - name: cisProfile
+        value: "cis"
+```
 
-Making this a single ClusterClass switch (profile flag plus node prerequisites
-injected automatically) is planned work; this section will be updated when it
-lands.
+The profile is then enabled on the control plane and the workers
+(`agentConfig.cisProfile` on the RKE2 templates), and the node prerequisites
+the hardened kubelet requires are injected automatically through
+`preRKE2Commands`: the `etcd` system user and the protect-kernel-defaults
+sysctls (`vm.panic_on_oom=0`, `vm.overcommit_memory=1`, `kernel.panic=10`,
+`kernel.panic_on_oops=1`). Clusters built without ClusterClass can replicate
+this by setting the same two fields in their RKE2 templates.
 
 ## DISA STIG
 
