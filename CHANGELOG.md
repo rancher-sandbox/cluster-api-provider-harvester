@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.10.1] - 2026-07-28
+
 ### Fixed
 
 - **Cluster template flavors shipped as release assets**: the release workflow
