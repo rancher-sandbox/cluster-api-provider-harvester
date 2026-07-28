@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Cluster template flavors shipped as release assets**: the release workflow
+  only uploaded `infrastructure-components.yaml` and `metadata.yaml`, so the
+  cluster template flavors (including the new `stig` one) and the ClusterClass
+  were never downloadable and `clusterctl generate cluster --flavor ...` could
+  not work against a release. All `out/` artifacts are now attached to the
+  release draft. Releases are immutable on this repository, so the missing
+  assets could not be added to v0.10.0 retroactively; use this release instead.
+
 ## [v0.10.0] - 2026-07-28
 
 ### Fixed
