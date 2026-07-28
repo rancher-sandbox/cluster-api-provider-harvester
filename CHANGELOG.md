@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-07-28
+
 ### Added
 
 - **UEFI Secure Boot and vTPM options** ([#238](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/238)):
