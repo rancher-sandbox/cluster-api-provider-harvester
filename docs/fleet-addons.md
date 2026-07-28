@@ -2,8 +2,8 @@
 
 CAPHV supports two addon management modes for deploying CNI configuration to workload clusters:
 
-1. **CRS mode** (default) — ClusterResourceSets with hardcoded ConfigMaps
-2. **Fleet mode** — Fleet GitRepo via CAAPF (Cluster API Addon Provider Fleet)
+1. **CRS mode** (default) - ClusterResourceSets with hardcoded ConfigMaps
+2. **Fleet mode** - Fleet GitRepo via CAAPF (Cluster API Addon Provider Fleet)
 
 > **Note**: CAAPF is subject to design changes tracked in
 > [RFD 0051](https://github.com/SUSE/rancher-architecture/pull/51).
@@ -30,7 +30,7 @@ CAPHV supports two addon management modes for deploying CNI configuration to wor
                             ▼
                     Workload Cluster
                     ├── CCM (always CRS)
-                    ├── CSI (CRS or Fleet — decoupled in v0.2.6)
+                    ├── CSI (CRS or Fleet - decoupled in v0.2.6)
                     └── CNI config (CRS or Fleet)
 ```
 
@@ -42,7 +42,7 @@ Since v0.2.6, the CSI driver has been decoupled from the cloud-config Secret and
 
 ### Why not `cni: none` + Fleet
 
-RKE2 deploys the CNI as a system chart during node bootstrap. Fleet needs a running agent on the workload cluster to deploy bundles — which requires pod networking — which requires a CNI. Setting `cni: none` and deploying CNI via Fleet creates a deadlock. Instead, RKE2 installs the CNI with defaults and Fleet deploys a `HelmChartConfig` to configure it.
+RKE2 deploys the CNI as a system chart during node bootstrap. Fleet needs a running agent on the workload cluster to deploy bundles - which requires pod networking - which requires a CNI. Setting `cni: none` and deploying CNI via Fleet creates a deadlock. Instead, RKE2 installs the CNI with defaults and Fleet deploys a `HelmChartConfig` to configure it.
 
 ## Prerequisites
 
@@ -89,7 +89,7 @@ This generates:
 - Cluster with `cni: calico` label and CNI annotations
 - `spec.clusterNetwork.pods.cidrBlocks` for pod CIDR
 - CCM ConfigMap + CRS (always)
-- Cloud-config ConfigMap + CRS (always — contains Harvester kubeconfig)
+- Cloud-config ConfigMap + CRS (always - contains Harvester kubeconfig)
 - Fleet `GitRepo` targeting the CSI and CNI config bundles
 - MachineHealthCheck
 
@@ -107,7 +107,7 @@ caphv-generate \
   --apply
 ```
 
-Same as before — generates CCM + CSI + CNI ConfigMaps and 3 ClusterResourceSets.
+Same as before - generates CCM + CSI + CNI ConfigMaps and 3 ClusterResourceSets.
 
 ## CNI Configuration Parameters
 

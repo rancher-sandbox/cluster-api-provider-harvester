@@ -36,19 +36,19 @@ production capabilities:
   - Cluster API Core **v1.12.x** (serves `cluster.x-k8s.io/v1beta2`)
   - RKE2 Bootstrap + ControlPlane providers **v0.24.x+** (validated against v0.25.0)
   - Rancher Turtles **v0.26.x** (Rancher Manager 2.14.x ships Turtles by default,
-    but the RKE2 CAPIProviders must be enabled explicitly — see below)
+    but the RKE2 CAPIProviders must be enabled explicitly - see below)
   - cert-manager (required for webhooks, default-on)
 - Harvester identity Secret (kubeconfig for the target Harvester cluster)
 - SSH KeyPair created on Harvester
 - VM image uploaded to Harvester (SLES 15 SP7 or openSUSE Leap 15.6 recommended)
 - IPPool configured on Harvester (for automatic IP allocation)
 
-> **Upgrading to v0.5.x**: the API graduated from `v1alpha1` to `v1beta1` — see
+> **Upgrading to v0.5.x**: the API graduated from `v1alpha1` to `v1beta1` - see
 > [docs/migration-v0.4-to-v0.5.md](docs/migration-v0.4-to-v0.5.md). Existing `v1alpha1`
 > objects keep working (served + converted), new manifests should use `v1beta1`.
 >
 > **Upgrading from v0.2.x**: see [docs/migration-v0.2-to-v0.3.md](docs/migration-v0.2-to-v0.3.md)
-> — v0.3.0+ requires the CAPI v1.12 / v1beta2 ecosystem and is **not backward-compatible**
+> - v0.3.0+ requires the CAPI v1.12 / v1beta2 ecosystem and is **not backward-compatible**
 > with managers running CAPI v1.10.
 
 ### Enabling RKE2 providers under Rancher Turtles
@@ -136,7 +136,7 @@ make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
 kubectl apply -f out/infrastructure-components.yaml
 ```
 
-## Quick Start (ClusterClass — recommended)
+## Quick Start (ClusterClass - recommended)
 
 Using ClusterClass reduces cluster creation from ~200 lines to ~30 lines of YAML.
 
@@ -178,7 +178,7 @@ kubectl apply -f cluster.yaml
 
 The CLI generates: Namespace, Secret, Cluster (topology), ConfigMaps (CCM/CSI/Calico), ClusterResourceSets, and MachineHealthCheck.
 
-### Fleet Mode (optional — GitOps addon management)
+### Fleet Mode (optional - GitOps addon management)
 
 With CAAPF installed, addons can be managed via Fleet instead of CRS:
 
@@ -242,28 +242,28 @@ caphv-generate \
 1. **Namespace** created
 2. **Secret** with Harvester kubeconfig injected
 3. **ClusterClass** + templates deployed in the namespace
-4. **Cluster topology** created — CAPI orchestrates everything:
+4. **Cluster topology** created - CAPI orchestrates everything:
    - VMs created on Harvester (IPs allocated from IPPool)
    - RKE2 bootstrap (control plane then workers)
    - Cloud-init with static IP, iptables, SSH
    - Cloud provider + CSI Harvester installed via ClusterResourceSets
    - MachineHealthCheck active (auto-remediation)
-5. **Rancher** detects the cluster (auto-import label) — deploys agent — cluster visible in the UI
+5. **Rancher** detects the cluster (auto-import label) - deploys agent - cluster visible in the UI
 
 ### Result
 
 - Fully functional Kubernetes cluster (RKE2)
 - Visible and manageable in Rancher UI
 - Auto-remediation: if a VM dies, it is automatically recreated (~9 min)
-- Rolling upgrade: change the K8s version in the Cluster spec — rolling update CP then workers
+- Rolling upgrade: change the K8s version in the Cluster spec - rolling update CP then workers
 
 ### Day 2 Operations
 
 - **Scale**: modify `replicas` in the Cluster spec
 - **Upgrade K8s**: modify `version` in the Cluster spec
-- **Delete**: `kubectl delete cluster my-cluster -n my-namespace` — everything is cleaned up (VMs, PVCs, secrets)
+- **Delete**: `kubectl delete cluster my-cluster -n my-namespace` - everything is cleaned up (VMs, PVCs, secrets)
 
-## Quick Start (manual — full control)
+## Quick Start (manual - full control)
 
 ### 1. Create the identity Secret
 
@@ -414,9 +414,9 @@ See [docs/operations.md](docs/operations.md) for the full metrics list and alert
 
 ## Documentation
 
-- [Operations Guide](docs/operations.md) — installation via CAPIProvider, cluster lifecycle, monitoring, backup/DR
-- [Fleet Addons Guide](docs/fleet-addons.md) — Fleet/CAAPF addon management for CSI and CNI
-- [Troubleshooting](docs/troubleshooting.md) — IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
+- [Operations Guide](docs/operations.md) - installation via CAPIProvider, cluster lifecycle, monitoring, backup/DR
+- [Fleet Addons Guide](docs/fleet-addons.md) - Fleet/CAAPF addon management for CSI and CNI
+- [Troubleshooting](docs/troubleshooting.md) - IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
 
 ## E2E Tests
 
@@ -452,7 +452,7 @@ identity.
 
 > **Requires cosign v3.0.0 or newer.** Releases v0.2.9+ are signed in
 > the OCI 1.1 bundle format used by cosign v3. Older cosign v2 clients
-> report `no signatures found` against these images — install cosign
+> report `no signatures found` against these images - install cosign
 > v3 to verify.
 
 Verify the container image:
@@ -489,7 +489,7 @@ CAPHV ↔ Rancher/Turtles/CAPI pairing matrix lives in
 |---------|------|-------------|
 | v0.5.2 | 2026-07-20 | Image StorageClass resolved from the image status (fixes PVC Pending on freshly created images, #211); immutable-releases-compatible release flow (#218); kubevirt.io/api 1.8.4, harvester-load-balancer 1.8.1, Go 1.26, security bumps |
 | v0.5.1 | 2026-07-17 | cert-manager CA injection restored on the clustertemplates CRD (required for installs through a Turtles CAPIProvider); RBAC for provisioning.cattle.io; Turtles integration suite (CreateUsingGitOpsSpec) on a self-hosted runner |
-| v0.5.0 | 2026-07-06 | API graduation v1alpha1 → v1beta1 (hub with conversion webhooks, fuzz-tested round-trip); deprecated failure fields dropped |
+| v0.5.0 | 2026-07-06 | API graduation v1alpha1 -> v1beta1 (hub with conversion webhooks, fuzz-tested round-trip); deprecated failure fields dropped |
 | v0.4.0 | 2026-07-06 | Complete v1beta2 CAPI contract: initialization.provisioned, Paused condition, FailureReason/Message deprecation |
 | v0.3.0 | 2026-05-30 | CAPI v1.12 / v1beta2 ecosystem migration: cluster-api v1.12.x, controller-runtime v0.22.5, k8s.io v0.34, metav1.Condition, RKE2 templates v1beta2. Validated against Harvester v1.8 + Rancher 2.14 + Turtles 0.26 |
 | v0.2.9 | 2026-04-15 | Supply chain hardening: cosign keyless signing, SLSA provenance, SBOM, GitHub Actions SHA-pinning, hadolint, least-privilege workflow permissions |
