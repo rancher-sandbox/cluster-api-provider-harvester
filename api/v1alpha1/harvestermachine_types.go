@@ -247,6 +247,11 @@ type HarvesterMachineStatus struct {
 	// Used for accurate release when multiple pools are configured.
 	// +optional
 	AllocatedPoolRef string `json:"allocatedPoolRef,omitempty"`
+
+	// FailureDomain reports the failure domain the machine was placed in
+	// (CAPI contract field, mirrored to Machine.status.failureDomain).
+	// +optional
+	FailureDomain string `json:"failureDomain,omitempty"`
 }
 
 //+kubebuilder:object:root=true

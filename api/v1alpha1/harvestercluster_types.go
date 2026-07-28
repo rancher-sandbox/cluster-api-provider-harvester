@@ -326,6 +326,15 @@ type HarvesterClusterStatus struct {
 	// status.ready (the v1beta1 contract field) so a single v1alpha1 object satisfies both contracts.
 	// +optional
 	Initialization Initialization `json:"initialization,omitempty"`
+
+	// FailureDomains is the list of failure domains discovered on the target
+	// Harvester cluster, published for the CAPI contract so control plane
+	// machines can be spread across them. Domains are Harvester host
+	// topology.kubernetes.io/zone labels when every host carries one, and the
+	// host names otherwise; each domain records the node label to schedule on
+	// in its attributes.
+	// +optional
+	FailureDomains []clusterv1.FailureDomain `json:"failureDomains,omitempty"`
 }
 
 //+kubebuilder:object:root=true

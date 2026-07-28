@@ -1000,6 +1000,26 @@ override is fully backward compatible. Notes:
   the same machine.
 - Network-aware selection applies to the machine-level pool list as well.
 
+## Failure domains
+
+The provider discovers the failure domains of the target Harvester cluster and
+publishes them in `HarvesterCluster.status.failureDomains`: one domain per
+`topology.kubernetes.io/zone` value when every Harvester host carries the
+label, otherwise one domain per host. CAPI aggregates them on the `Cluster`
+object, the control plane provider spreads control plane machines across them,
+and CAPHV pins each VM to its assigned domain with a required node affinity
+(combined with any user provided `nodeAffinity`). This is what the BSI
+APP.4.4.A19 elevated-protection requirement (control plane distributed across
+failure zones) builds on.
+
+Nothing needs to be configured: label the Harvester hosts with
+`topology.kubernetes.io/zone` to group them into zones, or leave them
+unlabeled to treat each host as its own domain. On a single host cluster there
+is one domain and the spread is a no-op. Discovery requires the kubeconfig of
+the identity secret to be allowed to list nodes on the Harvester cluster;
+when it is not, the provider logs a warning and skips publication without
+blocking the reconciliation.
+
 ## UEFI Secure Boot and vTPM
 
 VMs boot with BIOS firmware by default. For measured or attested boot setups
