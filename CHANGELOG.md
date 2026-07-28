@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.9.0] - 2026-07-28
+
 ### Added
 
 - **Failure domains** ([#237](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/237)):
