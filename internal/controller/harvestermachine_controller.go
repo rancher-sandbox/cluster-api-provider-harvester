@@ -45,6 +45,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/ptr"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/core/v1beta2"
 	"sigs.k8s.io/cluster-api/util"
@@ -1082,7 +1083,33 @@ runcmd:
 		},
 	}
 
+	applyFirmwareAndTPM(hvScope.HarvesterMachine, &vmTemplate.Spec.Domain)
+
 	return vmTemplate, nil
+}
+
+// applyFirmwareAndTPM maps the optional firmware and TPM settings of the
+// HarvesterMachine onto the kubevirt domain. The EFI secureBoot flag is always
+// pinned explicitly because kubevirt defaults it to true when EFI is enabled,
+// and Secure Boot additionally requires the SMM CPU feature.
+func applyFirmwareAndTPM(machine *infrav1.HarvesterMachine, domain *kubevirtv1.DomainSpec) {
+	if firmware := machine.Spec.Firmware; firmware != nil && firmware.EFI {
+		domain.Firmware = &kubevirtv1.Firmware{
+			Bootloader: &kubevirtv1.Bootloader{
+				EFI: &kubevirtv1.EFI{SecureBoot: ptr.To(firmware.SecureBoot)},
+			},
+		}
+
+		if firmware.SecureBoot {
+			domain.Features = &kubevirtv1.Features{
+				SMM: &kubevirtv1.FeatureState{Enabled: ptr.To(true)},
+			}
+		}
+	}
+
+	if tpm := machine.Spec.TPM; tpm != nil && tpm.Enabled {
+		domain.Devices.TPM = &kubevirtv1.TPMDevice{Persistent: ptr.To(tpm.Persistent)}
+	}
 }
 
 // buildNetworkInterfaces creates kubevirt Interface specs for each network.

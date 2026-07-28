@@ -1000,6 +1000,38 @@ override is fully backward compatible. Notes:
   the same machine.
 - Network-aware selection applies to the machine-level pool list as well.
 
+## UEFI Secure Boot and vTPM
+
+VMs boot with BIOS firmware by default. For measured or attested boot setups
+(for example the BSI APP.4.4.A17 node attestation requirement), request UEFI,
+Secure Boot and an emulated TPM per machine type in the HarvesterMachineTemplate:
+
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HarvesterMachineTemplate
+spec:
+  template:
+    spec:
+      firmware:
+        efi: true
+        secureBoot: true
+      tpm:
+        enabled: true
+        persistent: true
+      # cpu, memory, volumes, ...
+```
+
+Notes:
+
+- `secureBoot: true` requires `efi: true` (enforced by the webhook) and turns on
+  the SMM CPU feature that Secure Boot needs.
+- The guest image must be UEFI capable, and Secure Boot additionally needs a
+  signed bootloader chain in the image; standard SLES and openSUSE cloud images
+  qualify.
+- `tpm.persistent: true` keeps the TPM state across reboots (supported by the
+  KubeVirt version shipped with current Harvester releases).
+- Machines without these blocks keep booting exactly as before.
+
 ### CLI usage
 
 ```bash

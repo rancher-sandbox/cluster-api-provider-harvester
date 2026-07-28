@@ -146,6 +146,16 @@ func convertMachineSpecTo(src *HarvesterMachineSpec) infrav1.HarvesterMachineSpe
 
 	dst.VMNetworkConfig = convertVMNetworkConfigTo(src.VMNetworkConfig)
 
+	if src.Firmware != nil {
+		firmware := infrav1.Firmware(*src.Firmware)
+		dst.Firmware = &firmware
+	}
+
+	if src.TPM != nil {
+		tpm := infrav1.TPM(*src.TPM)
+		dst.TPM = &tpm
+	}
+
 	return dst
 }
 
@@ -182,6 +192,16 @@ func convertMachineSpecFrom(src *infrav1.HarvesterMachineSpec) HarvesterMachineS
 	}
 
 	dst.VMNetworkConfig = convertVMNetworkConfigFrom(src.VMNetworkConfig)
+
+	if src.Firmware != nil {
+		firmware := Firmware(*src.Firmware)
+		dst.Firmware = &firmware
+	}
+
+	if src.TPM != nil {
+		tpm := TPM(*src.TPM)
+		dst.TPM = &tpm
+	}
 
 	return dst
 }
