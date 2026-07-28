@@ -272,6 +272,7 @@ release-manifests: $(RELEASE_DIR) $(KUSTOMIZE) ## Build the manifests to publish
 	cp templates/cluster-template-rke2-generateCPI.yaml $(RELEASE_DIR)/cluster-template-generateCPI.yaml
 	cp templates/cluster-template-kubeadm.yaml $(RELEASE_DIR)/cluster-template-kubeadm.yaml
 	cp templates/cluster-template-talos.yaml $(RELEASE_DIR)/cluster-template-talos.yaml
+	cp templates/cluster-template-rke2-stig.yaml $(RELEASE_DIR)/cluster-template-stig.yaml
 	cp templates/clusterclass/rke2/clusterclass-harvester-rke2.yaml $(RELEASE_DIR)/clusterclass-harvester-rke2.yaml
 
 .PHONY: release-notes
