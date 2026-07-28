@@ -82,3 +82,4 @@ variables:
   IP_POOL_REF: "capi-vm-pool"
   DNS_SERVERS: "172.16.0.1"
   CNI: "calico"
+  CIS_PROFILE: ""
