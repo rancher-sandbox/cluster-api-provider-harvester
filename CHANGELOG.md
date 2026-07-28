@@ -6,6 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- **FIPS enforcement switch in the ClusterClass**: the new `fipsRequired`
+  topology variable (default `false`) injects a bootstrap guard that refuses
+  to start a node whose image does not run in FIPS mode
+  (`/proc/sys/crypto/fips_enabled`), so FIPS clusters cannot silently run on
+  non-FIPS images. FIPS mode itself comes from the node image; the compliance
+  guide documents the image build recipe. The certification suite gains the
+  matching `FIPS_REQUIRED` knob, and the CIS and FIPS node preparation
+  commands now compose in a single patch.
 - **STIG-hardened cluster template flavor** (`cluster-template-stig.yaml`):
   a ready-to-use flavor aligning the RKE2 side of the cluster with the DISA
   RKE2 STIG guidance: CIS profile with injected node prerequisites, audit
