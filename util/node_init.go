@@ -43,35 +43,35 @@ const (
 //
 // This is a best-effort operation: all errors are logged as warnings
 // and do not propagate, so it never blocks the reconcile loop.
-func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadConfig *rest.Config, nodeName, providerID string) {
+func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadConfig *rest.Config, nodeName, providerID string) bool {
 	if providerID == "" {
-		return
+		return false
 	}
 
 	clientset, err := kubernetes.NewForConfig(workloadConfig)
 	if err != nil {
 		logger.Info("Warning: failed to create workload client for node init", "error", err)
 
-		return
+		return false
 	}
 
 	node, err := clientset.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// Node not yet registered in workload cluster, will retry next reconcile
-			return
+			// Node not yet registered in workload cluster: report it so the caller requeues
+			return false
 		}
 
 		logger.Info("Warning: failed to get workload node for init", "error", err, "node", nodeName)
 
-		return
+		return false
 	}
 
 	needsProviderID := node.Spec.ProviderID == ""
 	needsTaintRemoval := hasUninitializedTaint(node)
 
 	if !needsProviderID && !needsTaintRemoval {
-		return
+		return true
 	}
 
 	if needsProviderID {
@@ -82,7 +82,7 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 			logger.Info("Warning: failed to set providerID on workload node",
 				"error", err, "node", nodeName, "providerID", providerID)
 
-			return
+			return false
 		}
 
 		logger.Info("Set providerID on workload node", "node", nodeName, "providerID", providerID)
@@ -94,7 +94,7 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 		if err != nil {
 			logger.Info("Warning: failed to re-fetch node after providerID patch", "error", err)
 
-			return
+			return false
 		}
 
 		newTaints := removeTaint(node.Spec.Taints)
@@ -103,7 +103,7 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 			if err != nil {
 				logger.Info("Warning: failed to marshal taints", "error", err, "node", nodeName)
 
-				return
+				return false
 			}
 
 			patch := fmt.Sprintf(`{"spec":{"taints":%s}}`, taintsJSON)
@@ -113,12 +113,14 @@ func InitializeWorkloadNode(ctx context.Context, logger logr.Logger, workloadCon
 				logger.Info("Warning: failed to remove uninitialized taint",
 					"error", err, "node", nodeName)
 
-				return
+				return false
 			}
 
 			logger.Info("Removed cloud-provider uninitialized taint", "node", nodeName)
 		}
 	}
+
+	return true
 }
 
 // hasUninitializedTaint returns true if the node has the cloud-provider uninitialized taint.

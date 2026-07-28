@@ -544,32 +544,39 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 
 	// Initialize workload cluster node: set providerID and remove uninitialized taint.
 	// This bypasses the cloud-provider bootstrap chicken-and-egg problem.
-	r.initializeWorkloadNode(hvScope)
+	if !r.initializeWorkloadNode(hvScope) {
+		// The node has not registered (or could not be patched) yet. Requeue
+		// explicitly: once the machine events settle, nothing else triggers a
+		// reconcile, and without the providerID on the node the machine would
+		// stay in the Provisioned phase forever.
+		return ctrl.Result{RequeueAfter: requeueDelay}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
 
 // initializeWorkloadNode sets the providerID and removes the cloud-provider
 // uninitialized taint on the workload cluster node corresponding to this machine.
-// Errors are logged as warnings but do not block reconciliation.
+// It reports whether the node is initialized; errors are logged as warnings and
+// surface as a false return so the caller requeues.
 //
 //nolint:funcorder
-func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
+func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) bool {
 	if hvScope.HarvesterMachine.Spec.ProviderID == "" {
-		return
+		return false
 	}
 
 	workloadConfig, err := getWorkloadClusterConfig(hvScope)
 	if err != nil {
 		// Workload cluster not ready yet, will retry on next reconcile
-		return
+		return false
 	}
 
 	caphvmetrics.NodeInitTotal.Inc()
 
 	initStart := time.Now()
 
-	locutil.InitializeWorkloadNode(
+	initialized := locutil.InitializeWorkloadNode(
 		hvScope.Ctx,
 		*hvScope.Logger,
 		workloadConfig,
@@ -578,6 +585,8 @@ func (r *HarvesterMachineReconciler) initializeWorkloadNode(hvScope *Scope) {
 	)
 
 	caphvmetrics.NodeInitDuration.Observe(time.Since(initStart).Seconds())
+
+	return initialized
 }
 
 func getProviderIDFromWorkloadCluster(hvScope *Scope) (string, error) {

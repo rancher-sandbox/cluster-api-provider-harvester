@@ -2073,8 +2073,9 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		// VM was just created, status.Ready should be true at end of ReconcileNormal
-		Expect(result.RequeueAfter).To(BeZero())
+		// VM was just created and its node cannot be initialized yet, so the
+		// reconcile requeues until the node registers and gets its providerID
+		Expect(result.RequeueAfter).To(Equal(requeueDelay))
 
 		// Verify the VM was created on Harvester
 		createdVM, getErr := hvClient.KubevirtV1().VirtualMachines("default").Get(context.TODO(), "test-cp-0", metav1.GetOptions{})
@@ -2285,7 +2286,11 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.RequeueAfter).To(BeZero())
+		// The workload node is not initialized yet (no reachable workload
+		// cluster here), so the reconcile must requeue until it is: without
+		// this, a node registering after the last event-driven reconcile
+		// leaves the machine Provisioned forever.
+		Expect(result.RequeueAfter).To(Equal(requeueDelay))
 		// ProviderID should be set from VM UID (fallback when kubeconfig unavailable)
 		Expect(scope.HarvesterMachine.Spec.ProviderID).To(Equal("harvester://fake-uid-12345"))
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
@@ -2361,7 +2366,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.RequeueAfter).To(BeZero())
+		Expect(result.RequeueAfter).To(Equal(requeueDelay))
 		Expect(scope.HarvesterMachine.Status.Ready).To(BeTrue())
 		Expect(scope.HarvesterMachine.Spec.ProviderID).To(Equal("harvester://already-set"))
 	})
@@ -2620,7 +2625,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.RequeueAfter).To(BeZero())
+		Expect(result.RequeueAfter).To(Equal(requeueDelay))
 		// Should have allocated an IP
 		Expect(scope.HarvesterMachine.Status.AllocatedIPAddress).ToNot(BeEmpty())
 		// EffectiveNetworkConfig should be populated
@@ -2702,7 +2707,7 @@ var _ = Describe("ReconcileNormal", func() {
 		r := &HarvesterMachineReconciler{Client: fakeClient, Scheme: scheme}
 		result, err := r.ReconcileNormal(scope)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(result.RequeueAfter).To(BeZero())
+		Expect(result.RequeueAfter).To(Equal(requeueDelay))
 		// EffectiveNetworkConfig should use machine-level config
 		Expect(scope.EffectiveNetworkConfig).ToNot(BeNil())
 		Expect(scope.EffectiveNetworkConfig.Address).To(Equal("10.0.0.100"))
