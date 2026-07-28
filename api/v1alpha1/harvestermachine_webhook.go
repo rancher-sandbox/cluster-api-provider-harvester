@@ -118,6 +118,10 @@ func validateHarvesterMachine(r *HarvesterMachine) (admission.Warnings, error) {
 
 	errs = append(errs, validateMachineVMNetworkConfig(r)...)
 
+	if fw := r.Spec.Firmware; fw != nil && fw.SecureBoot && !fw.EFI {
+		errs = append(errs, "spec.firmware.secureBoot requires spec.firmware.efi to be true")
+	}
+
 	if len(errs) > 0 {
 		return nil, fmt.Errorf("validation failed for HarvesterMachine %s/%s: %s",
 			r.Namespace, r.Name, strings.Join(errs, "; "))

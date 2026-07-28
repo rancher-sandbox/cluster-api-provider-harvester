@@ -122,6 +122,39 @@ type HarvesterMachineSpec struct {
 	// ipPoolRefs. Mutually exclusive with networkConfig.
 	// +optional
 	VMNetworkConfig *VMNetworkConfig `json:"vmNetworkConfig,omitempty"`
+
+	// Firmware selects the firmware used to boot the VM. When unset, the VM
+	// keeps booting with the current default (BIOS).
+	// +optional
+	Firmware *Firmware `json:"firmware,omitempty"`
+
+	// TPM attaches an emulated Trusted Platform Module device to the VM.
+	// Together with UEFI Secure Boot, this is the building block for measured
+	// or attested boot setups.
+	// +optional
+	TPM *TPM `json:"tpm,omitempty"`
+}
+
+// Firmware describes the firmware configuration of a VM.
+type Firmware struct {
+	// EFI boots the VM with UEFI firmware instead of the default BIOS.
+	EFI bool `json:"efi,omitempty"`
+
+	// SecureBoot enables UEFI Secure Boot: the VM boots with
+	// SecureBoot-enabled OVMF ROMs and the SMM CPU feature is turned on.
+	// Requires efi to be true. The guest image must carry a signed bootloader.
+	// +optional
+	SecureBoot bool `json:"secureBoot,omitempty"`
+}
+
+// TPM describes the emulated TPM device of a VM.
+type TPM struct {
+	// Enabled attaches an emulated TPM device to the VM.
+	Enabled bool `json:"enabled,omitempty"`
+
+	// Persistent keeps the TPM state across reboots.
+	// +optional
+	Persistent bool `json:"persistent,omitempty"`
 }
 
 // NetworkConfig defines static network configuration for a VM.

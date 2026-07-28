@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **UEFI Secure Boot and vTPM options** ([#238](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/238)):
+  `spec.firmware` (`efi`, `secureBoot`) and `spec.tpm` (`enabled`, `persistent`) on
+  HarvesterMachine let each machine type boot with UEFI firmware, Secure Boot
+  (with the required SMM feature) and an emulated TPM device, the building
+  blocks for measured or attested cluster nodes. VMs without these blocks keep
+  booting with the current defaults; `secureBoot` requires `efi` (webhook
+  enforced).
+
 ## [v0.7.0] - 2026-07-27
 
 ### Added
