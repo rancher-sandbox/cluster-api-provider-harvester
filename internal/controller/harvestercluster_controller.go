@@ -361,6 +361,8 @@ func (r *HarvesterClusterReconciler) ReconcileNormal(scope *ClusterScope) (res c
 	// Initializing return values
 	res = ctrl.Result{}
 
+	reconcileFailureDomains(scope)
+
 	ownedCPHarvesterMachines, err := r.getOwnedCPHarversterMachines(scope)
 	if err != nil {
 		logger.Error(err, "could not get ownerCPMachines")

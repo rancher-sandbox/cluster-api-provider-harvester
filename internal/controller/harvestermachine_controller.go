@@ -333,6 +333,10 @@ func (r *HarvesterMachineReconciler) ReconcileNormal(hvScope *Scope) (res reconc
 		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
 	}
 
+	// Report the failure domain the machine lands in (CAPI contract field,
+	// mirrored to Machine.status.failureDomain by the core controller)
+	hvScope.HarvesterMachine.Status.FailureDomain = effectiveFailureDomain(hvScope)
+
 	// Resolve effective network config: pool allocation (machine-level
 	// vmNetworkConfig taking precedence over the cluster-level one) or
 	// machine-level static config
@@ -1269,6 +1273,28 @@ func buildAffinity(hvScope *Scope) *v1.Affinity {
 	// Merge user-specified NodeAffinity
 	if hvScope.HarvesterMachine.Spec.NodeAffinity != nil {
 		affinity.NodeAffinity = hvScope.HarvesterMachine.Spec.NodeAffinity
+	}
+
+	// Pin the VM to its failure domain (appended to every user term so the
+	// user constraints stay AND-ed with the domain one)
+	if failureDomain := effectiveFailureDomain(hvScope); failureDomain != "" {
+		key, value := failureDomainNodeSelector(hvScope.HarvesterCluster, failureDomain)
+		requirement := v1.NodeSelectorRequirement{Key: key, Operator: v1.NodeSelectorOpIn, Values: []string{value}}
+
+		if affinity.NodeAffinity == nil {
+			affinity.NodeAffinity = &v1.NodeAffinity{}
+		}
+
+		if affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution == nil {
+			affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution = &v1.NodeSelector{
+				NodeSelectorTerms: []v1.NodeSelectorTerm{{}},
+			}
+		}
+
+		terms := affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms
+		for i := range terms {
+			terms[i].MatchExpressions = append(terms[i].MatchExpressions, requirement)
+		}
 	}
 
 	// Merge user-specified WorkloadAffinity (PodAffinity)

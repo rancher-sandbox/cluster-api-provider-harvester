@@ -219,6 +219,7 @@ func (src *HarvesterCluster) ConvertTo(dstRaw conversion.Hub) error {
 		Ready:          src.Status.Ready,
 		Conditions:     src.Status.Conditions,
 		Initialization: infrav1.Initialization(src.Status.Initialization),
+		FailureDomains: src.Status.FailureDomains,
 	}
 
 	return nil
@@ -239,6 +240,7 @@ func (dst *HarvesterCluster) ConvertFrom(srcRaw conversion.Hub) error {
 		Ready:          src.Status.Ready,
 		Conditions:     src.Status.Conditions,
 		Initialization: Initialization(src.Status.Initialization),
+		FailureDomains: src.Status.FailureDomains,
 	}
 
 	return nil
@@ -260,6 +262,7 @@ func (src *HarvesterMachine) ConvertTo(dstRaw conversion.Hub) error {
 		Initialization:     infrav1.Initialization(src.Status.Initialization),
 		AllocatedIPAddress: src.Status.AllocatedIPAddress,
 		AllocatedPoolRef:   src.Status.AllocatedPoolRef,
+		FailureDomain:      src.Status.FailureDomain,
 	}
 
 	return nil
@@ -283,6 +286,7 @@ func (dst *HarvesterMachine) ConvertFrom(srcRaw conversion.Hub) error {
 		Initialization:     Initialization(src.Status.Initialization),
 		AllocatedIPAddress: src.Status.AllocatedIPAddress,
 		AllocatedPoolRef:   src.Status.AllocatedPoolRef,
+		FailureDomain:      src.Status.FailureDomain,
 	}
 
 	return nil

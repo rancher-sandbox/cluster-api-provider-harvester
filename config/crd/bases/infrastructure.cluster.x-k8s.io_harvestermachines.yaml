@@ -902,6 +902,11 @@ spec:
                   - type
                   type: object
                 type: array
+              failureDomain:
+                description: |-
+                  FailureDomain reports the failure domain the machine was placed in
+                  (CAPI contract field, mirrored to Machine.status.failureDomain).
+                type: string
               failureMessage:
                 description: |-
                   FailureMessage is a full error message dump of the above failureReason.
@@ -1827,6 +1832,11 @@ spec:
                   - type
                   type: object
                 type: array
+              failureDomain:
+                description: |-
+                  FailureDomain reports the failure domain the machine was placed in
+                  (CAPI contract field, mirrored to Machine.status.failureDomain).
+                type: string
               initialization:
                 description: |-
                   Initialization provides the CAPI v1beta2 contract readiness field

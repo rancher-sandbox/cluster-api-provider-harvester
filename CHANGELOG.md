@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Failure domains** ([#237](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/237)):
+  the provider now discovers the failure domains of the target Harvester cluster
+  (one per host `topology.kubernetes.io/zone` label when every host carries one,
+  one per host otherwise), publishes them in
+  `HarvesterCluster.status.failureDomains` for the CAPI contract, and pins each
+  machine to its assigned domain with a required node affinity, so control plane
+  machines spread across Harvester hosts or zones. No configuration is needed;
+  single host clusters publish one domain and behave as before.
+
 ## [v0.8.0] - 2026-07-28
 
 ### Added
