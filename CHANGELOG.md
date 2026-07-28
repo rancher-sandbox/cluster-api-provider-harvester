@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-07-28
+
 ### Fixed
 
 - **Workload node initialization requeue**: a machine whose node registered in
