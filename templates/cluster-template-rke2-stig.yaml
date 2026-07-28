@@ -1,0 +1,314 @@
+# STIG-hardened flavor of the RKE2 cluster template.
+#
+# Aligns the RKE2 side of the cluster with the DISA RKE2 STIG guidance:
+# CIS profile enforced on every node (with the node prerequisites injected),
+# audit logging enabled with retention, TLS 1.2 minimum on the API server and
+# the kubelets, idle streaming timeouts, and a pod security admission
+# configuration keeping "restricted" as the default while exempting the
+# documented Rancher, CNI and storage system namespaces so the cluster stays
+# manageable. OS-level STIG items belong to the node image (use a hardened
+# SLES image in VM_IMAGE_NAME); see docs/compliance.md for the layer split.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${NAMESPACE}
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}
+  labels:
+${RANCHER_TURTLES_LABEL:""}
+    ccm: external
+    csi: external
+    cni: external
+spec:
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    kind: RKE2ControlPlane
+    name: ${CLUSTER_NAME}-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: HarvesterCluster
+    name: ${CLUSTER_NAME}-hv
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HarvesterCluster
+metadata:
+  name: ${CLUSTER_NAME}-hv
+  namespace: ${NAMESPACE}
+spec:
+  targetNamespace: ${TARGET_HARVESTER_NAMESPACE}
+  loadBalancerConfig:
+    ipamType: pool
+    ipPoolRef: ${IP_POOL_NAME}
+    listeners:
+    - name: rke2-server
+      port: 9345
+      protocol: TCP
+      backendPort: 9345
+  server: ${HARVESTER_ENDPOINT}
+  identitySecret:
+    namespace: ${NAMESPACE}
+    name: hv-identity-secret
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: ${NAMESPACE}
+  name: hv-identity-secret
+data:
+  kubeconfig: ${HARVESTER_KUBECONFIG_B64}
+---
+# Audit policy consumed by the control plane (STIG: audit logging enabled).
+# Metadata level for everything, request/response bodies excluded so secrets
+# never land in the audit log.
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-audit-policy
+stringData:
+  audit-policy.yaml: |
+    apiVersion: audit.k8s.io/v1
+    kind: Policy
+    omitStages:
+      - RequestReceived
+    rules:
+      - level: Metadata
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: RKE2ControlPlane
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-control-plane
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: ${KUBERNETES_VERSION}+rke2r1
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: HarvesterMachineTemplate
+        name: ${CLUSTER_NAME}-cp-machine
+  rolloutStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+  serverConfig:
+    cni: calico
+    cloudProviderName: external
+    auditPolicySecret:
+      name: ${CLUSTER_NAME}-audit-policy
+      namespace: ${NAMESPACE}
+    kubeAPIServer:
+      extraArgs:
+        - tls-min-version=VersionTLS12
+        - audit-log-maxage=30
+        - audit-log-maxbackup=10
+        - audit-log-maxsize=100
+  agentConfig:
+    cisProfile: cis
+    podSecurityAdmissionConfigFile: /etc/rancher/rke2/rancher-pss.yaml
+    kubelet:
+      extraArgs:
+        - tls-min-version=VersionTLS12
+        - streaming-connection-idle-timeout=5m
+        - make-iptables-util-chains=true
+  files:
+    - path: /etc/rancher/rke2/rancher-pss.yaml
+      owner: root:root
+      permissions: "0600"
+      content: |
+        apiVersion: apiserver.config.k8s.io/v1
+        kind: AdmissionConfiguration
+        plugins:
+          - name: PodSecurity
+            configuration:
+              apiVersion: pod-security.admission.config.k8s.io/v1
+              kind: PodSecurityConfiguration
+              defaults:
+                enforce: "restricted"
+                enforce-version: "latest"
+                audit: "restricted"
+                audit-version: "latest"
+                warn: "restricted"
+                warn-version: "latest"
+              exemptions:
+                usernames: []
+                runtimeClasses: []
+                namespaces:
+                  - kube-system
+                  - cis-operator-system
+                  - tigera-operator
+                  - calico-system
+                  - cattle-system
+                  - cattle-fleet-system
+                  - cattle-fleet-local-system
+                  - cattle-impersonation-system
+                  - cattle-monitoring-system
+                  - cattle-provisioning-capi-system
+                  - cattle-resources-system
+                  - cattle-ui-plugin-system
+                  - fleet-default
+                  - longhorn-system
+                  - ingress-nginx
+  preRKE2Commands:
+    - useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+    - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
+    - sysctl -p /etc/sysctl.d/90-kubelet.conf
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: RKE2ConfigTemplate
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-worker
+spec:
+  template:
+    spec:
+      agentConfig:
+        cisProfile: cis
+        kubelet:
+          extraArgs:
+            - tls-min-version=VersionTLS12
+            - streaming-connection-idle-timeout=5m
+            - make-iptables-util-chains=true
+      preRKE2Commands:
+        - useradd -r -c "etcd user" -s /sbin/nologin -M etcd -U || true
+        - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
+        - sysctl -p /etc/sysctl.d/90-kubelet.conf
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineDeployment
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-workers
+spec:
+  clusterName: ${CLUSTER_NAME}
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}
+  template:
+    spec:
+      bootstrap:
+        configRef:
+          apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+          kind: RKE2ConfigTemplate
+          name: ${CLUSTER_NAME}-worker
+          namespace: ${NAMESPACE}
+      clusterName: ${CLUSTER_NAME}
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: HarvesterMachineTemplate
+        name: ${CLUSTER_NAME}-wk-machine
+        namespace: ${NAMESPACE}
+      version: ${KUBERNETES_VERSION}+rke2r1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HarvesterMachineTemplate
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-wk-machine
+spec:
+  template:
+    spec:
+      cpu: 2
+      memory: 4Gi
+      sshUser: ${SSH_USER}
+      sshKeyPair: ${SSH_KEYPAIR}
+      networks:
+      - ${VM_NETWORK}
+      volumes:
+      - volumeType: image
+        imageName: ${VM_IMAGE_NAME}
+        volumeSize: ${VM_DISK_SIZE}
+        bootOrder: 0
+      firmware:
+        efi: true
+        secureBoot: true
+      tpm:
+        enabled: true
+        persistent: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: HarvesterMachineTemplate
+metadata:
+  namespace: ${NAMESPACE}
+  name: ${CLUSTER_NAME}-cp-machine
+spec:
+  template:
+    spec:
+      cpu: 2
+      memory: 8Gi
+      sshUser: ${SSH_USER}
+      sshKeyPair: ${SSH_KEYPAIR}
+      networks:
+      - ${VM_NETWORK}
+      volumes:
+      - volumeType: image
+        imageName: ${VM_IMAGE_NAME}
+        volumeSize: ${VM_DISK_SIZE}
+        bootOrder: 0
+      firmware:
+        efi: true
+        secureBoot: true
+      tpm:
+        enabled: true
+        persistent: true
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-ccm
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      ccm: external
+  resources:
+  - kind: ConfigMap
+    name: cloud-controller-manager-addon
+  strategy: Reconcile
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-harvester-csi
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      csi: external
+  resources:
+  - kind: ConfigMap
+    name: harvester-csi-driver-addon
+  strategy: Reconcile
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: crs-calico-chart-config
+  namespace: ${NAMESPACE}
+spec:
+  clusterSelector:
+    matchLabels:
+      cni: external
+  resources:
+  - kind: ConfigMap
+    name: calico-helm-config
+  strategy: Reconcile
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachineHealthCheck
+metadata:
+  name: ${CLUSTER_NAME}-mhc
+  namespace: ${NAMESPACE}
+spec:
+  clusterName: ${CLUSTER_NAME}
+  maxUnhealthy: 34%
+  nodeStartupTimeout: 20m
+  selector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: ${CLUSTER_NAME}

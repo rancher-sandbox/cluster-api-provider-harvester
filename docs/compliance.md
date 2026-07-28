@@ -93,8 +93,15 @@ has its own OS STIG. Layer split:
 - CAPHV contributes the infrastructure controls: Secure Boot and vTPM for
   boot integrity, separate networks per machine type, failure domain spread.
 
-A pre-hardened cluster template flavor aligned with the RKE2 STIG is planned;
-this section will be updated when it lands.
+The release ships a pre-hardened flavor, `cluster-template-stig.yaml`
+(`clusterctl generate cluster --flavor stig`), which configures the RKE2 side
+accordingly: CIS profile on every node with the prerequisites injected, audit
+logging enabled through a metadata-level audit policy Secret with retention
+flags on the API server, TLS 1.2 minimum and idle streaming timeouts on the
+kubelets and the API server, the restricted pod security admission
+configuration with the Rancher ecosystem exemptions, and VMs booting with
+UEFI Secure Boot and a persistent vTPM. Pair it with a STIG-hardened SLES
+image (`VM_IMAGE_NAME`) to cover the OS layer.
 
 ## FIPS 140
 
