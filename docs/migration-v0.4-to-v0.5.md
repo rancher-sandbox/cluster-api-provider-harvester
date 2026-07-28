@@ -1,7 +1,7 @@
 # Migrating from v0.4.x to v0.5.x
 
 v0.5.0 graduates the CAPHV API from `v1alpha1` to **`v1beta1`**: the API is now
-covered by compatibility guarantees — no breaking change without a conversion path
+covered by compatibility guarantees - no breaking change without a conversion path
 and a deprecation window.
 
 ## What changes

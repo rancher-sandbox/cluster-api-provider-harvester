@@ -1,7 +1,7 @@
 # Migrating CAPHV from v0.2.x to v0.3.0
 
 CAPHV v0.3.0 targets the **Cluster API v1.12 / v1beta2** ecosystem. It is
-**not backward-compatible** with managers running CAPI v1.10 — installing
+**not backward-compatible** with managers running CAPI v1.10 - installing
 v0.3.0 on top of an unprepared manager will fail because the controller
 looks up Cluster objects via `cluster.x-k8s.io/v1beta2`, which only
 exists from CAPI core v1.11+.
@@ -38,10 +38,10 @@ Go 1.24+ is required when building CAPHV from source. CAPHV v0.3.0 declares
 CAPHV v0.3.0 will not reconcile against CAPI v1.10. Bump the dependent
 providers in this order:
 
-1. **CAPI core** v1.10.x → v1.12.x
-2. **cluster-api-provider-rke2** v0.21.x → v0.24.x (bootstrap and control plane)
-3. **Rancher Turtles** v0.18.x / v0.20.x → v0.26.x
-4. (optional) **CAAPF** v0.12 → v0.13+
+1. **CAPI core** v1.10.x -> v1.12.x
+2. **cluster-api-provider-rke2** v0.21.x -> v0.24.x (bootstrap and control plane)
+3. **Rancher Turtles** v0.18.x / v0.20.x -> v0.26.x
+4. (optional) **CAAPF** v0.12 -> v0.13+
 
 If you are running Rancher Turtles, the simplest path is to update the
 Turtles Helm chart to v0.26.x and let it reconcile the bumped versions
@@ -117,7 +117,7 @@ kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvest
 
 The release artifact updates the CRDs, RBAC, deployment, webhooks, and
 cert-manager `Certificate`. Existing `HarvesterCluster` / `HarvesterMachine`
-resources are preserved — only the `status.conditions` schema changes (see
+resources are preserved - only the `status.conditions` schema changes (see
 next section).
 
 ## 5. Status changes you may notice
@@ -130,7 +130,7 @@ next section).
   by `status.initialization.infrastructureProvisioned` (`*bool`). This
   is a CAPI v1beta2 change, transparent if you only read
   `status.conditions[?(@.type=='InfrastructureReady')].status`.
-- `Cluster.spec.infrastructureRef.namespace` is no longer set — the
+- `Cluster.spec.infrastructureRef.namespace` is no longer set - the
   infra reference is always in the same namespace as the Cluster.
 
 ## 6. Update your ClusterClass and Cluster templates
@@ -152,7 +152,7 @@ RKE2 CRDs, bump the apiVersions:
 
 The core CAPI types (`Cluster`, `ClusterClass`, `ClusterResourceSet`,
 `MachineHealthCheck`) may remain on `cluster.x-k8s.io/v1beta1` in your
-rendered YAML — the CAPI v1.12 conversion webhook will transparently
+rendered YAML - the CAPI v1.12 conversion webhook will transparently
 upgrade them to v1beta2 internally. The shipped `caphv-generate` script
 already uses the right mix.
 
@@ -164,7 +164,7 @@ If anything goes wrong:
 2. Delete `out/infrastructure-components.yaml` (the v0.3 artifact) and
    re-apply the v0.2.9 one.
 3. Note that the CAPI ecosystem (CAPI v1.12 + RKE2 v0.24+) does **not**
-   need to roll back — v0.2.9 happens to also work against v1.12 because
+   need to roll back - v0.2.9 happens to also work against v1.12 because
    v1.10/v1beta1 types are still served via the conversion webhook.
 
 ## 8. Validated end-to-end
@@ -181,4 +181,4 @@ CAPHV v0.3.0 release was validated on a clean management cluster:
 - ClusterClass topology end-to-end: `HarvesterCluster` +
   `HarvesterMachine` + `RKE2ControlPlane` created, VM provisioned on
   Harvester 1.8.0 (KubeVirt 1.7.0), IP allocated from `capi-vm-pool`,
-  `providerID` assigned, node Ready, scale-up worker 0→1→0 OK
+  `providerID` assigned, node Ready, scale-up worker 0->1->0 OK

@@ -105,8 +105,8 @@ spec:
 ```
 
 Key differences from manual deployment:
-- `enableAutomaticUpdate: true` — Turtles polls for new versions
-- `fetchConfig.url` uses `/releases/latest/download/` — resolves to the latest release
+- `enableAutomaticUpdate: true` - Turtles polls for new versions
+- `fetchConfig.url` uses `/releases/latest/download/` - resolves to the latest release
 
 **Manual upgrade** (if auto-update is disabled):
 
@@ -174,7 +174,7 @@ kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
 ## Installation without Rancher (clusterctl / direct manifests)
 
 Rancher Turtles is the recommended delivery vehicle, but it is **not** required.
-CAPHV talks to Harvester directly through the identity Secret — Rancher is never
+CAPHV talks to Harvester directly through the identity Secret - Rancher is never
 on that path. You can run CAPHV on any management cluster (a plain RKE2/k3s/kind
 cluster, or even Harvester's own embedded cluster) by installing the CAPI stack
 yourself.
@@ -186,10 +186,10 @@ webhooks.
 Both methods below were validated on a clean cluster: all four controllers reach
 `1/1 Running` and the CAPHV webhook becomes Ready.
 
-### Method A — clusterctl (recommended when Rancher is absent)
+### Method A - clusterctl (recommended when Rancher is absent)
 
 `clusterctl` resolves provider versions, installs cert-manager, and substitutes
-the `${...}` parameters in each provider's components — so the RKE2 controllers
+the `${...}` parameters in each provider's components - so the RKE2 controllers
 come up cleanly.
 
 CAPHV is not a built-in clusterctl provider, so register it in the clusterctl
@@ -219,10 +219,10 @@ clusterctl init \
 > the release's `metadata.yaml`, which must contain a `0.3` series
 > (`contract: v1beta2`). If `clusterctl init` reports
 > *"version v0.3.0 ... does not match any release series. Available series:
-> [0.2, 0.1]"*, the release asset predates the fix — drop a corrected
+> [0.2, 0.1]"*, the release asset predates the fix - drop a corrected
 > `metadata.yaml` into a clusterctl overrides folder:
 > `~/.cluster-api/overrides/infrastructure-harvester/v0.3.0/metadata.yaml`
-> with the `0.3 → v1beta2` series, alongside a copy of
+> with the `0.3 -> v1beta2` series, alongside a copy of
 > `infrastructure-components.yaml`, and re-run.
 
 Verify:
@@ -234,7 +234,7 @@ kubectl get pods -n capi-system -n rke2-bootstrap-system \
 # issues the webhook cert
 ```
 
-### Method B — raw manifests (airgap / GitOps, no clusterctl)
+### Method B - raw manifests (airgap / GitOps, no clusterctl)
 
 The published `*-components.yaml` are designed for clusterctl/operator and carry
 unrendered `${VAR:=default}` placeholders (this is the CAPI convention, true of
@@ -266,7 +266,7 @@ kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvest
 > applies the same defaults clusterctl would.
 
 After either method, create clusters exactly as documented elsewhere in this
-guide (ClusterClass + `caphv-generate`, or the CAPIProvider examples — the
+guide (ClusterClass + `caphv-generate`, or the CAPIProvider examples - the
 CRDs and controller are identical, only the install path differs).
 
 ---
@@ -567,7 +567,7 @@ kubectl --kubeconfig <harvester-kubeconfig> -n <target-ns> patch vm <cp-vm-name>
   --type=merge -p '{"spec":{"runStrategy":"Halted"}}'
 ```
 
-> **Do not scale the control plane to zero** — the RKE2ControlPlane webhook
+> **Do not scale the control plane to zero** - the RKE2ControlPlane webhook
 > rejects `replicas <= 0`. Halting the VM with the cluster paused achieves
 > the same effect.
 
@@ -578,7 +578,7 @@ kubectl --kubeconfig <harvester-kubeconfig> -n <target-ns> patch vm <cp-vm-name>
 >    machine.cluster.x-k8s.io/exclude-node-draining=true \
 >    machine.cluster.x-k8s.io/exclude-wait-for-node-volume-detach=true`
 > A Machine stuck in `Deleting` while the cluster is paused will only
-> finalize after unpausing — or remove its finalizers manually once you
+> finalize after unpausing - or remove its finalizers manually once you
 > have confirmed the Harvester VM and PVC are gone.
 
 **Resume:**
@@ -911,7 +911,7 @@ multiple subnets), you can configure multiple IPPools with ordered fallback.
 
 ### Configuration
 
-**Option A — Single pool** (backward compatible):
+**Option A - Single pool** (backward compatible):
 
 ```yaml
 spec:
@@ -921,7 +921,7 @@ spec:
     subnetMask: "255.255.0.0"
 ```
 
-**Option B — Multiple pools with fallback**:
+**Option B - Multiple pools with fallback**:
 
 ```yaml
 spec:
@@ -1000,6 +1000,47 @@ override is fully backward compatible. Notes:
   the same machine.
 - Network-aware selection applies to the machine-level pool list as well.
 
+## Encrypted storage
+
+VM disks can be encrypted at rest by Longhorn (dm-crypt under the hood) without
+any CAPHV-specific configuration: the provider resolves the StorageClass of an
+image volume from the image itself, so an encrypted image transparently yields
+encrypted root disks. Setup on the Harvester side:
+
+1. Create the encryption key secret (the `CRYPTO_PBKDF` field is required by
+   the Harvester validation):
+
+```bash
+kubectl create secret generic vm-encryption-key -n default \
+  --from-literal=CRYPTO_KEY_VALUE="$(openssl rand -base64 32)" \
+  --from-literal=CRYPTO_KEY_PROVIDER=secret \
+  --from-literal=CRYPTO_KEY_CIPHER=aes-xts-plain64 \
+  --from-literal=CRYPTO_KEY_HASH=sha256 \
+  --from-literal=CRYPTO_KEY_SIZE=256 \
+  --from-literal=CRYPTO_PBKDF=argon2i
+```
+
+2. Create an encrypted StorageClass referencing the secret (`encrypted: "true"`
+   plus the six `csi.storage.k8s.io/*-secret-name/namespace` parameters).
+
+3. Clone the node image into an encrypted one: a `VirtualMachineImage` with
+   `sourceType: clone`, `securityParameters: {cryptoOperation: encrypt,
+   sourceImageName: ..., sourceImageNamespace: ...}` and the annotation
+   `harvesterhci.io/storageClassName: <encrypted-storage-class>`.
+
+4. Reference the encrypted image in the machine template
+   (`volumes[].imageName`). Root disks then live on the image's encrypted
+   StorageClass. For encrypted data volumes, use `volumeType: storageClass`
+   with the encrypted StorageClass directly.
+
+Size the volumes strictly larger than the virtual size of the source image:
+the LUKS header consumes space, and Longhorn rejects an encrypted volume equal
+to the backing image size ("volume size should be larger than the backing
+image size"). For a 10Gi image, request at least 11Gi.
+
+This is the building block for the BSI APP.4.4.A20 requirement (encrypted data
+storage); see `docs/compliance.md` for the full mapping.
+
 ## Failure domains
 
 The provider discovers the failure domains of the target Harvester cluster and
@@ -1077,7 +1118,7 @@ caphv-generate --ip-pool-refs "pool-a,pool-b,pool-c" ...
 caphv-generate --name multipool-test --ip-pool-refs "pool-a,pool-b" [other flags...] --apply
 ```
 
-3. **Scale up to 4 machines** (2 CP + 2 workers) — should allocate from both pools:
+3. **Scale up to 4 machines** (2 CP + 2 workers) - should allocate from both pools:
 
 ```bash
 # Verify allocations
@@ -1087,7 +1128,7 @@ kubectl get harvestermachines -n multipool-test -o custom-columns=\
 # Expected: first 2 machines from pool-a, next 2 from pool-b
 ```
 
-4. **Delete one machine** — verify its IP is released from the correct pool:
+4. **Delete one machine** - verify its IP is released from the correct pool:
 
 ```bash
 # Before delete: check pool-a status.allocated

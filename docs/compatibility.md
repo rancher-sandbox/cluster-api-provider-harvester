@@ -1,7 +1,7 @@
 # Compatibility matrix
 
 Rancher drives the CAPI core version (through the Turtles system chart), and the CAPI
-core version determines which provider contract is exercised — this matrix records
+core version determines which provider contract is exercised - this matrix records
 which CAPHV release works with what, and how each pairing is validated.
 
 | CAPHV | Provider API | CAPI contract published | CAPI core | Rancher / Turtles | Validation |
