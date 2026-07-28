@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Workload node initialization requeue**: a machine whose node registered in
+  the workload cluster after the machine's last event-driven reconcile stayed
+  in the `Provisioned` phase forever: the node initialization (providerID,
+  uninitialized taint removal) silently failed and nothing triggered another
+  reconcile. The reconciler now requeues until the node is initialized.
+  Clusters with a MachineHealthCheck were masking the gap (its probes kept
+  generating events); the shipped ClusterClass has none and exposed it.
+
 ### Added
 
 - **FIPS enforcement switch in the ClusterClass**: the new `fipsRequired`

@@ -171,8 +171,7 @@ func fakeNodeServer(node *v1.Node) (*httptest.Server, *rest.Config) {
 var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 	It("should return immediately when providerID is empty", func() {
 		logger := logr.Discard()
-		InitializeWorkloadNode(context.Background(), logger, &rest.Config{Host: "http://unused"}, "test-node", "")
-		// No panic, no error - function returns immediately
+		Expect(InitializeWorkloadNode(context.Background(), logger, &rest.Config{Host: "http://unused"}, "test-node", "")).To(BeFalse())
 	})
 
 	It("should set providerID and remove taint on a node", func() {
@@ -193,7 +192,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 		defer server.Close()
 
 		logger := logr.Discard()
-		InitializeWorkloadNode(context.Background(), logger, config, "test-node", "harvester://test-provider-id")
+		Expect(InitializeWorkloadNode(context.Background(), logger, config, "test-node", "harvester://test-provider-id")).To(BeTrue())
 
 		// Verify by fetching the node again through the fake server
 		// The function should have set providerID and removed the uninitialized taint
@@ -216,8 +215,8 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 		defer server.Close()
 
 		logger := logr.Discard()
-		// No taint, providerID already set - should be a no-op
-		InitializeWorkloadNode(context.Background(), logger, config, "already-initialized", "harvester://new-id")
+		// No taint, providerID already set - should be a no-op reported as initialized
+		Expect(InitializeWorkloadNode(context.Background(), logger, config, "already-initialized", "harvester://new-id")).To(BeTrue())
 	})
 
 	It("should handle node not found (not registered yet)", func() {
@@ -232,8 +231,9 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 		defer server.Close()
 
 		logger := logr.Discard()
-		// Request for a different node name - should get 404 and return silently
-		InitializeWorkloadNode(context.Background(), logger, config, "non-existent-node", "harvester://some-id")
+		// Request for a different node name: not initialized, the caller must requeue
+		// (a machine whose node registers later would otherwise stay Provisioned forever)
+		Expect(InitializeWorkloadNode(context.Background(), logger, config, "non-existent-node", "harvester://some-id")).To(BeFalse())
 	})
 
 	It("should only set providerID when there is no taint", func() {
@@ -254,7 +254,7 @@ var _ = Describe("InitializeWorkloadNode with fake API server", func() {
 		defer server.Close()
 
 		logger := logr.Discard()
-		InitializeWorkloadNode(context.Background(), logger, config, "needs-pid-only", "harvester://pid-only")
+		Expect(InitializeWorkloadNode(context.Background(), logger, config, "needs-pid-only", "harvester://pid-only")).To(BeTrue())
 	})
 
 	It("should only remove taint when providerID is already set", func() {
