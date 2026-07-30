@@ -35,7 +35,7 @@ All IPs in the configured IPPool range have been allocated. This can happen when
 1. Check the current pool state on the Harvester cluster:
    ```bash
    # On Harvester
-   kubectl get ippool <pool-name> -n <namespace> -o jsonpath='{.status.available}'
+   kubectl get ippools.loadbalancer.harvesterhci.io <pool-name> -n <namespace> -o jsonpath='{.status.available}'
    ```
 2. If the available count is 0, either expand the pool range or free leaked IPs (see IP Leak section).
 3. To expand the pool, edit the IPPool on Harvester:
@@ -62,7 +62,7 @@ The `vmNetworkConfig.ipPoolRef` in the HarvesterCluster spec references a pool n
 1. Verify the pool exists on Harvester in the correct namespace:
    ```bash
    # On Harvester
-   kubectl get ippool -A
+   kubectl get ippools.loadbalancer.harvesterhci.io -A
    ```
 2. Confirm the `ipPoolRef` value in your HarvesterCluster matches `<namespace>/<name>` or just `<name>` if the pool is in the same namespace as `targetNamespace`:
    ```bash
@@ -87,7 +87,7 @@ The CAPHV controller calls `Store.Release()` during machine deletion to free the
 1. Identify the leaked IP:
    ```bash
    # On Harvester
-   kubectl get ippool <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | python3 -m json.tool
+   kubectl get ippools.loadbalancer.harvesterhci.io <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | python3 -m json.tool
    ```
 2. Cross-reference with existing HarvesterMachine objects:
    ```bash
@@ -99,7 +99,7 @@ The CAPHV controller calls `Store.Release()` during machine deletion to free the
    kubectl edit ippool <pool-name> -n <ns>
    ```
    Remove the leaked entry from `status.allocated` and increment `status.available` by the number of entries removed.
-4. To prevent future leaks, ensure the CAPHV controller is always running and that HarvesterMachine finalizers (`harvestermachine.infrastructure.cluster.x-k8s.io`) are never removed manually.
+4. To prevent future leaks, ensure the CAPHV controller is always running and that HarvesterMachine finalizers (`harvestermachine.infrastructure.cluster.x-k8s.io/finalizer` (older objects may carry the legacy `harvestermachine.infrastructure.cluster.x-k8s.io`)) are never removed manually.
 
 ---
 
@@ -118,7 +118,7 @@ This was a bug in versions prior to v0.2.0 where `Store.Reserve()` did not updat
 2. For an already-affected cluster, manually resolve the conflict:
    ```bash
    # On Harvester - check allocated map
-   kubectl get ippool <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | python3 -m json.tool
+   kubectl get ippools.loadbalancer.harvesterhci.io <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | python3 -m json.tool
    ```
 3. Delete one of the conflicting machines and let CAPHV recreate it with a new unique IP:
    ```bash
@@ -579,7 +579,10 @@ The Turtles controller caches the CA setting. After changing `cacerts`, a contro
    # On Harvester
    kubectl get storageclass
    ```
-   For image volumes, the expected storage class is `longhorn-<imageName>`.
+   Since v0.5.2 the storage class of an image volume is read from
+`VirtualMachineImage.status.storageClassName` (recent Harvester names them
+`lh-<uuid>`); the legacy `longhorn-<imageName>` convention is only a fallback
+for images whose status is not populated yet.
 3. Fix the `imageName` in the HarvesterMachineTemplate to use `namespace/name` format:
    ```yaml
    volumes:
@@ -627,6 +630,20 @@ The `bootOrder` field in the Volume spec determines which disk KubeVirt tries to
 ---
 
 ## Machine Not Becoming Ready
+
+### Machine stuck in Provisioned with a Ready node (pre-v0.10.0)
+
+**Symptoms:** the workload node is `Ready` but its `spec.providerID` is empty,
+the Machine stays in `Provisioned` phase forever, and the controller logs stay
+silent about the machine.
+
+**Cause:** before v0.10.0, a node registering after the machine's last
+event-driven reconcile was never initialized (no requeue). Clusters with a
+MachineHealthCheck were shielded (its probes keep generating events); clusters
+without one exposed the gap.
+
+**Fix:** upgrade to v0.10.0+. On older versions, force one reconcile:
+`kubectl annotate harvestermachine <name> -n <ns> debug/kick=$(date +%s) --overwrite`.
 
 ### ProviderID Not Set
 
@@ -808,12 +825,12 @@ kubectl describe machinehealthcheck <name> -n <ns>
 
 List all IPPools and their availability:
 ```bash
-kubectl get ippool -A -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,AVAILABLE:.status.available
+kubectl get ippools.loadbalancer.harvesterhci.io -A -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,AVAILABLE:.status.available
 ```
 
 Check IP pool allocations (detailed):
 ```bash
-kubectl get ippool <name> -n <ns> -o jsonpath='{.status.allocated}' | python3 -m json.tool
+kubectl get ippools.loadbalancer.harvesterhci.io <name> -n <ns> -o jsonpath='{.status.allocated}' | python3 -m json.tool
 ```
 
 List VMs with their status:

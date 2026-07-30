@@ -106,7 +106,7 @@ EOF
 > **Point critique** : KubeVirt utilise un bridge binding qui **intercepte le
 > trafic DHCP externe**. Les VMs ne peuvent PAS obtenir une IP via DHCP depuis
 > le reseau physique. Il faut obligatoirement configurer une **IP statique**
-> soit via `vmNetworkConfig` (rc7+, recommande), soit via `networkConfig` manuel.
+> soit via `vmNetworkConfig` (recommande), soit via `networkConfig` manuel.
 
 ---
 
@@ -115,45 +115,27 @@ EOF
 ### Providers deja installes (via Rancher Turtles)
 
 Sur notre Rancher Manager, Turtles a deja installe :
-- CAPI Core v1.10.6
+- CAPI Core v1.12.x
 - RKE2 Bootstrap v0.21.1
 - RKE2 Control Plane v0.21.1
 
 ### Deployer CAPHV
 
 ```bash
-# Build de l'image (depuis node1)
-cd /tmp/caphv
-podman build --build-arg TARGETARCH=amd64 . \
-  -t ghcr.io/rancher-sandbox/cluster-api-provider-harvester:dev
-
-# Transferer l'image sur le management cluster (si pas de registry)
-podman save ghcr.io/rancher-sandbox/cluster-api-provider-harvester:dev \
-  | ssh <user>@<management-node> 'sudo /var/lib/rancher/rke2/bin/ctr \
-    --address /run/k3s/containerd/containerd.sock \
-    --namespace k8s.io images import -'
-
-# Deployer les CRDs et le controller
-# (depuis le management cluster)
-kubectl apply -f config/crd/bases/
-kubectl label crd harvesterclusters.infrastructure.cluster.x-k8s.io \
-  cluster.x-k8s.io/v1beta1=v1alpha1
-kubectl label crd harvestermachinetemplates.infrastructure.cluster.x-k8s.io \
-  cluster.x-k8s.io/v1beta1=v1alpha1
-kubectl label crd harvestermachines.infrastructure.cluster.x-k8s.io \
-  cluster.x-k8s.io/v1beta1=v1alpha1
-kubectl label crd harvesterclustertemplates.infrastructure.cluster.x-k8s.io \
-  cluster.x-k8s.io/v1beta1=v1alpha1
-
-# Deployer le controller manager
-kubectl apply -f config/default/
+# Installer la derniere release (les CRDs portent deja les labels de contrat
+# v1beta1 + v1beta2 ; aucune manipulation manuelle n'est necessaire)
+kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml
 ```
+
+Alternatives : via un `CAPIProvider` Turtles ou `clusterctl init --infrastructure
+harvester:v0.10.1` (voir `docs/operations.md`). Le build d'image local n'est utile
+que pour le developpement (`make docker-build`).
 
 ---
 
 ## Creer un cluster RKE2
 
-### Methode recommandee : avec allocation IP automatique (v0.2.0-rc7+, rc10 recommande)
+### Methode recommandee : avec allocation IP automatique
 
 Cette methode utilise `vmNetworkConfig` sur le HarvesterCluster pour allouer
 automatiquement une IP unique a chaque VM depuis un IPPool Harvester.
@@ -189,15 +171,15 @@ metadata:
     csi: external
 spec:
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: RKE2ControlPlane
     name: capi-test-cp
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterCluster
     name: capi-test-hv
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterCluster
 metadata:
   name: capi-test-hv
@@ -227,7 +209,7 @@ spec:
     dnsSearch:
       - "home.lo"
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: RKE2ControlPlane
 metadata:
   name: capi-test-cp
@@ -244,12 +226,12 @@ spec:
     cni: calico
     cloudProviderName: external
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: HarvesterMachineTemplate
     name: capi-test-machine
     namespace: capi-test
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1alpha1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: HarvesterMachineTemplate
 metadata:
   name: capi-test-machine
@@ -292,7 +274,7 @@ spec:
 ```
 
 > **Limite** : avec cette methode, tous les noeuds recoivent la meme IP.
-> Utiliser `vmNetworkConfig` (rc7+) pour le multi-noeud.
+> Utiliser `vmNetworkConfig` pour le multi-noeud.
 
 ### Appliquer
 
@@ -324,14 +306,14 @@ sudo systemctl status rke2-server
 sudo /var/lib/rancher/rke2/bin/kubectl --kubeconfig /etc/rancher/rke2/rke2.yaml get nodes
 ```
 
-### Initialisation des noeuds (automatique depuis rc10)
+### Initialisation des noeuds (automatique)
 
 Le cloud-provider-harvester a besoin du reseau pod (calico) pour atteindre
 l'API Harvester et initialiser les noeuds (supprimer le taint `uninitialized`
 et definir le `providerID`). Mais calico est bloque par le taint
-`uninitialized` — c'est un probleme oeuf/poule.
+`uninitialized` - c'est un probleme oeuf/poule.
 
-**Depuis rc10** : CAPHV resout ce probleme automatiquement. Le controller
+CAPHV resout ce probleme automatiquement. Le controller
 set le `providerID` et retire le taint `uninitialized` directement sur le
 noeud du workload cluster depuis le management cluster, sans passer par le
 cloud-provider. Cela debloque calico, qui debloque le cloud-provider pour
@@ -390,7 +372,7 @@ Les machines sont supprimees progressivement. Les IPs sont liberees dans le pool
 
 ---
 
-## Resultat teste (v0.2.0-rc11, 2026-03-06)
+## Resultat teste (historique : v0.2.0, 2026-03-06 ; le cycle actuel est valide en continu par les suites de test/certification)
 
 Cluster `capi-test` avec 3 control plane nodes :
 
@@ -403,22 +385,22 @@ Cluster `capi-test` avec 3 control plane nodes :
 IPPool `capi-vm-pool` : 3/10 allouees, 7 disponibles.
 Cluster importe dans Rancher : `c-kzz9c`, statut Active.
 
-### Test de remediation automatique (rc10)
+### Test de remediation automatique
 
-Scenario : suppression d'une VM control-plane → remplacement sans intervention manuelle.
+Scenario : suppression d'une VM control-plane -> remplacement sans intervention manuelle.
 
 Timeline :
 - T+0 : VM `capi-test-machine-b9sm6` (172.16.3.46) supprimee sur Harvester
 - T+0s : Noeud passe `NotReady`, MHC detecte le noeud unhealthy
 - T+5min : MHC depasse le seuil (5min NotReady), marque la Machine pour suppression
 - T+5min : ReconcileDelete : IP liberee, nettoyage etcd execute
-  (membre deja retire par RKE2ControlPlane → "nothing to remove")
+  (membre deja retire par RKE2ControlPlane -> "nothing to remove")
 - T+5min : Secret cloud-init et VM supprimes, nouvelle Machine cree par RKE2ControlPlane
 - T+6min : Nouvelle VM `capi-test-machine-2jjjk` Running sur Harvester (IP 172.16.3.47)
 - T+8min : Nouveau noeud rejoint le cluster, providerID et taint geres automatiquement
 - T+9min : 3 noeuds `Ready`, cluster pleinement operationnel
 
-Aucune intervention manuelle requise — ni pour l'initialisation, ni pour le remplacement.
+Aucune intervention manuelle requise - ni pour l'initialisation, ni pour le remplacement.
 
 ---
 
@@ -452,7 +434,7 @@ Aucune intervention manuelle requise — ni pour l'initialisation, ni pour le re
 
 | Bug | Impact | Correction |
 |-----|--------|------------|
-| Topologie CPU : `sockets * cores * threads` applique 3 fois | VMs recevaient CPU^3 vCPUs (ex: 2 CPU → 8 vCPUs) | `sockets=1, threads=1, cores=N` pour N vCPUs demandes |
+| Topologie CPU : `sockets * cores * threads` applique 3 fois | VMs recevaient CPU^3 vCPUs (ex: 2 CPU -> 8 vCPUs) | `sockets=1, threads=1, cores=N` pour N vCPUs demandes |
 
 ### Amelioration rc9 : nettoyage etcd automatique
 
@@ -476,16 +458,16 @@ Aucune intervention manuelle requise — ni pour l'initialisation, ni pour le re
 
 | Fix | Detail |
 |-----|--------|
-| **PVCs orphelins a la suppression VM** | L'ancien flux supprimait les PVCs pendant que la VM terminait → webhook Harvester bloquait → au retry, VM disparue → PVCs jamais nettoyes. Nouveau flux : supprimer VM → requeue 10s → lister et supprimer PVCs par prefixe une fois la VM partie |
+| **PVCs orphelins a la suppression VM** | L'ancien flux supprimait les PVCs pendant que la VM terminait -> webhook Harvester bloquait -> au retry, VM disparue -> PVCs jamais nettoyes. Nouveau flux : supprimer VM -> requeue 10s -> lister et supprimer PVCs par prefixe une fois la VM partie |
 | **`memory.guest` manquant dans le domain spec** | Apres upgrade Harvester/KubeVirt, `memory.guest` ou `resources.limits.memory` est obligatoire. Les VMs creees avec seulement `resources.requests.memory` ne demarraient plus et n'affichaient pas la memoire dans l'UI. Corrige : `memory.guest` est maintenant defini sur chaque VM creee |
-| **Procedure de redemarrage post-upgrade Harvester** | Apres upgrade, les VMs existantes necessitent un patch manuel : `kubectl patch vm <name> --type=json -p '[{"op":"add","path":"/spec/template/spec/domain/memory","value":{"guest":"<MEM>"}}]'`. De plus, `spec.running` est deprecie → utiliser `spec.runStrategy: Always` |
+| **Procedure de redemarrage post-upgrade Harvester** | Apres upgrade, les VMs existantes necessitent un patch manuel : `kubectl patch vm <name> --type=json -p '[{"op":"add","path":"/spec/template/spec/domain/memory","value":{"guest":"<MEM>"}}]'`. De plus, `spec.running` est deprecie -> utiliser `spec.runStrategy: Always` |
 
 ### Limites vs Terraform
 
 | | CAPI/CAPHV | Terraform |
 |---|---|---|
 | **Reconciliation continue** | Oui (controller loop) | Non (run manuel) |
-| **Multi-disk** | Non (1 disk) | Oui |
+| **Multi-disk** | Oui (multi-disk) | Oui |
 | **DHCP** | Non (bridge KubeVirt) | Oui (cloud-init gere par Harvester) |
 | **Maturite** | Alpha | Stable |
 | **Scaling** | Declaratif (replicas) avec IP pool auto | Manuel |
@@ -527,7 +509,7 @@ Depuis rc10, l'initialisation des noeuds est entierement automatique (plus
 besoin d'intervention manuelle sur le premier noeud), l'import Rancher est
 confirme automatique via Turtles, et des webhooks de validation sont
 disponibles. Le cycle complet fonctionne sans intervention :
-creation → scaling → remediation → remplacement en ~9 minutes.
+creation -> scaling -> remediation -> remplacement en ~9 minutes.
 
 Depuis rc11, les PVCs orphelins sont correctement nettoyes a la suppression
 de VMs, et la compatibilite avec les nouvelles versions de KubeVirt
@@ -536,6 +518,8 @@ de VMs, et la compatibilite avec les nouvelles versions de KubeVirt
 La seule limitation operationnelle restante est le besoin d'une image VM
 avec `iptables` pour les pods utilisant portmap CNI.
 
-Pour un usage production sur Harvester aujourd'hui, Terraform ou le
-provisioning natif Rancher restent plus matures, mais CAPHV offre une
-approche GitOps superieure pour les environnements multi-clusters.
+CAPHV est aujourd'hui utilisable en production : API v1beta1 stable, suites de
+certification continues contre un Harvester reel, deploiements industriels
+multi-VLAN, et options de durcissement (CIS, STIG, FIPS, Secure Boot/vTPM,
+failure domains). Son approche GitOps en fait l'outil de choix pour les
+environnements multi-clusters.

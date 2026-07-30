@@ -36,9 +36,9 @@ metadata:
 spec:
   name: harvester
   type: infrastructure
-  version: v0.3.0
+  version: v0.10.1
   fetchConfig:
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -96,7 +96,7 @@ metadata:
 spec:
   name: harvester
   type: infrastructure
-  version: v0.3.0
+  version: v0.10.1
   enableAutomaticUpdate: true
   fetchConfig:
     url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/latest/download/infrastructure-components.yaml
@@ -114,9 +114,9 @@ Key differences from manual deployment:
 # 1. Update the CAPIProvider version and URL
 kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
   "spec": {
-    "version": "v0.3.0",
+    "version": "v0.10.1",
     "fetchConfig": {
-      "url": "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml"
+      "url": "https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml"
     }
   }
 }'
@@ -140,13 +140,13 @@ kubectl wait --for=condition=Ready capiprovider/harvester -n caphv-system --time
 ```bash
 kubectl get deploy caphv-controller-manager -n caphv-system \
   -o jsonpath='{.spec.template.spec.containers[0].image}'
-# Expected: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.3.0
+# Expected: ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.10.1
 ```
 
 3. **Patch to new version** (manual upgrade test):
 ```bash
 kubectl patch capiprovider harvester -n caphv-system --type merge -p '{
-  "spec": {"version": "v0.3.0"}
+  "spec": {"version": "v0.10.1"}
 }'
 ```
 
@@ -179,11 +179,11 @@ on that path. You can run CAPHV on any management cluster (a plain RKE2/k3s/kind
 cluster, or even Harvester's own embedded cluster) by installing the CAPI stack
 yourself.
 
-The full stack for v0.3.0 is: **CAPI core v1.12.x + cluster-api-provider-rke2
-v0.25.0 (bootstrap + control plane) + CAPHV v0.3.0**, plus cert-manager for the
+The full stack for v0.10.1 is: **CAPI core v1.12.x + cluster-api-provider-rke2
+v0.25.0 (bootstrap + control plane) + CAPHV v0.10.1**, plus cert-manager for the
 webhooks.
 
-Both methods below were validated on a clean cluster: all four controllers reach
+Both methods below were validated on a clean cluster (originally with v0.3.0; the pins below track the current release): all four controllers reach
 `1/1 Running` and the CAPHV webhook becomes Ready.
 
 ### Method A - clusterctl (recommended when Rancher is absent)
@@ -199,7 +199,7 @@ config:
 # ~/.cluster-api/clusterctl.yaml
 providers:
   - name: harvester
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/v0.3.0/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml
     type: InfrastructureProvider
 ```
 
@@ -208,20 +208,21 @@ clusterctl init \
   --core cluster-api:v1.12.8 \
   --bootstrap rke2:v0.25.0 \
   --control-plane rke2:v0.25.0 \
-  --infrastructure harvester:v0.3.0
+  --infrastructure harvester:v0.10.1
 ```
 
 > **clusterctl version**: use `clusterctl` **v1.12.x**. Older clusterctl
 > (e.g. v1.10.x) defaults CAPI core to v1.10, which is incompatible with the
-> v1beta2 contract CAPHV v0.3.0 requires.
+> v1beta2 contract CAPHV v0.3.0+ requires.
 
-> **metadata.yaml requirement**: clusterctl maps `v0.3.0` to a CAPI contract via
-> the release's `metadata.yaml`, which must contain a `0.3` series
-> (`contract: v1beta2`). If `clusterctl init` reports
-> *"version v0.3.0 ... does not match any release series. Available series:
-> [0.2, 0.1]"*, the release asset predates the fix - drop a corrected
+> **metadata.yaml requirement**: clusterctl maps each version to a CAPI contract
+> via the release's `metadata.yaml`, which must contain the matching series
+> (for v0.10.1, a `0.10` series with `contract: v1beta2`). Every release since
+> v0.3.1 declares its series. If `clusterctl init` reports
+> *"version vX.Y.Z ... does not match any release series"*, the release asset
+> predates the fix - drop a corrected
 > `metadata.yaml` into a clusterctl overrides folder:
-> `~/.cluster-api/overrides/infrastructure-harvester/v0.3.0/metadata.yaml`
+> `~/.cluster-api/overrides/infrastructure-harvester/vX.Y.Z/metadata.yaml`
 > with the `0.3 -> v1beta2` series, alongside a copy of
 > `infrastructure-components.yaml`, and re-run.
 
@@ -258,7 +259,7 @@ for c in bootstrap-components control-plane-components; do
 done
 
 # 4. CAPHV (no placeholders to render)
-kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.3.0/infrastructure-components.yaml
+kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml
 ```
 
 > Without the `render` step, the RKE2 controllers crash-loop on the literal
@@ -298,7 +299,7 @@ kubectl get harvesterclusters.infrastructure.cluster.x-k8s.io -A -o yaml > backu
 kubectl get harvestermachines.infrastructure.cluster.x-k8s.io -A -o yaml > backup-harvestermachines.yaml
 kubectl get clusters.cluster.x-k8s.io -A -o yaml > backup-clusters.yaml
 kubectl get machines.cluster.x-k8s.io -A -o yaml > backup-machines.yaml
-kubectl get ippools.ipam.cluster.x-k8s.io -A -o yaml > backup-ippools.yaml
+kubectl --kubeconfig <harvester-kubeconfig> get ippools.loadbalancer.harvesterhci.io -o yaml > backup-ippools.yaml
 ```
 
 ### Step 3: Remove the manual deployment
@@ -332,7 +333,7 @@ kubectl get crd | grep harvester
 If CRDs were removed, re-apply them before proceeding:
 
 ```bash
-kubectl apply -f https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/v0.3.0/infrastructure-components.yaml --selector='apiextensions.k8s.io/v1=CustomResourceDefinition'
+curl -sL https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml | kubectl apply -f - --server-side --field-manager=crd-restore --prune=false
 ```
 
 ### Step 4: Create the CAPIProvider resource
@@ -872,6 +873,8 @@ Requirements:
 | `spec.networks` | At least one network required |
 | `spec.networkConfig.address` | Required when networkConfig is set |
 | `spec.networkConfig.gateway` | Required and must be a valid IP when networkConfig is set |
+| `spec.vmNetworkConfig` | Mutually exclusive with `networkConfig`; requires `ipPoolRef` or `ipPoolRefs` (inline `ipPool` is rejected at the machine level); `gateway` and `subnetMask` required and must be valid IPs |
+| `spec.firmware.secureBoot` | Requires `spec.firmware.efi` to be true |
 
 ### Troubleshooting webhook issues
 
@@ -898,7 +901,7 @@ If the webhook is down and blocking operations, temporarily remove it (use with 
 kubectl delete validatingwebhookconfiguration caphv-validating-webhook-configuration
 ```
 
-The controller will re-create it on the next restart if webhooks are enabled.
+The webhook configuration ships with the components: re-apply the release manifests (or let the CAPIProvider reconcile) to restore it; the controller does not re-create it by itself.
 
 ---
 
@@ -959,6 +962,63 @@ With the control-plane HarvesterMachineTemplate attached to `default/net-cp` and
 template attached to `default/net-workers`, each machine allocates from the pool matching its
 own network. If no listed pool matches a machine's networks, allocation fails with an explicit
 error rather than handing out an address from another network.
+
+### CLI usage
+
+```bash
+# Single pool (existing behavior)
+caphv-generate --ip-pool my-pool ...
+
+# Multiple pools
+caphv-generate --ip-pool-refs "pool-a,pool-b,pool-c" ...
+```
+
+### Functional test procedure
+
+1. **Create two small IPPools** on Harvester (e.g., 2 IPs each):
+
+```bash
+# pool-a: 172.16.3.40-41 (2 IPs)
+# pool-b: 172.16.3.42-43 (2 IPs)
+```
+
+2. **Deploy a cluster with `ipPoolRefs`** referencing both pools:
+
+```bash
+caphv-generate --name multipool-test --ip-pool-refs "pool-a,pool-b" [other flags...] --apply
+```
+
+3. **Scale up to 4 machines** (2 CP + 2 workers) - should allocate from both pools:
+
+```bash
+# Verify allocations
+kubectl get harvestermachines -n multipool-test -o custom-columns=\
+  NAME:.metadata.name,IP:.status.allocatedIPAddress,POOL:.status.allocatedPoolRef
+
+# Expected: first 2 machines from pool-a, next 2 from pool-b
+```
+
+4. **Delete one machine** - verify its IP is released from the correct pool:
+
+```bash
+# Before delete: check pool-a status.allocated
+kubectl get ippools.loadbalancer.harvesterhci.io pool-a -o jsonpath='{.status.allocated}' | jq .
+
+# Delete a machine
+kubectl delete machine <machine-name> -n multipool-test
+
+# After delete: IP removed from the correct pool (pool-a or pool-b)
+kubectl get ippools.loadbalancer.harvesterhci.io pool-a -o jsonpath='{.status.allocated}' | jq .
+```
+
+5. **Unit tests** (5 new tests):
+   - `allocateVMIP` fallback from pool-1 to pool-2 when pool-1 exhausted
+   - `allocateVMIP` error when all pools exhausted
+   - `allocateVMIP` backward compat with single `ipPoolRef`
+   - `allocateVMIP` sets `AllocatedPoolRef` correctly
+   - `releaseVMIP` uses `AllocatedPoolRef` for targeted release
+
+---
 
 ### Per machine type network configuration
 
@@ -1092,63 +1152,6 @@ Notes:
 - `tpm.persistent: true` keeps the TPM state across reboots (supported by the
   KubeVirt version shipped with current Harvester releases).
 - Machines without these blocks keep booting exactly as before.
-
-### CLI usage
-
-```bash
-# Single pool (existing behavior)
-caphv-generate --ip-pool my-pool ...
-
-# Multiple pools
-caphv-generate --ip-pool-refs "pool-a,pool-b,pool-c" ...
-```
-
-### Functional test procedure
-
-1. **Create two small IPPools** on Harvester (e.g., 2 IPs each):
-
-```bash
-# pool-a: 172.16.3.40-41 (2 IPs)
-# pool-b: 172.16.3.42-43 (2 IPs)
-```
-
-2. **Deploy a cluster with `ipPoolRefs`** referencing both pools:
-
-```bash
-caphv-generate --name multipool-test --ip-pool-refs "pool-a,pool-b" [other flags...] --apply
-```
-
-3. **Scale up to 4 machines** (2 CP + 2 workers) - should allocate from both pools:
-
-```bash
-# Verify allocations
-kubectl get harvestermachines -n multipool-test -o custom-columns=\
-  NAME:.metadata.name,IP:.status.allocatedIPAddress,POOL:.status.allocatedPoolRef
-
-# Expected: first 2 machines from pool-a, next 2 from pool-b
-```
-
-4. **Delete one machine** - verify its IP is released from the correct pool:
-
-```bash
-# Before delete: check pool-a status.allocated
-kubectl get ippool pool-a -o jsonpath='{.status.allocated}' | jq .
-
-# Delete a machine
-kubectl delete machine <machine-name> -n multipool-test
-
-# After delete: IP removed from the correct pool (pool-a or pool-b)
-kubectl get ippool pool-a -o jsonpath='{.status.allocated}' | jq .
-```
-
-5. **Unit tests** (5 new tests):
-   - `allocateVMIP` fallback from pool-1 to pool-2 when pool-1 exhausted
-   - `allocateVMIP` error when all pools exhausted
-   - `allocateVMIP` backward compat with single `ipPoolRef`
-   - `allocateVMIP` sets `AllocatedPoolRef` correctly
-   - `releaseVMIP` uses `AllocatedPoolRef` for targeted release
-
----
 
 ## Backup and Disaster Recovery
 
@@ -1285,10 +1288,13 @@ ssh <user>@<vm-ip> 'sudo cloud-init status --long'
 
 ```bash
 # Check current allocations
-kubectl get ippool -n <ns> -o yaml
+kubectl get ippools.loadbalancer.harvesterhci.io -o yaml   # on the Harvester cluster; cluster-scoped
 
 # Look at allocated IPs in status
-kubectl get ippool <pool-name> -n <ns> -o jsonpath='{.status.allocated}' | jq .
+kubectl get ippools.loadbalancer.harvesterhci.io <pool-name> -o jsonpath='{.status.allocated}' | jq .
+# Note: use the full resource name (the short name resolves to Calico's IPPool on
+# Harvester) and edit allocations by patching the main object: this CRD has no
+# status subresource.
 
 # If IPs are leaked (allocated but no corresponding machine), manually edit the IPPool:
 kubectl edit ippool <pool-name> -n <ns>

@@ -6,7 +6,7 @@ Thank you for your interest in contributing to CAPHV (Cluster API Provider Harve
 
 ### Prerequisites
 
-- Go 1.24+ (see `go.mod` for exact version)
+- Go 1.26+ (see `go.mod` for exact version)
 - `kubectl` configured with access to a management cluster
 - Access to a Harvester HCI cluster (v1.7+)
 - [cert-manager](https://cert-manager.io/) installed on the management cluster (for webhooks)
@@ -73,7 +73,7 @@ export CAPHV_HARVESTER_SSH="rancher@<your-harvester-ip>"
 
 ## Pull Request Process
 
-1. Fork the repository and create a feature branch from `harvester-v1.7.1`
+1. Fork the repository and create a feature branch from `main`
 2. Make your changes, ensuring all tests pass
 3. Write clear commit messages describing **why** the change was made
 4. Open a PR with a description of the change and any relevant issue references
@@ -97,8 +97,8 @@ golangci-lint run ./...
 Key conventions:
 - Follow standard Go project layout
 - Use `controller-runtime` patterns for reconcilers
-- Admission webhooks implement `admission.CustomValidator` (not the deprecated `webhook.Validator`)
-- API types live in `api/v1alpha1/`
+- Admission webhooks implement the typed `admission.Validator[T]` (not the deprecated `webhook.Validator`)
+- API types live in `api/v1beta1/` (hub and stored version; `api/v1alpha1/` is deprecated and served through conversion)
 - Controller logic lives in `internal/controller/`
 - Utility functions live in `util/`
 

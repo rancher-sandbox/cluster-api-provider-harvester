@@ -6,6 +6,7 @@ which CAPHV release works with what, and how each pairing is validated.
 
 | CAPHV | Provider API | CAPI contract published | CAPI core | Rancher / Turtles | Validation |
 |-------|--------------|-------------------------|-----------|-------------------|------------|
+| v0.6.x-v0.10.x | `v1beta1` (`v1alpha1` served, deprecated) | v1beta1 + v1beta2 | v1.12.x (built against v1.13.4) | Rancher 2.14.x / Turtles 0.26.x | Turtles integration suite (`CreateUsingGitOpsSpec`) twice a week on a real Harvester (self-hosted runner), functional RC runs for every feature release, user production deployment with three node categories on separate VLANs ([#234](https://github.com/rancher-sandbox/cluster-api-provider-harvester/issues/234)) |
 | v0.5.x | `v1beta1` (`v1alpha1` served, deprecated) | v1beta1 + v1beta2 | v1.12.x | Rancher 2.14.x / Turtles 0.26.x | nightly version-pairing (CAPI v1.12.7), Rancher-stack suite (2.14.1, Turtles 109.0.1+up0.26.1, core v1.12.2), Turtles integration suite on real Harvester |
 | v0.4.x | `v1alpha1` | v1beta1 + v1beta2 | v1.12.x | Rancher 2.14.x / Turtles 0.26.x | nightly version-pairing, real-Harvester runs |
 | v0.3.x | `v1alpha1` | v1beta1 | v1.12.x | Rancher 2.13–2.14 / Turtles 0.25–0.26 | real-Harvester runs (homelab) |

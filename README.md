@@ -28,6 +28,10 @@ production capabilities:
 | CLI generator | None | `caphv-generate` script (~30-line clusters) |
 | Fleet/CAAPF addons | Not supported | CSI/CNI via Fleet GitOps with per-cluster CNI tuning |
 | Helm chart | None | Full chart with webhook + ClusterClass support |
+| Multi-network clusters | Single network | Network-aware pool selection + per machine type `vmNetworkConfig` (separate control-plane/worker networks) |
+| Boot security | BIOS only | UEFI Secure Boot + vTPM per machine type |
+| Failure domains | Not published | Discovered from Harvester hosts/zones, control plane spread |
+| Hardening | None | `cisProfile` and `fipsRequired` ClusterClass switches, STIG flavor, compliance guide |
 
 ## Prerequisites
 
@@ -89,9 +93,9 @@ metadata:
 spec:
   name: harvester
   type: infrastructure
-  version: v0.5.2
+  version: v0.10.1
   fetchConfig:
-    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.5.2/infrastructure-components.yaml
+    url: https://github.com/rancher-sandbox/cluster-api-provider-harvester/releases/download/v0.10.1/infrastructure-components.yaml
   configSecret:
     name: caphv-variables
 ```
@@ -109,13 +113,13 @@ See [docs/operations.md](docs/operations.md) for full CAPIProvider deployment, u
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
   --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
-  --set image.tag=v0.5.2
+  --set image.tag=v0.10.1
 
 # With webhooks (requires cert-manager)
 helm install caphv chart/caphv/ \
   -n caphv-system --create-namespace \
   --set image.repository=ghcr.io/rancher-sandbox/cluster-api-provider-harvester \
-  --set image.tag=v0.5.2 \
+  --set image.tag=v0.10.1 \
   --set webhooks.enabled=true \
   --set webhooks.certManager.enabled=true
 ```
@@ -124,10 +128,10 @@ helm install caphv chart/caphv/ \
 
 ```bash
 # Build and push the image
-make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
+make docker-build docker-push IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.10.1
 
 # Deploy
-make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
+make deploy IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.10.1
 ```
 
 ### Option 4: Manual (standalone manifests)
@@ -288,7 +292,7 @@ spec:
     services:
       cidrBlocks: [10.53.0.0/16]
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: RKE2ControlPlane
     name: my-cluster-cp
   infrastructureRef:
@@ -382,7 +386,9 @@ Harvester HCI (target)
 | `spec.loadBalancerConfig.ipamType` | string | Yes | `pool` or `dhcp` |
 | `spec.vmNetworkConfig.gateway` | string | Yes* | Gateway IP (*required for pool IPAM) |
 | `spec.vmNetworkConfig.subnetMask` | string | Yes* | Subnet mask (e.g. "255.255.0.0") |
-| `spec.vmNetworkConfig.ipPoolRef` | string | No | Reference to Harvester IPPool |
+| `spec.vmNetworkConfig.ipPoolRef` | string | No | Reference to a Harvester IPPool |
+| `spec.vmNetworkConfig.ipPoolRefs` | []string | No | Multiple pools, ordered fallback + network-aware selection (a pool whose `selector.network` matches one of the machine's networks) |
+| `spec.vmNetworkConfig.ipPool` | object | No | Inline IPPool to create in Harvester (cluster level only) |
 
 > **DHCP mode**: If `vmNetworkConfig` is omitted and no machine-level `networkConfig` is set, all VM NICs will use DHCP automatically. No IPPool or static IP configuration is needed.
 
@@ -401,6 +407,12 @@ Harvester HCI (target)
 | `spec.volumes[].storageClass` | string | For SC | Storage class for blank disk |
 | `spec.volumes[].volumeSize` | string | Yes | Disk size (e.g. "40Gi") |
 | `spec.volumes[].bootOrder` | int | No | Boot priority (1 = first) |
+| `spec.networkConfig` | object | No | Static IP configuration for this machine (address, gateway, DNS) |
+| `spec.vmNetworkConfig` | object | No | Machine-level pool-based network config overriding the cluster-level one (pools, gateway, subnet mask, DNS); mutually exclusive with `networkConfig` |
+| `spec.firmware` | object | No | `efi` and `secureBoot` (Secure Boot requires EFI) |
+| `spec.tpm` | object | No | `enabled` and `persistent` emulated TPM device |
+| `spec.nodeAffinity` / `spec.workloadAffinity` | object | No | VM scheduling constraints on Harvester hosts / other workloads |
+| `spec.failureDomain` | string | No | Failure domain to pin the VM to (normally set by CAPI from the published domains) |
 
 ## Monitoring
 
@@ -414,9 +426,13 @@ See [docs/operations.md](docs/operations.md) for the full metrics list and alert
 
 ## Documentation
 
-- [Operations Guide](docs/operations.md) - installation via CAPIProvider, cluster lifecycle, monitoring, backup/DR
+- [Operations Guide](docs/operations.md) - installation via CAPIProvider, cluster lifecycle, multi-pool and per machine type networking, encrypted storage, failure domains, Secure Boot/vTPM, monitoring, backup/DR
+- [Compliance Guide](docs/compliance.md) - BSI APP.4.4, CIS, DISA STIG, FIPS and ANSSI mapping per layer, with the provider switches to use
+- [Compatibility Matrix](docs/compatibility.md) - certified CAPHV / Rancher / Turtles / CAPI pairings
 - [Fleet Addons Guide](docs/fleet-addons.md) - Fleet/CAAPF addon management for CSI and CNI
 - [Troubleshooting](docs/troubleshooting.md) - IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
+- [Release Process](docs/release-process.md) - immutable release flow, assets, certification bump checklist
+- Migration guides: [v0.2 to v0.3](docs/migration-v0.2-to-v0.3.md), [v0.4 to v0.5](docs/migration-v0.4-to-v0.5.md)
 
 ## E2E Tests
 
@@ -437,7 +453,7 @@ Integration tests run against a live Harvester + CAPI cluster:
 make build
 
 # Build container image
-make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2
+make docker-build IMG=ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.10.1
 
 # Run unit tests
 make test
@@ -458,7 +474,7 @@ identity.
 Verify the container image:
 
 ```bash
-cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2 \
+cosign verify ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.10.1 \
   --certificate-identity-regexp "^https://github.com/rancher-sandbox/cluster-api-provider-harvester" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -467,7 +483,7 @@ Verify the SLSA build provenance with the GitHub CLI:
 
 ```bash
 gh attestation verify \
-  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.5.2 \
+  oci://ghcr.io/rancher-sandbox/cluster-api-provider-harvester:v0.10.1 \
   --owner rancher-sandbox
 ```
 
@@ -487,6 +503,13 @@ CAPHV ↔ Rancher/Turtles/CAPI pairing matrix lives in
 
 | Version | Date | Key changes |
 |---------|------|-------------|
+| v0.10.1 | 2026-07-28 | Release assets now include the cluster template flavors and the ClusterClass (`clusterctl generate cluster --flavor ...` works against releases) |
+| v0.10.0 | 2026-07-28 | `cisProfile` and `fipsRequired` ClusterClass hardening switches, STIG-hardened template flavor, compliance guide; fix: requeue until the workload node is initialized |
+| v0.9.0 | 2026-07-28 | Failure domains: discovery from Harvester hosts/zones, publication for the CAPI contract, placement via node affinity (#237) |
+| v0.8.0 | 2026-07-28 | UEFI Secure Boot and vTPM options per machine type (#238) |
+| v0.7.0 | 2026-07-27 | Per machine type network configuration: machine-level `vmNetworkConfig` (#234) |
+| v0.6.1 | 2026-07-27 | Network-aware IP pool selection for `ipPoolRefs`; webhook accepts list-only pool sources |
+| v0.6.0 | 2026-07-20 | Build ecosystem on CAPI v1.13.4 / controller-runtime v0.23.3; typed admission validators |
 | v0.5.2 | 2026-07-20 | Image StorageClass resolved from the image status (fixes PVC Pending on freshly created images, #211); immutable-releases-compatible release flow (#218); kubevirt.io/api 1.8.4, harvester-load-balancer 1.8.1, Go 1.26, security bumps |
 | v0.5.1 | 2026-07-17 | cert-manager CA injection restored on the clustertemplates CRD (required for installs through a Turtles CAPIProvider); RBAC for provisioning.cattle.io; Turtles integration suite (CreateUsingGitOpsSpec) on a self-hosted runner |
 | v0.5.0 | 2026-07-06 | API graduation v1alpha1 -> v1beta1 (hub with conversion webhooks, fuzz-tested round-trip); deprecated failure fields dropped |
