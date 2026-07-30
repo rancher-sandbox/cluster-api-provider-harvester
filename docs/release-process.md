@@ -17,9 +17,13 @@ Checklist for cutting a CAPHV release (`vX.Y.Z`).
 ## Release workflow
 
 The `release.yml` workflow triggers on the tag and produces: the multi-arch image on
-GHCR, the Helm OCI chart, `infrastructure-components.yaml` + `metadata.yaml` +
-cluster templates as release assets, cosign signatures (verify with **cosign v3+**:
-v2 wrongly reports "no signatures" on OCI 1.1 bundles) and build provenance.
+GHCR, the Helm OCI chart, the release assets, cosign signatures (verify with
+**cosign v3+**: v2 wrongly reports "no signatures" on OCI 1.1 bundles) and build
+provenance. Since v0.10.1 the assets are `infrastructure-components.yaml`,
+`metadata.yaml`, the six cluster template flavors (`cluster-template.yaml`,
+`-dhcp`, `-generateCPI`, `-kubeadm`, `-talos`, `-stig`) and
+`clusterclass-harvester-rke2.yaml`; earlier releases only carry the first two
+(immutability makes this impossible to fix retroactively).
 
 The GitHub release is created as a **draft** carrying all assets, and publishing it
 is the **last step**, after the image and the chart jobs succeeded. Releases are

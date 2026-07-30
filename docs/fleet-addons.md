@@ -58,10 +58,12 @@ This creates a `CAPIProvider` resource that Turtles installs in `caapf-system`. 
 
 ```bash
 kubectl get capiprovider -A
-# fleet   addon   fleet   v0.12.0   Ready
+# fleet   addon   fleet   v0.13.x   Ready
 ```
 
-**Version compatibility**: CAAPF v0.12.0 works with CAPI v1.10.x (v1beta1). CAAPF v0.13+ requires CAPI v1.11+ (v1beta2).
+**Version compatibility**: with the current ecosystem (CAPI core v1.12.x, v1beta2
+contract) use CAAPF v0.13+. The older CAAPF v0.12.0 only works with CAPI v1.10.x
+(v1beta1) and cannot be used with the stack CAPHV v0.3.0+ targets.
 
 ### Fleet Addons Repository
 
@@ -128,7 +130,7 @@ These are stored as cluster annotations (`caphv.io/cni-*`) for reference and fut
 4. Labels must be added to the Fleet Cluster for bundle targeting (e.g., `cni: calico`)
 5. The `GitRepo` bundle deploys matching CNI config to the workload cluster
 
-**Important**: CAAPF v0.12.0 does not automatically propagate CAPI cluster labels to Fleet clusters. After cluster creation, you may need to:
+**Important**: depending on the CAAPF version, CAPI cluster labels may not be propagated automatically to Fleet clusters (observed with v0.12.0). After cluster creation, you may need to:
 - Set `fleetWorkspaceName: fleet-default` on the management cluster
 - Add labels to the Fleet cluster for bundle matching
 

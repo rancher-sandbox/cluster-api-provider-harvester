@@ -2,6 +2,12 @@
 
 *How I forked an inactive CAPI infrastructure provider for Harvester and brought it to production-grade quality -- validated by a formal SUSE engineering review.*
 
+> **Update, July 2026**: this article describes the state as of v0.2.8 (March 2026).
+> The project has since graduated its API to `v1beta1`, published the CAPI v1beta2
+> contract, and reached v0.10.1 with multi-network clusters, Secure Boot/vTPM,
+> failure domains and CIS/STIG/FIPS hardening options; see the README and CHANGELOG
+> for the current state.
+
 ---
 
 ## The Problem
@@ -344,7 +350,7 @@ The project underwent a formal code review by the SUSE CAPI engineering team, co
 
 - A management Kubernetes cluster (RKE2 recommended)
 - CAPI Core, RKE2 Bootstrap, and RKE2 ControlPlane providers installed (e.g., via Rancher Turtles)
-- A Harvester HCI cluster (v1.7.x)
+- A Harvester HCI cluster (v1.7.x/v1.8.x)
 - A VM image uploaded to Harvester (e.g., SLES 15 SP7)
 - An SSH key pair created on Harvester
 - cert-manager (for webhook TLS -- or use Turtles' no-cert-manager feature)
@@ -377,8 +383,8 @@ Use the ClusterClass approach (see the example above) or the CLI generator. In a
 ## What's Next
 
 - **CAPI IPAM Provider** -- decouple the IP allocation logic into a standalone [IPAM Provider](https://cluster-api.sigs.k8s.io/developer/providers/contracts/ipam) for cleaner separation of concerns and a standard CAPI-compliant API
-- **CAPI v1beta2 migration** -- adopt `status.initialization.provisioned` and new condition types when the v1beta2 contract stabilizes
-- **Harvester v1.8.x compatibility** -- validate against upcoming API changes
+- **CAPI v1beta2 migration** -- delivered since: v0.4.0 publishes the v1beta2 contract (`status.initialization.provisioned`, `Paused` condition) and v0.5.0 graduates the API to `v1beta1`
+- **Harvester v1.8.x compatibility** -- delivered since: validated continuously against Harvester 1.8 by the certification suites
 - **CAAPF evolution** -- adapt Fleet addon integration as the CAAPF API evolves ([RFD 0051](https://github.com/SUSE/rancher-architecture/pull/51))
 
 The project is open source: [github.com/rancher-sandbox/cluster-api-provider-harvester](https://github.com/rancher-sandbox/cluster-api-provider-harvester)

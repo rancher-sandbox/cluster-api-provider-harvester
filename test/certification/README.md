@@ -2,16 +2,18 @@
 
 This directory contains the certification suites for CAPHV (Cluster API Provider
 Harvester). They validate that a CAPHV release installs cleanly and stays compatible
-with its targeted ecosystem, in two tiers — neither needs a Harvester endpoint, so both
-run on standard CI runners:
+with its targeted ecosystem, in three tiers. The version-pairing and Rancher-stack
+tiers need no Harvester endpoint and run on standard CI runners; the Turtles
+integration tier provisions real clusters and requires a Harvester plus a self-hosted
+runner:
 
 | Tier | Suite | Stack | Trigger |
 |------|-------|-------|---------|
 | **Turtles integration** (the suite the Turtles team expects) | `suites/import-gitops/` | Full Rancher + Turtles + real Harvester: `CreateUsingGitOpsSpec` provisions a cluster, verifies Available, the Rancher auto-import (cattle-cluster-agent) and a clean deletion | self-hosted runner (needs a Harvester) |
-| **Version-pairing** (nightly) | `suites/version-pairing/` | CAPI core + RKE2 via [cluster-api-operator] — no Rancher | `certification.yml` (nightly + dispatch) |
-| **Rancher + Turtles stack** (on-demand) | `suites/rancher-turtles/` | Full released Rancher; Turtles/CAPI/RKE2 via its system chart controller — no workload cluster | `certification-tier-a.yml` (dispatch) |
+| **Version-pairing** (nightly) | `suites/version-pairing/` | CAPI core + RKE2 via [cluster-api-operator] - no Rancher | `certification.yml` (nightly + dispatch) |
+| **Rancher + Turtles stack** (on-demand) | `suites/rancher-turtles/` | Full released Rancher; Turtles/CAPI/RKE2 via its system chart controller - no workload cluster | `certification-tier-a.yml` (dispatch) |
 
-> Terminology: Turtles has no provider *certification* process — "certified" means
+> Terminology: Turtles has no provider *certification* process - "certified" means
 > "actively tested". The integration tier is the flow the Turtles team maintains in
 > [rancher/turtles-integration-suite-example]; the other two tiers are lighter
 > complements. Version pairings are recorded in [docs/compatibility.md](../../docs/compatibility.md).
@@ -44,7 +46,7 @@ providers and the CAPHV release under test, and asserts the pairing is healthy.
 3. The CAPHV CRDs are registered and advertise a `cluster.x-k8s.io/<contract>` label the
    core accepts.
 
-The bootstrap replicates `hack/tier-c-smoke.sh` — the manually validated recipe — step by
+The bootstrap replicates `hack/tier-c-smoke.sh` - the manually validated recipe - step by
 step. If you change one, keep the other in sync.
 
 ## Tier: Rancher + Turtles (on-demand)
@@ -52,7 +54,7 @@ step. If you change one, keep the other in sync.
 `suites/rancher-turtles/` certifies CAPHV under the FULL targeted Rancher: kind +
 cert-manager + nginx ingress (isolated mode), then the **released Rancher** from its
 official chart repository. Rancher's system chart controller automatically installs the
-released Turtles, the CAPI core and the RKE2 providers — the exact out-of-the-box stack
+released Turtles, the CAPI core and the RKE2 providers - the exact out-of-the-box stack
 a Rancher user gets (verified against a real Rancher 2.14.1 install). Only the CAPHV
 `CAPIProvider` (`turtles-capi.cattle.io/v1alpha1`) is applied on top.
 
@@ -62,7 +64,7 @@ label, and the certified ecosystem versions (Turtles system chart, CAPI core) ar
 recorded in the logs.
 
 > The upstream Turtles e2e flow additionally builds a local rancher/charts tree and
-> serves it from an in-cluster Gitea — that is only needed to test **unreleased**
+> serves it from an in-cluster Gitea - that is only needed to test **unreleased**
 > Turtles charts. Certifying released pairings uses Rancher's default chart repository,
 > which is the representative source, so no Gitea is involved.
 
@@ -71,9 +73,9 @@ overriding `RANCHER_VERSION` / `CAPHV_VERSION` as needed. Budget ~30-45 minutes.
 
 ## Tier: Turtles integration suite (primary, scheduled)
 
-`suites/import-gitops/` runs the Turtles `CreateUsingGitOpsSpec` — the suite the
+`suites/import-gitops/` runs the Turtles `CreateUsingGitOpsSpec` - the suite the
 Turtles team runs for every certified provider (modeled on
-`rancher/turtles-integration-suite-example`) — against a **real Harvester**:
+`rancher/turtles-integration-suite-example`) - against a **real Harvester**:
 
 1. kind + cert-manager + nginx (hostPort) + released Rancher + Turtles + CAPI core,
    plus the RKE2 providers and the CAPHV `CAPIProvider`;
@@ -95,11 +97,11 @@ kubectl plugin (`scripts/ensure-crust-gather.sh`), plus two network properties:
   endpoint (an IP from the Harvester LB pool).
 
 A plain VM on the LAN satisfies both. Rootless/NAT'd container engines on multi-bridge
-hosts often do not — nested kind networking is the first thing to check when the
+hosts often do not - nested kind networking is the first thing to check when the
 downstream agent cannot reach the server-url.
 
 In CI the suite runs on a **self-hosted runner** living inside the test environment
-(same pattern as the Turtles vSphere runner), on a schedule and manual dispatch only —
+(same pattern as the Turtles vSphere runner), on a schedule and manual dispatch only -
 never on pull requests. `HARVESTER_KUBECONFIG_B64` is provided as an Actions secret.
 
 Run manually with `MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind`,
@@ -113,11 +115,14 @@ environment:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `CAPHV_VERSION` | `v0.3.1` | CAPHV release under certification |
+| `CAPHV_VERSION` | current release (see `config.yaml`) | CAPHV release under certification |
 | `CAPHV_COMPONENTS_URL` | release asset URL | `infrastructure-components.yaml` of that release |
 | `CAPI_VERSION` | `v1.12.7` | Targeted Cluster API core (version-pairing tier) |
 | `CAPI_OPERATOR_VERSION` | `0.27.0` | cluster-api-operator helm chart (version-pairing tier) |
 | `RANCHER_VERSION` | `2.14.1` | Targeted Rancher chart (Rancher+Turtles tier) |
+| `CIS_PROFILE` | empty | When set (e.g. `cis`), the import-gitops cluster is provisioned with the RKE2 CIS profile through the ClusterClass switch |
+| `FIPS_REQUIRED` | `false` | When `true`, node bootstrap requires a FIPS-enabled node image |
+| `VM_NETWORK`, `VOLUME_IMAGE`, `SSH_USER`, `SSH_KEYPAIR`, `TARGET_NAMESPACE`, `GATEWAY`, `SUBNET_MASK`, `IP_POOL_REF`, `DNS_SERVERS` | see `config.yaml` | Harvester-side inputs of the import-gitops cluster template |
 
 The RKE2 providers deliberately carry no pin: the operator installs its latest known
 release, matching the validated recipe. cert-manager's version is pinned by the turtles
@@ -126,8 +131,8 @@ release, matching the validated recipe. cert-manager's version is pinned by the 
 ## Prerequisites
 
 - A container runtime for kind: docker, or **rootful** podman (the kind library
-  auto-detects docker → nerdctl → podman; the CLI-only `KIND_EXPERIMENTAL_PROVIDER`
-  variable has no effect here). No kind binary is needed — kind is vendored as a Go
+  auto-detects docker -> nerdctl -> podman; the CLI-only `KIND_EXPERIMENTAL_PROVIDER`
+  variable has no effect here). No kind binary is needed - kind is vendored as a Go
   library.
 - `helm` (v3+) and `kubectl` on `PATH`.
 - Go (version per `go.mod`).
@@ -182,9 +187,11 @@ test/certification/
 │   ├── version-pairing/
 │   │   ├── suite_test.go         # Bootstrap: kind -> cert-manager -> operator -> providers
 │   │   └── version_pairing_test.go  # Certification assertions
-│   └── rancher-turtles/
-│       ├── suite_test.go         # Bootstrap: kind -> ingress -> Rancher (system charts)
-│       └── rancher_turtles_test.go  # Certification assertions (tier A)
+│   ├── rancher-turtles/
+│   │   ├── suite_test.go         # Bootstrap: kind -> ingress -> Rancher (system charts)
+│   │   └── rancher_turtles_test.go  # Certification assertions (tier A)
+│   └── import-gitops/            # Turtles CreateUsingGitOpsSpec vs real Harvester
+├── scripts/ensure-crust-gather.sh # Installs the crust-gather kubectl plugin
 ├── Makefile
 ├── run.sh
 ├── go.mod                        # Standalone module (decoupled from the main CAPHV module)
@@ -197,20 +204,10 @@ After the suite passes for a new pairing, a certification issue can be submitted
 [rancher/turtles](https://github.com/rancher/turtles/issues) with the test logs, the
 CAPHV version and a link to this suite.
 
-## Tier: Turtles integration (import-gitops)
+## Running the Turtles integration tier manually
 
-Runs `CreateUsingGitOpsSpec` against a **real Harvester**: kind management cluster with
-host port mappings (`MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind`), full Rancher from
-its official chart, Turtles + CAPI core via Rancher's system chart controller, RKE2 and
-CAPHV as `CAPIProvider`s, then the full lifecycle: provision from the ClusterClass
-template → cluster Available → Rancher auto-import verified downstream → deletion
-without stalling.
-
-Environment-specific inputs (never committed): `RANCHER_HOSTNAME` must resolve to a
-host IP reachable **from the workload VMs** (e.g. `<host-lan-ip>.sslip.io`, ports 80/443
-open), and `HARVESTER_KUBECONFIG_B64`. Install crust-gather first
-(`scripts/ensure-crust-gather.sh`) so the framework collects management and downstream
-state into `_artifacts/` automatically.
+See the tier description at the top of this document for the flow and the
+environment requirements. Quick start on a suitable host:
 
 ```bash
 export RANCHER_HOSTNAME=<host-lan-ip>.sslip.io
