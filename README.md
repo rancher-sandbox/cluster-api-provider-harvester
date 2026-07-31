@@ -432,6 +432,7 @@ See [docs/operations.md](docs/operations.md) for the full metrics list and alert
 - [Fleet Addons Guide](docs/fleet-addons.md) - Fleet/CAAPF addon management for CSI and CNI
 - [Troubleshooting](docs/troubleshooting.md) - IPPool, cloud-init, DHCP, Turtles/Rancher, VM creation, etcd
 - [Release Process](docs/release-process.md) - immutable release flow, assets, certification bump checklist
+- [Maintainer Notes](docs/maintainer-notes.md) - invariants, ecosystem behaviors, debugging techniques and known limitations for maintainers
 - Migration guides: [v0.2 to v0.3](docs/migration-v0.2-to-v0.3.md), [v0.4 to v0.5](docs/migration-v0.4-to-v0.5.md)
 
 ## E2E Tests
