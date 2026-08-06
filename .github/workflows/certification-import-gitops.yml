@@ -2,7 +2,7 @@
 #
 # Runs on a self-hosted runner living inside the test environment (a VM with
 # docker, kind, helm, go and network reach to the Harvester cluster and to the
-# workload VMs it provisions) — same pattern as rancher/rancher-turtles-e2e's
+# workload VMs it provisions) - same pattern as rancher/rancher-turtles-e2e's
 # vSphere runner. The job is therefore guarded to the repository that owns the
 # runner; it never runs on pull requests.
 name: certification-import-gitops
