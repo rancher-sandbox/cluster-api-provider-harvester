@@ -35,6 +35,10 @@ jobs:
         working-directory: test/certification
         env:
           HARVESTER_KUBECONFIG_B64: ${{ secrets.HARVESTER_KUBECONFIG_B64 }}
+          # Optional docker.io pull-through mirror for the workload nodes
+          # (unauthenticated Docker Hub pulls are rate limited per IP; a full
+          # run plus background traffic can starve the control plane pulls).
+          REGISTRY_MIRROR_ENDPOINT: ${{ vars.REGISTRY_MIRROR_ENDPOINT }}
         run: |
           # The Rancher server-url must be reachable both from inside the kind
           # cluster and from the workload VMs: the runner VM's LAN IP is.
@@ -45,6 +49,7 @@ jobs:
             MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind \
             RANCHER_HOSTNAME="$RANCHER_HOSTNAME" \
             HARVESTER_KUBECONFIG_B64="$HARVESTER_KUBECONFIG_B64" \
+            REGISTRY_MIRROR_ENDPOINT="$REGISTRY_MIRROR_ENDPOINT" \
             ./bin/import-gitops.test -test.timeout 140m -test.v -ginkgo.v
 
       - name: Collect artifacts

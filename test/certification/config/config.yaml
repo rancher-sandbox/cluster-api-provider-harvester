@@ -62,7 +62,7 @@ variables:
   # Import-gitops tier only (full lifecycle on a real Harvester): the suite runs with
   # MANAGEMENT_CLUSTER_ENVIRONMENT=internal-kind and needs RANCHER_HOSTNAME resolving to
   # a host IP reachable from the workload VMs (e.g. <host-lan-ip>.sslip.io), plus
-  # HARVESTER_KUBECONFIG_B64 — both are environment-specific and supplied by the wrapper
+  # HARVESTER_KUBECONFIG_B64 - both are environment-specific and supplied by the wrapper
   # or CI, never committed here.
   NAMESPACE: "default"
   KUBERNETES_VERSION: "v1.31.14"
@@ -84,3 +84,4 @@ variables:
   CNI: "calico"
   CIS_PROFILE: ""
   FIPS_REQUIRED: "false"
+  REGISTRY_MIRROR_ENDPOINT: ""

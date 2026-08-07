@@ -146,6 +146,12 @@ spec:
         openAPIV3Schema:
           type: boolean
           default: false
+    - name: registryMirrorEndpoint
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
   patches:
     - name: vmNetworks
       definitions:
@@ -460,6 +466,39 @@ spec:
                   - printf "vm.panic_on_oom=0\nvm.overcommit_memory=1\nkernel.panic=10\nkernel.panic_on_oops=1\n" > /etc/sysctl.d/90-kubelet.conf
                   - sysctl -p /etc/sysctl.d/90-kubelet.conf
                   {{ end }}
+    - name: registryMirror
+      enabledIf: '{{ if .registryMirrorEndpoint }}true{{ end }}'
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/privateRegistriesConfig
+              valueFrom:
+                template: |
+                  mirrors:
+                    docker.io:
+                      endpoint:
+                        - {{ .registryMirrorEndpoint }}
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/privateRegistriesConfig
+              valueFrom:
+                template: |
+                  mirrors:
+                    docker.io:
+                      endpoint:
+                        - {{ .registryMirrorEndpoint }}
     - name: csiAddonConfigMap
       definitions:
         - selector:
@@ -652,8 +691,10 @@ spec:
         value: "${CIS_PROFILE}"
       - name: fipsRequired
         value: ${FIPS_REQUIRED}
+      - name: registryMirrorEndpoint
+        value: "${REGISTRY_MIRROR_ENDPOINT}"
 ---
-# ClusterResourceSet — CSI plugin DaemonSet + RBAC
+# ClusterResourceSet - CSI plugin DaemonSet + RBAC
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
@@ -668,7 +709,7 @@ spec:
       name: cloud-controller-manager-addon-${CLUSTER_NAME}
   strategy: Reconcile
 ---
-# ClusterResourceSet — Cloud provider Deployment + RBAC
+# ClusterResourceSet - Cloud provider Deployment + RBAC
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
@@ -683,7 +724,7 @@ spec:
       name: harvester-csi-driver-addon-${CLUSTER_NAME}
   strategy: Reconcile
 ---
-# ClusterResourceSet — Calico HelmChartConfig
+# ClusterResourceSet - Calico HelmChartConfig
 apiVersion: addons.cluster.x-k8s.io/v1beta1
 kind: ClusterResourceSet
 metadata:
@@ -698,7 +739,7 @@ spec:
       name: calico-helm-config-${CLUSTER_NAME}
   strategy: ApplyOnce
 ---
-# ConfigMap — Harvester CSI plugin DaemonSet
+# ConfigMap - Harvester CSI plugin DaemonSet
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -877,7 +918,7 @@ data:
     reclaimPolicy: Delete
     volumeBindingMode: Immediate
 ---
-# ConfigMap — Harvester cloud provider Deployment (with bootstrap fixes)
+# ConfigMap - Harvester cloud provider Deployment (with bootstrap fixes)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -996,7 +1037,7 @@ data:
         name: harvester-cloud-controller-manager
         namespace: kube-system
 ---
-# ConfigMap — Calico HelmChartConfig
+# ConfigMap - Calico HelmChartConfig
 apiVersion: v1
 kind: ConfigMap
 metadata:
